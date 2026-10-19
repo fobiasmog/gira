@@ -1,0 +1,34 @@
+# Content Security Policy (spec security-baseline, "Content Security Policy").
+# Everything comes from the application's own origin. The only third-party
+# destination is the Sentry ingest host, for the SPA's error reports.
+# Development additionally allows the Vite dev server, and nothing else.
+# There, the Vite client injects stylesheets as <style> elements; they carry a
+# per-request nonce that the SPA layout exposes in <meta property="csp-nonce">.
+
+Rails.application.configure do
+  sentry_dsn = Rails.application.credentials.dig(:sentry, :frontend_dsn)
+  sentry_ingest = URI(sentry_dsn).then { |uri| "#{uri.scheme}://#{uri.host}" } if sentry_dsn.present?
+
+  vite_dev_server = ENV.fetch("VITE_DEV_SERVER_HOST", "localhost:5173") if Rails.env.development? && ENV["VITE_DEV_SERVER"] != "off"
+  vite_http = [ "http://#{vite_dev_server}" ] if vite_dev_server
+  vite_ws = [ "ws://#{vite_dev_server}" ] if vite_dev_server
+
+  config.content_security_policy do |policy|
+    policy.default_src :self
+    policy.script_src :self, *vite_http
+    policy.style_src :self, *vite_http
+    policy.font_src :self, *vite_http
+    policy.img_src :self, :data, :blob, *vite_http
+    policy.connect_src :self, *sentry_ingest, *vite_http, *vite_ws
+    policy.frame_src :self
+    policy.form_action :self
+    policy.object_src :none
+    policy.base_uri :self
+    policy.frame_ancestors :none
+  end
+
+  if vite_dev_server
+    config.content_security_policy_nonce_generator = ->(_request) { SecureRandom.base64(16) }
+    config.content_security_policy_nonce_directives = %w[style-src]
+  end
+end

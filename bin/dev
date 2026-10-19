@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+# Starts Puma and the Vite dev server together; stopping one stops both.
+# Open the app at http://localhost:5173.
+set -e
+
+trap 'kill 0' INT TERM EXIT
+npx vite &
+./bin/rails server "$@"

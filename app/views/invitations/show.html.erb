@@ -1,0 +1,18 @@
+<% content_for :title, t(".title") %>
+
+<section class="card">
+  <h1><%= t(".title") %></h1>
+  <p><%= t(".text", inviter: @invitation.inviter.name, project: @invitation.project.title) %></p>
+
+  <% if !authenticated? %>
+    <p><%= t(".sign_in_to_accept", email: @invitation.email) %></p>
+    <%= link_to t(".sign_in"), new_session_path, class: "button" %>
+    <ul class="card__links">
+      <li><%= link_to t(".sign_up"), new_registration_path(email: @invitation.email) %></li>
+    </ul>
+  <% elsif @invitation.addressed_to?(Current.user) %>
+    <%= button_to t(".accept"), invitation_acceptance_path(params[:token] || params[:invitation_token]), class: "button" %>
+  <% else %>
+    <p class="flash flash--alert" role="alert"><%= t(".other_address") %></p>
+  <% end %>
+</section>

@@ -1,0 +1,27 @@
+<% content_for :title, t(".title") %>
+
+<section class="card">
+  <h1><%= t(".title") %></h1>
+
+  <%= form_with model: @user, url: registration_path do |form| %>
+    <%= render "shared/errors", record: @user %>
+    <div class="field">
+      <%= form.label :name, t("forms.name") %>
+      <%= form.text_field :name, required: true, autofocus: true, autocomplete: "name", maxlength: 100 %>
+    </div>
+    <div class="field">
+      <%= form.label :email_address, t("forms.email_address") %>
+      <%= form.email_field :email_address, required: true, autocomplete: "username" %>
+    </div>
+    <div class="field">
+      <%= form.label :password, t("forms.password") %>
+      <%= form.password_field :password, required: true, autocomplete: "new-password", minlength: 12, maxlength: 72, "aria-describedby": "password-hint" %>
+      <span class="field__hint" id="password-hint"><%= t(".password_hint") %></span>
+    </div>
+    <%= form.submit t(".submit"), class: "button" %>
+  <% end %>
+
+  <ul class="card__links">
+    <li><%= link_to t(".have_account"), new_session_path %></li>
+  </ul>
+</section>

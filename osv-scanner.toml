@@ -1,0 +1,8 @@
+# Advisories osv-scanner may ignore in CI (spec security-baseline,
+# "Dependency and static security gates"). Every entry needs a reason and an
+# expiry date, after which CI fails again until it is re-reviewed:
+#
+# [[IgnoredVulns]]
+# id = "GHSA-xxxx-xxxx-xxxx"
+# ignoreUntil = 2027-01-01
+# reason = "Why this does not affect the application, and who reviewed it"

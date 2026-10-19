@@ -1,0 +1,24 @@
+<% content_for :title, t(".title") %>
+
+<section class="card">
+  <h1><%= t(".title") %></h1>
+
+  <%= form_with url: session_path do |form| %>
+    <div class="field">
+      <%= form.label :email_address, t("forms.email_address") %>
+      <%= form.email_field :email_address, required: true, autofocus: true, autocomplete: "username", value: params[:email_address] %>
+    </div>
+    <div class="field">
+      <%= form.label :password, t("forms.password") %>
+      <%= form.password_field :password, required: true, autocomplete: "current-password", maxlength: 72 %>
+    </div>
+    <%= form.submit t(".submit"), class: "button" %>
+  <% end %>
+
+  <ul class="card__links">
+    <li><%= link_to t(".forgot_password"), new_password_path %></li>
+    <li><%= link_to t(".no_account"), new_registration_path %></li>
+    <li><%= link_to t(".resend_confirmation"), new_confirmation_path %></li>
+    <li><%= link_to t(".locked"), new_unlock_path %></li>
+  </ul>
+</section>

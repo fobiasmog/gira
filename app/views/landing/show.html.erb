@@ -1,0 +1,46 @@
+<% content_for :title, t("landing.title") %>
+
+<section class="section section--column">
+  <div>
+    <h1 class="title"><%= t("landing.hero_title") %></h1>
+    <p class="subtitle"><%= t("landing.hero_subtitle") %></p>
+  </div>
+  <%= image_tag "/images/main.png", alt: t("landing.images.board"), class: "section__image" %>
+  <%= link_to t("landing.start_free"), authenticated? ? app_path : new_registration_path, class: "button button--big" %>
+</section>
+
+<section class="section section--tinted">
+  <div class="section__text">
+    <h2 class="title"><%= t("landing.organize_title") %></h2>
+    <p class="subtitle"><%= t("landing.organize_deadlines") %></p>
+    <p class="subtitle"><%= t("landing.organize_teams") %></p>
+    <%= link_to t("landing.lets_go"), authenticated? ? app_path : new_registration_path, class: "button button--big" %>
+  </div>
+  <%= image_tag "/images/kanban.png", alt: t("landing.images.kanban"), class: "section__image section__image--small" %>
+</section>
+
+<section class="section">
+  <%= image_tag "/images/inf.png", alt: t("landing.images.infinity"), class: "section__image section__image--small" %>
+  <div class="section__text">
+    <h2 class="title"><%= t("landing.infinity_title") %></h2>
+    <p class="subtitle"><%= t("landing.infinity_text") %></p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section__text">
+    <h2 class="title"><%= t("landing.simple_title") %></h2>
+    <p class="subtitle"><%= t("landing.simple_text") %></p>
+  </div>
+  <%= image_tag "/images/man.png", alt: t("landing.images.person"), class: "section__image section__image--small" %>
+</section>
+
+<section class="section section--column">
+  <div class="section__text">
+    <h2 class="title"><%= t("landing.deadlines_title") %></h2>
+    <p class="subtitle"><%= t("landing.deadlines_text") %></p>
+  </div>
+  <% unless authenticated? %>
+    <%= link_to t("layout.sign_up"), new_registration_path, class: "button button--big" %>
+  <% end %>
+</section>

@@ -1,0 +1,11 @@
+# Owned by one; two is a member.
+goal:
+  title: Goalner
+  short_name: GOAL
+  owner: one
+
+# Owned by two; one is not a member.
+side:
+  title: Side project
+  short_name: SIDE
+  owner: two

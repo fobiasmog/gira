@@ -1,0 +1,19 @@
+<% content_for :title, t(".title") %>
+
+<section class="card">
+  <h1><%= t(".title") %></h1>
+
+  <%= form_with url: password_path(params[:token]), method: :put do |form| %>
+    <%= render "shared/errors", record: @user %>
+    <div class="field">
+      <%= form.label :password, t("forms.password") %>
+      <%= form.password_field :password, required: true, autofocus: true, autocomplete: "new-password", minlength: 12, maxlength: 72 %>
+      <span class="field__hint"><%= t("registrations.new.password_hint") %></span>
+    </div>
+    <div class="field">
+      <%= form.label :password_confirmation, t("forms.password_confirmation") %>
+      <%= form.password_field :password_confirmation, required: true, autocomplete: "new-password", maxlength: 72 %>
+    </div>
+    <%= form.submit t(".submit"), class: "button" %>
+  <% end %>
+</section>

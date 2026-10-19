@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: --health-cmd="pg_isready" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+      - name: Install packages
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y libpq-dev libvips poppler-utils
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      # System tests drive the real SPA build (with the test-only fixture pages).
+      - name: Build the frontend
+        run: npm ci --ignore-scripts && npx vite build --mode test
+
+      - name: Run tests
+        env:
+          RAILS_ENV: test
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432
+        run: bin/rails db:test:prepare test test:system
+
+      - name: Keep screenshots from failed system tests
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: screenshots
+          path: ${{ github.workspace }}/tmp/screenshots
+          if-no-files-found: ignore
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install packages without install scripts
+        run: npm ci --ignore-scripts
+
+      - name: Verify registry signatures
+        run: npm audit signatures
+
+      - name: Dependency and rendering policy
+        run: node script/check-frontend-policy.mjs
+
+      - name: Type check
+        run: npx vue-tsc --noEmit
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npx vite build
+
+  security:
+    runs-on: ubuntu-latest
+    env:
+      OSV_SCANNER_VERSION: v2.6.0
+      OSV_SCANNER_SHA256: ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Static security analysis
+        run: bin/brakeman --no-pager
+
+      - name: Known vulnerabilities in gems
+        run: bin/bundler-audit check --update
+
+      - name: Install osv-scanner
+        run: |
+          curl -sSfL -o /usr/local/bin/osv-scanner \
+            "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SCANNER_SHA256}  /usr/local/bin/osv-scanner" | sha256sum --check
+          chmod +x /usr/local/bin/osv-scanner
+
+      # The application lockfiles: gems and the frontend packages.
+      - name: Known vulnerabilities in lockfiles (OSV)
+        run: |
+          args=(--config osv-scanner.toml --lockfile Gemfile.lock --lockfile package-lock.json)
+          # osv-scanner can exit 0 when the OSV API is unreachable; treat any
+          # extraction error as a failure instead of a clean result.
+          set +e
+          osv-scanner scan source "${args[@]}" 2>&1 | tee osv.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if grep -q "Error during extraction" osv.log; then exit 1; fi
+          exit $status
+
+      - name: Lint
+        run: bin/rubocop -f github

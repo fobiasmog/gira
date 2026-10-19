@@ -1,0 +1,13 @@
+<% content_for :title, t(".title") %>
+
+<section class="card">
+  <h1><%= t(".title") %></h1>
+
+  <%= form_with url: unlocks_path do |form| %>
+    <div class="field">
+      <%= form.label :email_address, t("forms.email_address") %>
+      <%= form.email_field :email_address, required: true, autofocus: true, autocomplete: "username" %>
+    </div>
+    <%= form.submit t(".submit"), class: "button" %>
+  <% end %>
+</section>

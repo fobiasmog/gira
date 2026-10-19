@@ -1,0 +1,7 @@
+<% content_for :title, t(".title") %>
+
+<section class="card">
+  <h1><%= t(".title") %></h1>
+  <p><%= t(".text", email: @user.email_address) %></p>
+  <%= button_to t(".submit"), unlock_path(params[:token]), method: :patch, class: "button" %>
+</section>

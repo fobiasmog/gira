@@ -1,0 +1,196 @@
+en:
+  app_name: Goalner
+  layout:
+    language: Language
+    sign_in: Sign in
+    sign_up: Sign up
+    sign_out: Sign out
+    open_app: Open Goalner
+
+  landing:
+    title: Goalner — a minimalist project management tool
+    description: An easy way to manage projects, without unnecessary fuss.
+    hero_title: Easy way to manage projects
+    hero_subtitle: Without unnecessary restrictions
+    start_free: Get started — it's free!
+    organize_title: Organize this, organize that
+    organize_deadlines: Set deadlines, set priorities, and plan your work for months ahead.
+    organize_teams: Create teams and achieve goals together, and we will help you.
+    lets_go: Let's go
+    infinity_title: To infinity and beyond
+    infinity_text: Manage as many projects as necessary, with any number of participants.
+    simple_title: It couldn't be simpler
+    simple_text: Let the team work, without the complexities of organizing processes.
+    deadlines_title: No deadline will be missed
+    deadlines_text: Goalner shows which projects are in trouble and which are on track.
+    images:
+      board: A Goalner project board
+      kanban: Tasks moving across board columns
+      infinity: Infinity sign
+      person: A person at work
+
+  sessions:
+    new:
+      title: Sign in
+      submit: Sign in
+      forgot_password: Forgot password?
+      no_account: Don't have an account?
+      resend_confirmation: Didn't receive the confirmation email?
+      locked: Account locked?
+    invalid: Invalid email or password.
+    unconfirmed: Please confirm your email address first. We can send the confirmation link again.
+
+  registrations:
+    new:
+      title: Create your account
+      submit: Sign up
+      have_account: Already have an account?
+      password_hint: At least 12 characters.
+    check_email: Check your email to finish signing up.
+
+  confirmations:
+    new:
+      title: Resend confirmation link
+      submit: Send link
+    show:
+      title: Confirm your email address
+      text: Confirm %{email} to finish setting up your account.
+      submit: Confirm my email
+    sent: If that address has an unconfirmed account, we sent a new confirmation link.
+    confirmed: Your email address is confirmed. You can sign in now.
+    invalid: That confirmation link is invalid or has expired. We can send you a new one.
+
+  unlocks:
+    new:
+      title: Unlock your account
+      submit: Send unlock link
+    show:
+      title: Unlock your account
+      text: Unlock the account for %{email}.
+      submit: Unlock my account
+    sent: If that account is locked, we sent an unlock link.
+    unlocked: Your account is unlocked. You can sign in now.
+    invalid: That unlock link is invalid or has expired. We can send you a new one.
+
+  passwords:
+    new:
+      title: Forgot your password?
+      submit: Email reset instructions
+    edit:
+      title: Choose a new password
+      submit: Save password
+    sent: If an account exists for that address, we sent a password reset link.
+    reset: Your password has been changed. Sign in with your new password.
+    invalid: That password reset link is invalid or has expired. Request a new one below.
+
+  invitations:
+    sent: Invitation sent.
+    show:
+      title: You're invited
+      text: "%{inviter} invited you to the project “%{project}” on Goalner."
+      sign_in_to_accept: Sign in or create an account with %{email} to accept.
+      sign_in: Sign in to accept
+      sign_up: Create an account
+      accept: Accept invitation
+      other_address: This invitation was sent to another email address. Sign in with that address to accept it.
+    invalid:
+      title: Invitation not available
+      text: This invitation link is invalid, has expired or was already used. Ask a project member to invite you again.
+
+  invitation_mailer:
+    invite:
+      subject: "You're invited to %{project} on Goalner"
+      text: "%{inviter} invited you to join the project “%{project}” on Goalner."
+      action: View the invitation
+      expiry: The link works for 7 days. If you don't have an account yet, you can create one from that page.
+      ignore: If you don't want to join, you can ignore this email.
+
+  task_mailer:
+    assigned:
+      subject: "%{assigner} assigned %{key} to you"
+      text: "%{assigner} assigned %{key} “%{title}” to you."
+      action: "Open %{key}"
+
+  shared:
+    rate_limited:
+      title: Too many attempts
+      text: Please try again later.
+      back: Back to sign in
+
+  spa:
+    show:
+      title: Goalner
+      loading: Goalner is loading…
+
+  forms:
+    name: Name
+    email_address: Email
+    password: Password
+    password_confirmation: Repeat password
+    errors_heading: Please fix the following
+
+  account_mailer:
+    confirmation:
+      subject: Confirm your email address
+      greeting: Hello %{name},
+      text: Confirm your email address to finish creating your Goalner account. The link works for 24 hours.
+      action: Confirm my email
+      ignore: If you did not sign up for Goalner, you can ignore this email.
+    attempted_registration:
+      subject: Someone tried to sign up with your email address
+      greeting: Hello %{name},
+      text: Someone tried to create a new Goalner account with your email address. You already have an account, so nothing was changed.
+      sign_in: If it was you, sign in here
+      reset: or reset your password if you forgot it.
+      ignore: If it was not you, you can ignore this email.
+    unlock:
+      subject: Your Goalner account was locked
+      greeting: Hello %{name},
+      text: Your account was locked after too many failed sign-in attempts. It unlocks automatically in one hour, or you can unlock it now.
+      action: Unlock my account
+      ignore: If these attempts were not yours, consider changing your password after unlocking.
+
+  passwords_mailer:
+    reset:
+      subject: Reset your password
+      greeting: Hello %{name},
+      text: Use the link below to choose a new password. It works for 15 minutes.
+      action: Choose a new password
+      ignore: If you did not ask to reset your password, you can ignore this email.
+
+  errors:
+    messages:
+      too_large: is too large
+      content_type_not_allowed: is not an allowed file type
+      invalid_service: "has an unknown service %{service}"
+      invalid_url: "for %{service} must be an https URL of at most 255 characters"
+      not_a_member: must be a member of the project
+      deleted: has been deleted
+      nested: cannot have subtasks of its own
+      archived: is archived
+      last_column: The last column cannot be deleted
+      subtask_placement: Subtasks are not placed on the board
+      before_start: must not be earlier than the start date
+      subtask: cannot be set on a subtask
+      too_many: "are limited to %{count} files"
+      file_too_large: "%{filename} is too large"
+      file_content_type_not_allowed: "%{filename} is not an allowed file type"
+      file_blank: is not a file
+
+  activerecord:
+    errors:
+      models:
+        task:
+          attributes:
+            base:
+              archived: Archived tasks cannot be changed
+    attributes:
+      user:
+        name: Name
+        email_address: Email
+        password: Password
+        password_confirmation: Password confirmation
+        password_challenge: Current password
+        lang: Language
+        contact_links: Contact link
+        avatar: Avatar

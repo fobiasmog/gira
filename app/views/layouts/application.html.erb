@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="<%= I18n.locale %>">
+  <head>
+    <title><%= content_for(:title) || t("app_name") %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="description" content="<%= t("landing.description") %>">
+    <meta property="og:image" content="<%= image_url("/og_img.png") %>">
+    <meta name="application-name" content="Goalner">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" href="/favicon-32x32.png" type="image/png" sizes="32x32">
+    <link rel="icon" href="/favicon-16x16.png" type="image/png" sizes="16x16">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#9859e8">
+    <link rel="manifest" href="/site.webmanifest">
+
+    <%= stylesheet_link_tag :app %>
+  </head>
+
+  <body>
+    <header class="header">
+      <div class="header__inner">
+        <%= link_to root_path, class: "logo" do %>
+          <%= image_tag "/og_img.png", alt: "" %>
+          <span><%= t("app_name") %></span>
+        <% end %>
+
+        <% unless authenticated? %>
+          <nav class="lang-switch" aria-label="<%= t("layout.language") %>">
+            <% User::LANGUAGES.each do |lang| %>
+              <%= link_to lang.upcase, url_for(lang: lang), lang: lang, "aria-current": (I18n.locale.to_s == lang ? "true" : nil) %>
+            <% end %>
+          </nav>
+        <% end %>
+
+        <div class="header__spacer"></div>
+
+        <div class="header__actions">
+          <% if authenticated? %>
+            <%= link_to t("layout.open_app"), app_path %>
+            <%= button_to t("layout.sign_out"), session_path, method: :delete, class: "button button--link" %>
+          <% else %>
+            <%= link_to t("layout.sign_in"), new_session_path %>
+            <%= link_to t("layout.sign_up"), new_registration_path, class: "button" %>
+          <% end %>
+        </div>
+      </div>
+    </header>
+
+    <% flash.each do |type, message| %>
+      <p class="flash flash--<%= type == "alert" ? "alert" : "notice" %>" role="<%= type == "alert" ? "alert" : "status" %>"><%= message %></p>
+    <% end %>
+
+    <main>
+      <%= yield %>
+    </main>
+  </body>
+</html>

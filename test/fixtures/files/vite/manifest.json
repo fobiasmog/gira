@@ -1,0 +1,17 @@
+{
+  "app/frontend/entrypoints/application.ts": {
+    "file": "assets/application-abc123.js",
+    "src": "app/frontend/entrypoints/application.ts",
+    "isEntry": true,
+    "imports": ["_vendor-def456.js"],
+    "css": ["assets/application-789aaa.css"]
+  },
+  "_vendor-def456.js": {
+    "file": "assets/vendor-def456.js",
+    "imports": ["_shared-111bbb.js"],
+    "css": ["assets/vendor-222ccc.css"]
+  },
+  "_shared-111bbb.js": {
+    "file": "assets/shared-111bbb.js"
+  }
+}

@@ -1,0 +1,15 @@
+one_goal:
+  project: goal
+  user: one
+
+two_goal:
+  project: goal
+  user: two
+
+two_side:
+  project: side
+  user: two
+
+stranger_side:
+  project: side
+  user: stranger
