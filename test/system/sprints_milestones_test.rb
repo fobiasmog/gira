@@ -48,7 +48,7 @@ class SprintsMilestonesTest < ApplicationSystemTestCase
     @project.tasks.create!(title: "In the sprint", creator: @user, status: statuses(:goal_todo), sprint: sprint)
     @project.tasks.create!(title: "Outside the sprint", creator: @user, status: statuses(:goal_todo))
     within(".side-nav") { click_link "Board" }
-    assert_text "Sprint: Sprint 1"
+    within("section[aria-label='Active sprint']") { assert_link "Sprint 1" }
     assert_text "In the sprint"
     assert_no_text "Outside the sprint"
   end

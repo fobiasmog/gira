@@ -76,7 +76,8 @@ defineExpose({ close })
   max-inline-size: min(320px, 100vw - 16px);
   max-block-size: min(420px, 100dvh - 16px);
   overflow: auto;
-  padding: var(--space-1) 0;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
   box-shadow: var(--shadow-popover);

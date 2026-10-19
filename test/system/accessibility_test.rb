@@ -93,7 +93,8 @@ class AccessibilityTest < ApplicationSystemTestCase
   end
 
   # Tabs through the page and returns the focused elements that show no focus
-  # indicator (an outline on the element, or on the card or editor around it).
+  # indicator (an outline on the element, or on the card, editor or comment
+  # composer around it).
   def unfocusable_indicators(steps)
     find("body").click
     misses = []
@@ -104,7 +105,7 @@ class AccessibilityTest < ApplicationSystemTestCase
           const el = document.activeElement
           if (!el || el === document.body) return null
           const shown = (node) => node && getComputedStyle(node).outlineStyle !== "none"
-          return shown(el) || shown(el.closest(".card, .description-editor")) ? null : el.outerHTML.slice(0, 100)
+          return shown(el) || shown(el.closest(".card, .description-editor, .composer")) ? null : el.outerHTML.slice(0, 100)
         })()
       JS
       misses << miss if miss

@@ -25,14 +25,14 @@ const initials = computed(() => props.user?.name.split(/\s+/).map((word) => word
 .avatar--initials {
   display: inline-grid;
   place-items: center;
-  background: var(--color-main-lighter);
-  color: var(--color-main-dark);
+  background: var(--color-badge);
+  color: var(--color-badge-text);
   font-size: calc(v-bind(size) * 0.4px);
   font-weight: 500;
 }
 
 .avatar--empty {
   background: none;
-  border: 1px dashed var(--color-subtle);
+  border: 1.5px dashed var(--color-control-border);
 }
 </style>

@@ -10,6 +10,7 @@ import TaskDetails from "../components/task/TaskDetails.vue"
 import SubtaskList from "../components/task/SubtaskList.vue"
 import CommentItem from "../components/task/CommentItem.vue"
 import CommentForm from "../components/task/CommentForm.vue"
+import StatusDot from "../components/board/StatusDot.vue"
 import { tasksApi, type TaskFields } from "../api/tasks.ts"
 import { labelsApi } from "../api/labels.ts"
 import { milestonesApi } from "../api/milestones.ts"
@@ -18,6 +19,7 @@ import type { Comment, Milestone, Sprint, Subtask, TaskCard, TaskDetail } from "
 import { useBoardStore } from "../stores/board.ts"
 import { useMeStore } from "../stores/me.ts"
 import { useUiStore } from "../stores/ui.ts"
+import { toneOf } from "../styles/tones.ts"
 import { t } from "../i18n/index.ts"
 
 const props = defineProps<{ projectId: number; taskRef: string }>()
@@ -56,6 +58,12 @@ watch(() => [props.projectId, props.taskRef] as const, async ([projectId, taskRe
 const parent = computed(() => {
   const parentId = task.value?.parent_id
   return parentId ? board.tasks.find((t) => t.id === parentId) ?? null : null
+})
+
+// The task's column, with its colour when the board has it.
+const statusColumn = computed(() => {
+  const status = task.value?.status
+  return status ? columns.value.find((column) => column.id === status.id) ?? status : null
 })
 
 function id(): number {
@@ -161,15 +169,20 @@ async function archive() {
 
 <template>
   <article v-if="task" class="page page--full task-page">
-    <div class="task-page__main stack stack--lg">
-      <header class="stack">
-        <p class="row small muted">
-          <span>{{ task.key }}</span>
+    <div class="task-page__main panel">
+      <header class="task-header">
+        <p class="task-header__meta">
+          <span class="task-header__key">{{ task.key }}</span>
+          <span v-if="task.label" class="chip ellipsis" :data-tone="toneOf(task.label.id)">{{ task.label.title }}</span>
+          <span class="status-chip">
+            <StatusDot v-if="statusColumn" :column="statusColumn" />
+            {{ task.status?.title ?? t("task.backlog") }}
+          </span>
           <RouterLink v-if="parent" :to="{ name: 'task', params: { pid: projectId, ref: parent.key } }">
             {{ t("task.parent", { key: parent.key }) }}
           </RouterLink>
         </p>
-        <div class="row">
+        <div class="task-header__title">
           <InlineEdit v-model:editing="editingTitle" :value="task.title" :label="t('task.title')" @commit="update({ title: $event })" />
           <h1 v-show="!editingTitle" class="grow break-word">{{ task.title }}</h1>
           <button v-show="!editingTitle" type="button" class="icon-button" :aria-label="t('task.editTitle')" @click="editingTitle = true">
@@ -178,8 +191,8 @@ async function archive() {
         </div>
       </header>
 
-      <section class="stack" aria-labelledby="task-description">
-        <h2 id="task-description">{{ t("task.description") }}</h2>
+      <section class="task-section" aria-labelledby="task-description">
+        <h2 id="task-description" class="section-title">{{ t("task.description") }}</h2>
         <DescriptionEditor
           :key="task.id"
           :markdown="task.description ?? ''"
@@ -191,16 +204,19 @@ async function archive() {
 
       <SubtaskList
         v-if="!task.parent_id"
+        class="task-section"
         :subtasks="task.subtasks"
         :project-id="projectId"
         @add="addSubtask"
         @complete="completeSubtask"
       />
 
-      <section class="stack" aria-labelledby="task-comments">
-        <h2 id="task-comments">{{ t("task.comments") }}</h2>
+      <section class="task-section" aria-labelledby="task-comments">
+        <h2 id="task-comments" class="section-title">
+          {{ t("task.comments") }} <span v-if="comments.length" class="badge">{{ comments.length }}</span>
+        </h2>
         <CommentForm :post="postComment" />
-        <ol v-if="comments.length" role="list" class="stack">
+        <ol v-if="comments.length" role="list" class="comments">
           <CommentItem
             v-for="comment in comments"
             :key="comment.id"
@@ -210,11 +226,12 @@ async function archive() {
             :remove="() => removeComment(comment)"
           />
         </ol>
-        <p v-else class="muted">{{ t("task.noComments") }}</p>
+        <p v-else class="muted small">{{ t("task.noComments") }}</p>
       </section>
     </div>
 
-    <aside class="task-page__aside panel stack" :aria-label="t('task.details')">
+    <aside class="task-page__aside panel" aria-labelledby="task-details-title">
+      <h2 id="task-details-title" class="section-title">{{ t("task.details") }}</h2>
       <TaskDetails
         :task="task"
         :columns="columns"
@@ -229,7 +246,8 @@ async function archive() {
         @create-label="createLabel"
         @sprint="setSprint"
       />
-      <button type="button" class="button button--text" @click="confirmingArchive = true">
+      <hr class="task-page__rule">
+      <button type="button" class="button button--text task-page__archive" @click="confirmingArchive = true">
         <AppIcon name="archive" :size="20" />{{ t("task.archive") }}
       </button>
     </aside>
@@ -248,13 +266,59 @@ async function archive() {
 .task-page {
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  max-inline-size: 1200px;
+  gap: var(--space-4);
+  max-inline-size: 1240px;
 }
 
-@media (min-width: 1100px) {
-  .task-page { grid-template-columns: minmax(0, 1fr) 300px; }
+@media (min-width: 1200px) {
+  .task-page { grid-template-columns: minmax(0, 1fr) 360px; }
   .task-page__aside { position: sticky; top: var(--space-4); }
 }
 
-.task-page__aside { padding: var(--space-4); }
+.task-page__main {
+  display: grid;
+  gap: var(--space-6);
+  min-inline-size: 0;
+  padding: var(--space-5);
+}
+
+@media (max-width: 600px) {
+  .task-page__main { padding: var(--space-4); }
+}
+
+.task-header { display: grid; gap: var(--space-3); }
+
+.task-header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.task-header__key { color: var(--color-muted); font-weight: 500; }
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1.8;
+}
+
+.task-header__title { display: flex; align-items: flex-start; gap: var(--space-2); }
+.task-header__title h1 { padding-block-start: 2px; }
+
+.task-section { display: grid; gap: var(--space-3); }
+.comments { display: grid; gap: var(--space-4); }
+
+.task-page__aside { display: grid; gap: var(--space-4); padding: var(--space-5) var(--space-4); }
+
+.task-page__rule { margin: 0; border: none; border-block-start: 1px solid var(--color-border); }
+.task-page__archive { justify-self: start; color: var(--color-muted); }
 </style>

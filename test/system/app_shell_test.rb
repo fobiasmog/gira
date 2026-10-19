@@ -70,4 +70,105 @@ class AppShellTest < ApplicationSystemTestCase
   ensure
     page.driver.browser.manage.window.resize_to(1400, 1000)
   end
+
+  # Spec web-client, "Project switcher".
+  test "switch to another project from the project switcher" do
+    other = Project.create!(title: "Mobile app", short_name: "MOB", owner: users(:one))
+    sign_in users(:one).email_address, PASSWORD
+    visit "/app/projects/#{projects(:goal).id}/board"
+
+    within(".side-nav") { click_button "Switch project: Goalner" }
+    within(".menu:popover-open") do
+      assert_selector "a[aria-current=page]", text: "Goalner"
+      assert_link "New project"
+      click_link "Mobile app"
+    end
+
+    assert_current_path "/app/projects/#{other.id}/board"
+    assert_selector ".side-nav .switcher", text: "Mobile app"
+    assert_selector ".side-nav .switcher", text: "MOB"
+    assert_no_selector ".menu:popover-open"
+  end
+
+  test "create a project from the project switcher" do
+    sign_in users(:one).email_address, PASSWORD
+    visit "/app/projects/#{projects(:goal).id}/board"
+
+    within(".side-nav") { click_button "Switch project: Goalner" }
+    within(".menu:popover-open") { click_link "New project" }
+
+    assert_current_path "/app/projects/new"
+    assert_selector "h1", text: "New project"
+  end
+
+  test "without an open project the switcher invites the user to choose one" do
+    sign_in users(:one).email_address, PASSWORD
+    visit "/app"
+
+    within(".side-nav") do
+      assert_button "Choose a project"
+      assert_link "Goalner"
+      assert_no_link "Board"
+      assert_no_link "Backlog"
+      assert_no_link "Team"
+    end
+  end
+
+  test "the project switcher works in the narrow-screen menu" do
+    other = Project.create!(title: "Mobile app", short_name: "MOB", owner: users(:one))
+    sign_in users(:one).email_address, PASSWORD
+    page.driver.browser.manage.window.resize_to(600, 900)
+    visit "/app"
+
+    click_button "Menu"
+    within("dialog[open]") do
+      assert_no_link "Backlog"
+      click_button "Choose a project"
+    end
+    within(".menu:popover-open") { click_link "Mobile app" }
+
+    assert_no_selector "dialog[open]"
+    assert_current_path "/app/projects/#{other.id}/board"
+    click_button "Menu"
+    within("dialog[open]") do
+      assert_selector ".switcher", text: "Mobile app"
+      assert_link "Backlog"
+    end
+  ensure
+    page.driver.browser.manage.window.resize_to(1400, 1000)
+  end
+
+  test "the header shows where the user is in the project" do
+    task = projects(:goal).tasks.create!(title: "Write the spec", creator: users(:one), status: statuses(:goal_todo))
+    sign_in users(:one).email_address, PASSWORD
+
+    visit "/app/projects/#{projects(:goal).id}/tasks/#{task.key}"
+    assert_selector "h1", text: "Write the spec"
+    within("nav[aria-label=Breadcrumb]") do
+      assert_text "Goalner / Board / #{task.key}"
+      assert_selector "[aria-current=page]", text: task.key
+      click_link "Board"
+    end
+    assert_current_path "/app/projects/#{projects(:goal).id}/board"
+    within("nav[aria-label=Breadcrumb]") { assert_text "Goalner / Board" }
+
+    visit "/app"
+    assert_selector "h1", text: "My tasks"
+    assert_no_selector "nav[aria-label=Breadcrumb]"
+  end
+
+  test "the user menu shows the first name, opens and signs out" do
+    sign_in users(:one).email_address, PASSWORD
+    visit "/app"
+
+    within(".shell__header") do
+      assert_selector ".user-button__name", exact_text: "User"
+      click_button "User One"
+    end
+    within(".menu:popover-open") { click_button "Sign out" }
+
+    assert_link "Sign in"
+    visit "/app"
+    assert_current_path new_session_path
+  end
 end

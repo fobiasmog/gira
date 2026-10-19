@@ -4,6 +4,7 @@ import { storeToRefs } from "pinia"
 import AppIcon from "../components/ui/AppIcon.vue"
 import AppMenu from "../components/ui/AppMenu.vue"
 import TaskRow from "../components/board/TaskRow.vue"
+import StatusDot from "../components/board/StatusDot.vue"
 import type { Column, TaskCard } from "../api/types.ts"
 import { useBacklogStore } from "../stores/backlog.ts"
 import { useBoardStore } from "../stores/board.ts"
@@ -46,18 +47,19 @@ async function place(task: TaskCard, column: Column) {
 </script>
 
 <template>
-  <section v-if="loaded" class="page">
-    <header class="page__header">
-      <h1>{{ t("backlog.title") }}</h1>
+  <section v-if="loaded" class="page backlog-page">
+    <header class="backlog-page__intro">
+      <h1 class="backlog-page__title">{{ t("backlog.title") }} <span class="badge">{{ tasks.length }}</span></h1>
+      <p class="muted">{{ t("backlog.info") }}</p>
     </header>
-    <p class="muted">{{ t("backlog.info") }}</p>
 
-    <form class="row" @submit.prevent="create">
-      <input v-model="newTitle" class="input grow" maxlength="255" :aria-label="t('backlog.newTask')" :placeholder="t('backlog.newTask')">
-      <button type="submit" class="button"><AppIcon name="add" />{{ t("common.create") }}</button>
+    <form class="new-bar" @submit.prevent="create">
+      <AppIcon name="add" :size="20" class="new-bar__icon" />
+      <input v-model="newTitle" class="input new-bar__input" maxlength="255" :aria-label="t('backlog.newTask')" :placeholder="t('backlog.newTask')">
+      <button type="submit" class="button">{{ t("common.create") }}</button>
     </form>
 
-    <ol v-if="tasks.length" role="list" class="backlog">
+    <ol v-if="tasks.length" role="list" class="backlog row-list">
       <li v-for="task in tasks" :key="task.id">
         <TaskRow
           :task="task"
@@ -68,13 +70,19 @@ async function place(task: TaskCard, column: Column) {
           <template #actions>
             <AppMenu :label="t('backlog.placeOnBoard', { key: task.key })" align="end">
               <template #trigger="{ id, expanded }">
-                <button type="button" class="icon-button" :popovertarget="id" :aria-expanded="expanded" :aria-label="t('backlog.placeOnBoard', { key: task.key })">
-                  <AppIcon name="view_kanban" :size="20" />
+                <button
+                  type="button"
+                  class="button button--secondary to-board"
+                  :popovertarget="id"
+                  :aria-expanded="expanded"
+                  :aria-label="t('backlog.placeOnBoard', { key: task.key })"
+                >
+                  <AppIcon name="view_kanban" :size="18" />{{ t("backlog.toBoard") }}<AppIcon name="expand_more" :size="18" />
                 </button>
               </template>
               <template #default="{ close }">
                 <button v-for="column in board.columns" :key="column.id" type="button" class="menu__item" @click="close(); place(task, column)">
-                  {{ t("backlog.placeIn", { column: column.title }) }}
+                  <StatusDot :column="column" />{{ t("backlog.placeIn", { column: column.title }) }}
                 </button>
               </template>
             </AppMenu>
@@ -87,5 +95,38 @@ async function place(task: TaskCard, column: Column) {
 </template>
 
 <style scoped>
-.backlog { display: grid; gap: var(--space-1); }
+.backlog-page { max-inline-size: 1040px; gap: var(--space-4); }
+.backlog-page__intro { display: grid; gap: var(--space-2); }
+.backlog-page__title { display: flex; align-items: center; gap: var(--space-2); }
+.backlog-page__title .badge { font-size: var(--text-sm); }
+
+/* The new-task field and its button as one bar; the bar is the field's
+   visible boundary, so it takes the control border and the focus ring. */
+.new-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+
+  &:hover { border-color: var(--color-main-dark); }
+  &:has(.new-bar__input:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 0; border-color: var(--color-primary); }
+}
+
+.new-bar__icon { color: var(--color-muted); }
+
+.new-bar__input,
+.new-bar__input:hover,
+.new-bar__input:focus-visible,
+.new-bar__input:focus-within {
+  flex-grow: 1;
+  padding-inline: 0;
+  border: none;
+  outline: none;
+  background: none;
+}
+
+.to-board { --target-size: 32px; padding: var(--space-1) var(--space-2); gap: var(--space-1); }
 </style>

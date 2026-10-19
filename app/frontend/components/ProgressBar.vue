@@ -12,6 +12,10 @@ const percent = computed(() => (props.total ? Math.round((props.done / props.tot
 </template>
 
 <style scoped>
-.progress-bar { block-size: 6px; border-radius: 3px; background: var(--color-border); overflow: hidden; }
-.progress-bar__fill { block-size: 100%; background: var(--color-success); transition: inline-size 0.3s; }
+.progress-bar { block-size: 6px; border-radius: 999px; background: var(--color-border); overflow: hidden; }
+.progress-bar__fill { block-size: 100%; border-radius: inherit; background: var(--color-primary); transition: inline-size 0.3s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-bar__fill { transition: none; }
+}
 </style>
