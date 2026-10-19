@@ -22,7 +22,7 @@ The SPA is built on Vue 2.6 (end-of-life since December 2023), Vuetify 1.5, Vuex
 - `markdown-content`: editing task descriptions and comments as Markdown and displaying Markdown content safely and consistently.
 
 ### Modified Capabilities
-<!-- None: the capabilities introduced by rebuild-backend-rails-8 are not archived yet; this change adds client-side capabilities alongside them. -->
+- `security-baseline`: in development only, the Content Security Policy also carries a per-request `style-src` nonce, so the frontend dev server can inject stylesheets. Production is unchanged.
 
 ## Impact
 

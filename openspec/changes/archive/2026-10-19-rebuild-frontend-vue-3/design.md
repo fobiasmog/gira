@@ -50,6 +50,7 @@ Components are ported page by page from `legacy/app/javascript`. Each script bec
 - **Vite and TypeScript config:** Vite with `@vitejs/plugin-vue`; `build.manifest: true`, `outDir: public/vite`, `base: /vite/`, the default build target (`baseline-widely-available`). `tsconfig.json` uses `strict`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax` and `erasableSyntaxOnly`; the last one lets Node run `.ts` tests directly.
 - **TypeScript stays on 6.0.x.** TypeScript 7.0 (the native compiler) has no stable programmatic API yet, and `vue-tsc` relies on it. We move to TypeScript 7.x once `vue-tsc` officially supports it; the TypeScript team targets that API for 7.1.
 - **npm instead of yarn 1.** `.npmrc` sets `save-exact=true` and `ignore-scripts=true`; CI runs `npm ci --ignore-scripts` and `npm audit signatures`. Dependabot gets a 7-day `cooldown`, so freshly published (possibly compromised) releases aren't picked up immediately.
+- **Development:** the app is opened on the Vite dev server, which proxies every path outside `/vite/` to Rails, so the page and the SVG sprite share an origin (`<use>` refuses cross-origin files). The stylesheets Vite injects carry a per-request `style-src` nonce, allowed in development only (spec `security-baseline`).
 - *Alternative considered:* no build step (vendored Vue ESM build plus an import map). Rejected: templates would compile in the browser via `new Function`, which forces `'unsafe-eval'` into the CSP, and we'd lose single-file components and template type checking.
 
 ### 3. API client: a typed `fetch` wrapper
