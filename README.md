@@ -32,8 +32,9 @@ bin/rails runner 'User.find_or_create_by!(email_address: "you@example.com") { |u
 Run the servers in two terminals with `make backend` (Rails on port 3000) and
 `make frontend` (Vite on port 5173), or both at once with `bin/dev`. Then open
 http://localhost:5173 and sign in. Vite passes every path outside `/vite/` on
-to Rails, so the whole app runs on one origin; on port 3000 the page works but
-icons stay blank, because browsers refuse an SVG sprite from another origin.
+to Rails, so the whole app runs on one origin, which the SVG icon sprite needs
+(browsers refuse a sprite from another origin, whatever its CORS headers).
+Opening `/app` on port 3000 redirects to the same path on port 5173.
 
 Для дат всегда юзать ```.current``` ибо он возвращает с учётом ```Time.zone```
 
