@@ -41,7 +41,7 @@
 ## 7. Integration checks
 
 - [ ] 7.1 Review the screens that are not redesigned (projects, new project, project settings, members, sprints, milestones, archive, profile and security settings, not-found) at 1440px and 390px wide, in English and Russian, and fix wrapping or contrast regressions; verify by screenshots attached to the PR
-- [ ] 7.2 Run the full frontend and system checks: `npm run policy`, `npm run typecheck`, `npm test`, `npm run build`, `bin/rails test test/system` (including `accessibility_test.rb` and the production-mode CSP test); verify all pass with no CSP violations and no new dependencies in `package.json`
+- [x] 7.2 Run the full frontend and system checks: `npm run policy`, `npm run typecheck`, `npm test`, `npm run build`, `bin/rails test test/system` (including `accessibility_test.rb` and the production-mode CSP test); verify all pass with no CSP violations and no new dependencies in `package.json`
 
 ## Workflow follow-up
 
