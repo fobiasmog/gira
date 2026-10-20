@@ -1,7 +1,9 @@
 # Content Security Policy (spec security-baseline, "Content Security Policy").
 # Everything comes from the application's own origin. The only third-party
 # destination is the Sentry ingest host, for the SPA's error reports.
-# Development additionally allows the Vite dev server, and nothing else.
+# Development additionally allows the Vite dev server, and nothing else. Its
+# origin is also a form-action target there: forms posted to Rails on port 3000
+# may end in a redirect to /app, which SpaController sends to the dev server.
 # There, the Vite client injects stylesheets as <style> elements; they carry a
 # per-request nonce that the SPA layout exposes in <meta property="csp-nonce">.
 
@@ -21,7 +23,7 @@ Rails.application.configure do
     policy.img_src :self, :data, :blob, *vite_http
     policy.connect_src :self, *sentry_ingest, *vite_http, *vite_ws
     policy.frame_src :self
-    policy.form_action :self
+    policy.form_action :self, *vite_http
     policy.object_src :none
     policy.base_uri :self
     policy.frame_ancestors :none

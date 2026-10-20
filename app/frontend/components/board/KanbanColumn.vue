@@ -5,6 +5,7 @@ import AppMenu from "../ui/AppMenu.vue"
 import ConfirmDialog from "../ui/ConfirmDialog.vue"
 import InlineEdit from "../ui/InlineEdit.vue"
 import TaskCard from "./TaskCard.vue"
+import StatusDot from "./StatusDot.vue"
 import type { Column, TaskCard as Card } from "../../api/types.ts"
 import type { useDragSort } from "../../composables/useDragSort.ts"
 import { useBoardStore } from "../../stores/board.ts"
@@ -40,6 +41,9 @@ async function startAdding() {
   newInput.value?.focus()
 }
 
+// The board header's "New task" opens this field too.
+defineExpose({ startAdding })
+
 async function addTask() {
   const title = newTitle.value.trim()
   if (!title) return
@@ -56,17 +60,21 @@ async function addTask() {
   <section class="column" :aria-labelledby="`column-${column.id}`">
     <header class="column__header" @keydown="onColumnKey($event, column)">
       <slot name="column-handle" />
+      <StatusDot :column="column" />
       <InlineEdit v-model:editing="renaming" :value="column.title" :label="t('board.columnTitle')" @commit="rename" />
       <h2 v-show="!renaming" :id="`column-${column.id}`" class="column__title ellipsis" tabindex="0" :aria-describedby="`column-hint-${column.id}`">{{ column.title }}</h2>
       <span :id="`column-hint-${column.id}`" class="visually-hidden">{{ t("board.columnKeyboardHint") }}</span>
-      <span v-show="!renaming" class="column__count small muted">{{ tc("board.taskCount", tasks.length) }}</span>
+      <span v-show="!renaming" class="badge column__count">
+        <span aria-hidden="true">{{ tasks.length }}</span><span class="visually-hidden">{{ tc("board.taskCount", tasks.length) }}</span>
+      </span>
+      <span v-show="!renaming" class="grow" />
       <button type="button" class="icon-button" :aria-label="t('board.addTask', { title: column.title })" @click="startAdding">
-        <AppIcon name="add" />
+        <AppIcon name="add" :size="20" />
       </button>
       <AppMenu :label="t('board.columnActions', { title: column.title })" align="end">
         <template #trigger="{ id, expanded }">
           <button type="button" class="icon-button" :popovertarget="id" :aria-expanded="expanded" :aria-label="t('board.columnActions', { title: column.title })">
-            <AppIcon name="more_vert" />
+            <AppIcon name="more_vert" :size="20" />
           </button>
         </template>
         <template #default="{ close }">
@@ -119,6 +127,9 @@ async function addTask() {
     </ol>
     <p v-if="!tasks.length && !adding" class="column__empty small muted">{{ t("board.emptyColumn") }}</p>
     <span :id="`card-hint-${column.id}`" class="visually-hidden">{{ t("board.keyboardHint") }}</span>
+    <button v-if="!adding" type="button" class="column__add" @click="startAdding">
+      <AppIcon name="add" :size="18" />{{ t("board.addTaskShort") }}
+    </button>
 
     <ConfirmDialog
       v-model:open="confirmingDelete"
@@ -138,21 +149,19 @@ async function addTask() {
   gap: var(--space-2);
   inline-size: var(--column-width);
   flex: none;
-  padding: var(--space-2);
-  border-radius: var(--radius);
-  background: rgb(235 236 240 / 0.55);
 }
 
 .column__header {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
   min-block-size: var(--target-size);
-  padding-inline-start: var(--space-2);
+  padding-inline: var(--space-1) 0;
 }
 
-.column__title { flex-grow: 1; font-size: var(--text-md); }
-.column__count { flex: none; }
+.column__header .icon-button { --target-size: 32px; }
+.column__title { font-size: var(--text-sm); font-weight: 500; border-radius: var(--radius-sm); }
+.column__new .input { border-radius: var(--radius-card); }
 
 .column__cards {
   display: grid;
@@ -161,7 +170,36 @@ async function addTask() {
   min-block-size: 48px;
 }
 
-.column__empty { padding: var(--space-2); text-align: center; }
+.column__cards:has(> li) + .column__empty { display: none; }
+
+/* Drawn over the empty list, which stays the drop target underneath. */
+.column__empty {
+  display: grid;
+  place-items: center;
+  min-block-size: 48px;
+  margin-block-start: calc(-48px - var(--space-2));
+  padding: var(--space-2);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-card);
+  text-align: center;
+  pointer-events: none;
+}
+
+.column__add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: var(--target-size);
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  text-align: start;
+
+  &:hover { background: var(--color-main-tint); color: var(--color-primary); }
+}
 
 .column__card.is-dragging { opacity: 0.4; }
 </style>

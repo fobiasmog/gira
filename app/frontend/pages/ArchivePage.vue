@@ -25,7 +25,7 @@ watch(() => props.projectId, async (id) => {
 <template>
   <section v-if="loaded" class="page archive-page">
     <h1>{{ t("archive.title") }}</h1>
-    <ol v-if="tasks.length" role="list" class="archive">
+    <ol v-if="tasks.length" role="list" class="archive row-list">
       <li v-for="task in tasks" :key="task.id" class="stack archive__item">
         <TaskRow
           :task="task"
@@ -46,5 +46,4 @@ watch(() => props.projectId, async (id) => {
 
 <style scoped>
 .archive-page { max-inline-size: 960px; }
-.archive { display: grid; gap: var(--space-1); }
 </style>

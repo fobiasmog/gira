@@ -99,6 +99,42 @@ class TaskPageTest < ApplicationSystemTestCase
     assert_checked_field "Mark as complete"
   end
 
+  # Spec web-client, "Subtask progress on the task page".
+  test "partly done subtasks show their progress, which follows completion" do
+    subtasks = 5.times.map do |i|
+      @project.tasks.create!(title: "Step #{i + 1}", creator: @user, parent: @task, status: statuses(i < 3 ? :goal_done : :goal_todo))
+    end
+    visit_task
+
+    within("section[aria-labelledby=task-subtasks]") do
+      assert_text "3 of 5 done"
+      assert_selector "[role=progressbar][aria-valuenow='3'][aria-valuemax='5']"
+
+      check "#{subtasks[3].key} done"
+      assert_text "4 of 5 done"
+      assert_selector "[role=progressbar][aria-valuenow='4'][aria-valuemax='5']"
+    end
+    eventually { subtasks[3].reload.done? }
+  end
+
+  test "a task without subtasks shows no subtask progress" do
+    visit_task
+
+    within("section[aria-labelledby=task-subtasks]") do
+      assert_field "New subtask"
+      assert_no_selector "[role=progressbar]"
+      assert_no_text "done"
+    end
+  end
+
+  test "the comment heading counts the comments" do
+    @task.comments.create!(author: users(:two), body: "First")
+    @task.comments.create!(author: users(:two), body: "Second")
+    visit_task
+
+    within("#task-comments") { assert_selector ".badge", text: "2" }
+  end
+
   test "post a comment with an attachment, edit it and delete it" do
     visit_task
 
@@ -114,13 +150,19 @@ class TaskPageTest < ApplicationSystemTestCase
     comment = @task.comments.reload.first
     assert_equal [ "plan.txt" ], comment.attachments.map { |a| a.filename.to_s }
 
-    within(".comment") { click_button "Edit comment" }
+    within(".comment") do
+      click_button "Comment actions"
+      click_button "Edit comment"
+    end
     find(".comment textarea").send_keys([ :control, "a" ], "Updated plan")
     within(".comment") { click_button "Save" }
     within(".comment") { assert_text "Updated plan" }
     eventually { comment.reload.body == "Updated plan" }
 
-    within(".comment") { click_button "Delete comment" }
+    within(".comment") do
+      click_button "Comment actions"
+      click_button "Delete comment"
+    end
     within("dialog[open]") { click_button "Delete" }
     assert_text "No comments yet"
     eventually { comment.reload.deleted_at.present? }
@@ -144,8 +186,9 @@ class TaskPageTest < ApplicationSystemTestCase
 
     within(".comment") do
       assert_text "Their words"
-      assert_no_button "Edit comment"
-      assert_no_button "Delete comment"
+      assert_no_button "Comment actions"
+      assert_no_button "Edit comment", visible: :all
+      assert_no_button "Delete comment", visible: :all
     end
   end
 

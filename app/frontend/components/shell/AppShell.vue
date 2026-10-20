@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, watch } from "vue"
+import { computed, ref, watch } from "vue"
 import { storeToRefs } from "pinia"
-import { useRoute } from "vue-router"
+import { useRoute, type RouteLocationRaw } from "vue-router"
 import SideNav from "./SideNav.vue"
 import UserMenu from "./UserMenu.vue"
 import AppDialog from "../ui/AppDialog.vue"
@@ -14,6 +14,7 @@ import { useMediaQuery } from "../../composables/useMediaQuery.ts"
 import { useProjectsStore } from "../../stores/projects.ts"
 import { useUiStore } from "../../stores/ui.ts"
 import { parseId } from "../../router/routes.ts"
+import { sectionOf } from "../../router/sections.ts"
 import { t } from "../../i18n/index.ts"
 
 const route = useRoute()
@@ -24,6 +25,20 @@ const drawerOpen = ref(false)
 const feedbackOpen = ref(false)
 
 watch(() => route.params.pid, (pid) => { projects.currentId = parseId(pid) }, { immediate: true })
+
+// On project screens: project / section, and / task key on a task page.
+const crumbs = computed(() => {
+  const project = projects.current
+  const section = sectionOf(route.name)
+  if (!project || !section) return []
+  const key = route.name === "task" ? String(route.params.ref) : null
+  const items: { label: string; to?: RouteLocationRaw }[] = [
+    { label: project.title, to: { name: "board", params: { pid: project.id } } },
+    { label: t(section.label), to: key ? { name: section.name, params: { pid: project.id } } : undefined },
+  ]
+  if (key) items.push({ label: key })
+  return items
+})
 watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
 </script>
 
@@ -34,14 +49,14 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
     <aside v-if="wide" class="shell__sidebar">
       <SideNav>
         <template #footer>
-          <button type="button" class="feedback-button" @click="feedbackOpen = true"><AppIcon name="mail" />{{ t("navigation.feedback") }}</button>
+          <button type="button" class="feedback-button" @click="feedbackOpen = true"><AppIcon name="mail" :size="20" />{{ t("navigation.feedback") }}</button>
         </template>
       </SideNav>
     </aside>
     <AppDialog v-else v-model:open="drawerOpen" :title="t('navigation.menu')" drawer>
       <SideNav @navigate="drawerOpen = false">
         <template #footer>
-          <button type="button" class="feedback-button" @click="drawerOpen = false; feedbackOpen = true"><AppIcon name="mail" />{{ t("navigation.feedback") }}</button>
+          <button type="button" class="feedback-button" @click="drawerOpen = false; feedbackOpen = true"><AppIcon name="mail" :size="20" />{{ t("navigation.feedback") }}</button>
         </template>
       </SideNav>
     </AppDialog>
@@ -51,7 +66,16 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
         <button v-if="!wide" type="button" class="icon-button" :aria-label="t('navigation.menu')" @click="drawerOpen = true">
           <AppIcon name="menu" />
         </button>
-        <div class="grow" />
+        <nav v-if="crumbs.length" class="breadcrumb grow" :aria-label="t('navigation.breadcrumb')">
+          <ol role="list" class="breadcrumb__list">
+            <li v-for="(crumb, index) in crumbs" :key="index" class="breadcrumb__item">
+              <span v-if="index" class="breadcrumb__separator" aria-hidden="true"> / </span>
+              <RouterLink v-if="crumb.to" :to="crumb.to" class="breadcrumb__link">{{ crumb.label }}</RouterLink>
+              <span v-else class="breadcrumb__current" aria-current="page">{{ crumb.label }}</span>
+            </li>
+          </ol>
+        </nav>
+        <div v-else class="grow" />
         <UserMenu />
       </header>
       <main class="shell__content">
@@ -80,6 +104,7 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
   inline-size: var(--sidebar-width);
   block-size: 100dvh;
   overflow-y: auto;
+  background: var(--color-nav-bg);
 }
 
 .shell__main {
@@ -91,9 +116,11 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
 .shell__header {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   min-block-size: var(--header-height);
   padding: var(--space-2) var(--space-4);
+  border-block-end: 1px solid var(--color-border);
+  background: var(--color-surface);
 }
 
 .shell__content {
@@ -101,8 +128,34 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
   display: flex;
   flex-direction: column;
   min-inline-size: 0;
-  padding: 0 var(--space-4) var(--space-5);
+  padding: var(--space-5) var(--space-4);
 }
+
+@media (min-width: 1024px) {
+  .shell__header { padding-inline: var(--space-6) var(--space-5); }
+  .shell__content { padding: var(--space-5) var(--space-6) var(--space-6); }
+}
+
+.breadcrumb { min-inline-size: 0; }
+
+.breadcrumb__list {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breadcrumb__item { display: inline; }
+.breadcrumb__separator { color: var(--color-subtle); white-space: pre; }
+
+.breadcrumb__link {
+  color: var(--color-muted);
+  text-decoration: none;
+
+  &:hover { color: var(--color-primary); text-decoration: underline; }
+}
+
+.breadcrumb__current { color: var(--color-text); font-weight: 500; }
 
 .feedback-button {
   display: flex;
@@ -113,10 +166,11 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
   border: none;
   border-radius: var(--radius);
   background: none;
-  color: #fff;
+  color: var(--color-nav-text);
+  text-align: start;
 
-  &:hover { background: rgb(255 255 255 / 0.12); }
-  &:focus-visible { outline-color: #fff; }
+  &:hover { background: var(--color-nav-raised); color: var(--color-nav-strong); }
+  &:focus-visible { outline-color: var(--color-nav-text); outline-offset: 0; }
 }
 
 .progress {
@@ -124,7 +178,7 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
   inset: 0 0 auto;
   z-index: 10;
   block-size: 3px;
-  background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
+  background: linear-gradient(90deg, transparent, var(--color-primary), transparent);
   background-size: 50% 100%;
   background-repeat: no-repeat;
   animation: progress 1.2s linear infinite;
@@ -136,21 +190,6 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .feedback-button {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-block-size: var(--target-size);
-  padding: var(--space-1) var(--space-3);
-  border: none;
-  border-radius: var(--radius);
-  background: none;
-  color: #fff;
-
-  &:hover { background: rgb(255 255 255 / 0.12); }
-  &:focus-visible { outline-color: #fff; }
-}
-
-.progress { animation: none; background: var(--color-accent); }
+  .progress { animation: none; background: var(--color-primary); }
 }
 </style>

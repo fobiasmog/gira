@@ -48,6 +48,7 @@ const current = computed(() => props.choices.find((choice) => choice.value === p
 </template>
 
 <style scoped>
+/* The trigger shows the current value as a full-width button. */
 .choice-trigger {
   display: flex;
   align-items: center;
@@ -55,14 +56,18 @@ const current = computed(() => props.choices.find((choice) => choice.value === p
   gap: var(--space-2);
   inline-size: 100%;
   min-block-size: var(--target-size);
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid transparent;
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  background: none;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-sm);
   text-align: start;
 
-  &:hover:not(:disabled) { border-color: var(--color-border); background: var(--color-surface); }
+  &:hover:not(:disabled) { border-color: var(--color-main-light); background: var(--color-surface-raised); }
+  &[aria-expanded="true"] { border-color: var(--color-primary); }
   &:disabled { color: var(--color-muted); }
+  & > .icon { color: var(--color-muted); }
 }
 
 .choice-trigger__value { min-inline-size: 0; }

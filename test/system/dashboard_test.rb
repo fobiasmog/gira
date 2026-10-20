@@ -32,6 +32,49 @@ class DashboardTest < ApplicationSystemTestCase
     within(".dashboard__deadlines") { assert_link text: "Mine in progress" }
   end
 
+  test "project cards show their open-task count and link to the board" do
+    task("Mine in progress", @one, :goal_work)
+    task("Mine to do", @one, :goal_todo, important: true)
+    sign_in @one.email_address, "correct horse battery"
+    visit "/app"
+
+    assert_selector ".dashboard__date", text: Date.current.day.to_s
+    within(".dashboard__project", text: "Goalner") do
+      assert_selector ".marker[data-tone]"
+      assert_selector ".badge", text: "2"
+      within(".tile", text: "Mine to do") { assert_selector ".visually-hidden", text: "Important", visible: :all }
+      click_link "Open board"
+    end
+    assert_current_path "/app/projects/#{@project.id}/board"
+  end
+
+  # Spec web-client, dashboard deadlines.
+  test "deadlines show date tiles with today highlighted" do
+    due_today = task("Due today", @one, :goal_todo, deadline: Time.current.end_of_day - 1.second)
+    later = task("Due later", @one, :goal_work, deadline: 3.days.from_now.change(hour: 12))
+    sign_in @one.email_address, "correct horse battery"
+
+    { "en" => %w[Sun Mon Tue Wed Thu Fri Sat], "ru" => %w[вс пн вт ср чт пт сб] }.each do |lang, weekdays|
+      @one.update!(lang: lang)
+      visit "/app"
+      assert_selector "h1", text: lang == "en" ? "My tasks" : "Мои задачи"
+
+      within(".dashboard__deadlines") do
+        within(".deadline--today", text: "Due today") do
+          assert_selector ".deadline__weekday", exact_text: lang == "en" ? "Today" : "Сегодня"
+          assert_selector ".deadline__day", exact_text: due_today.deadline.day.to_s
+          assert_text "#{due_today.key} · Goalner"
+        end
+        assert_selector ".deadline--today", count: 1
+        within(".deadline", text: "Due later") do
+          assert_selector ".deadline__weekday", exact_text: weekdays[later.deadline.wday]
+          assert_selector ".deadline__day", exact_text: later.deadline.day.to_s
+          assert_text "#{later.key} · Goalner"
+        end
+      end
+    end
+  end
+
   test "switch to a teammate's tasks" do
     task("Mine", @one, :goal_todo)
     task("Theirs", @two, :goal_todo)

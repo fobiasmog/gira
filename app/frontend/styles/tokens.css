@@ -1,28 +1,78 @@
-/* Design tokens. The colours are those of the original Goalner client. */
+/* Design tokens: design direction A ("Aubergine"). Colour pairs that carry
+   text or meaning are checked for contrast by tokens.test.ts, so hex values
+   here must stay plain #rgb / #rrggbb or var() references. */
 @layer tokens {
   :root {
+    /* Brand purple: logo, accents, drop indicators. Not used behind white text. */
     --color-main: #9859e8;
     --color-main-dark: #603892;
     --color-main-darker: #422665;
     --color-main-light: #c2a1ec;
     --color-main-lighter: #f3eaff;
-    --color-main-tint: rgb(152 89 232 / 0.08);
+    --color-main-tint: rgb(124 63 208 / 0.08);
     --color-accent: #ff7860;
     --color-accent-dark: #c4482f;
-    --color-text: #4a3d55;
-    --color-muted: #676767;
-    --color-subtle: #9e9e9e;
-    --color-border: #ebecf0;
+
+    /* Primary actions and progress fills (white text on it). */
+    --color-primary: #7c3fd0;
+    --color-primary-hover: #6630b3;
+
+    --color-text: #2a2233;
+    --color-muted: #6b6478;
+    --color-subtle: #9e97ab;
+    --color-border: #e7e2ef;
+    /* Boundaries that identify a control on their own (text fields, checkboxes). */
+    --color-control-border: #8c8499;
     --color-surface: #fff;
-    --color-background: #f4f7fc;
+    --color-surface-raised: #faf8fd;
+    --color-background: #f6f4fa;
     --color-danger: #b3261e;
     --color-success: #1e7b45;
     --color-focus: #603892;
 
-    --shadow: 6px 6px 9px -5px rgb(221 214 230 / 0.51);
-    --shadow-hover: 6px 6px 9px -5px rgb(221 214 230 / 1);
-    --shadow-panel: 4px 4px 15px rgb(26 35 126 / 0.05), 0 2px 4px rgb(26 35 126 / 0.05);
-    --shadow-popover: 0 4px 16px rgb(66 38 101 / 0.18);
+    /* Count badges next to headings and column titles. */
+    --color-badge: #ece6f5;
+    --color-badge-text: #4f3a6e;
+
+    /* A deadline that has passed, and the importance marker. */
+    --color-overdue: #a3221b;
+    --color-overdue-bg: #fce4e4;
+    --color-important: var(--color-accent-dark);
+
+    /* The sidebar. */
+    --color-nav-bg: #2b1d3f;
+    --color-nav-raised: #35264d;
+    --color-nav-active: #4a3566;
+    --color-nav-text: #d9ceea;
+    --color-nav-muted: #b7a9cc;
+    --color-nav-heading: #a898c0;
+    --color-nav-strong: #fff;
+
+    /* Derived tones for labels (pale background, dark text) and projects
+       (solid marker), picked by id: purple, blue, amber, green, rose, teal. */
+    --tone-1-bg: #efe6fb;
+    --tone-1-text: #5b2a9e;
+    --tone-1-solid: #9b6be0;
+    --tone-2-bg: #e3eefc;
+    --tone-2-text: #1d4f91;
+    --tone-2-solid: #4c8de0;
+    --tone-3-bg: #fbefd9;
+    --tone-3-text: #7a4a00;
+    --tone-3-solid: #e0a030;
+    --tone-4-bg: #e2f4e8;
+    --tone-4-text: #1e6b3c;
+    --tone-4-solid: #3fae6a;
+    --tone-5-bg: #fce6ee;
+    --tone-5-text: #9c2152;
+    --tone-5-solid: #e0608e;
+    --tone-6-bg: #ddf3f2;
+    --tone-6-text: #155e5b;
+    --tone-6-solid: #33a8a2;
+
+    --shadow: 0 1px 2px rgb(43 29 63 / 0.06);
+    --shadow-hover: 0 2px 8px rgb(43 29 63 / 0.1);
+    --shadow-panel: 0 1px 2px rgb(43 29 63 / 0.04);
+    --shadow-popover: 0 8px 24px rgb(43 29 63 / 0.18);
 
     --font-body: "Rubik", system-ui, -apple-system, "Segoe UI", sans-serif;
     --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -40,9 +90,11 @@
     --space-6: 32px;
     --space-7: 48px;
 
-    --radius: 6px;
-    --radius-sm: 3px;
-    --sidebar-width: 248px;
+    --radius: 8px;
+    --radius-sm: 4px;
+    --radius-card: 10px;
+    --radius-lg: 14px;
+    --sidebar-width: 256px;
     --header-height: 56px;
     --column-width: 288px;
     --target-size: 36px;

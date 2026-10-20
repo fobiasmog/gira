@@ -3,9 +3,11 @@ import { computed, ref } from "vue"
 import AppIcon from "../ui/AppIcon.vue"
 import ChoiceMenu, { type Choice } from "../ui/ChoiceMenu.vue"
 import UserAvatar from "../UserAvatar.vue"
+import StatusDot from "../board/StatusDot.vue"
 import type { Column, Label, Milestone, SprintSummary, TaskDetail, UserCard } from "../../api/types.ts"
 import { language, t } from "../../i18n/index.ts"
 import { formatDate, fromDateTimeInput, toDateTimeInput } from "../../i18n/format.ts"
+import { toneOf } from "../../styles/tones.ts"
 
 // The task's properties, each changed in place.
 const props = defineProps<{
@@ -48,6 +50,7 @@ const sprintChoices = computed<Choice<number | null>[]>(() => {
   return [{ value: null, label: t("task.noSprint") }, ...choices]
 })
 
+const statusColumn = computed(() => props.columns.find((column) => column.id === props.task.status_id) ?? null)
 const assignee = computed(() => props.members.find((member) => member.id === props.task.assignee_id) ?? props.task.assignee)
 const newLabel = ref("")
 
@@ -73,7 +76,11 @@ function createLabel(close: () => void) {
           <input type="checkbox" :checked="!!task.status?.done" @change="emit('complete', ($event.target as HTMLInputElement).checked)">
           {{ t("task.markComplete") }}
         </label>
-        <ChoiceMenu v-else :label="t('task.status')" :choices="statusChoices" :selected="task.status_id" @choose="emit('status', $event)" />
+        <ChoiceMenu v-else :label="t('task.status')" :choices="statusChoices" :selected="task.status_id" @choose="emit('status', $event)">
+          <template #value>
+            <span class="value"><StatusDot v-if="statusColumn" :column="statusColumn" /><span class="ellipsis">{{ statusColumn?.title ?? t("task.backlog") }}</span></span>
+          </template>
+        </ChoiceMenu>
       </dd>
     </div>
 
@@ -82,7 +89,7 @@ function createLabel(close: () => void) {
       <dd>
         <ChoiceMenu :label="t('task.assignee')" :choices="assigneeChoices" :selected="task.assignee_id" @choose="emit('update', { assignee_id: $event })">
           <template #value>
-            <span class="row"><UserAvatar :user="assignee" :size="24" />{{ assignee?.name ?? t("task.unassigned") }}</span>
+            <span class="value"><UserAvatar :user="assignee" :size="22" /><span class="ellipsis">{{ assignee?.name ?? t("task.unassigned") }}</span></span>
           </template>
         </ChoiceMenu>
       </dd>
@@ -90,7 +97,7 @@ function createLabel(close: () => void) {
 
     <div class="details__row">
       <dt><label :for="`deadline-${task.id}`">{{ t("task.deadline") }}</label></dt>
-      <dd class="row">
+      <dd class="details__deadline">
         <input :id="`deadline-${task.id}`" class="input" type="datetime-local" :value="toDateTimeInput(task.deadline)" @change="onDeadline">
         <button v-if="task.deadline" type="button" class="icon-button" :aria-label="t('task.clearDeadline')" @click="emit('update', { deadline: null })">
           <AppIcon name="close" :size="20" />
@@ -107,7 +114,7 @@ function createLabel(close: () => void) {
           :aria-pressed="task.important"
           @click="emit('update', { important: !task.important })"
         >
-          <AppIcon :name="task.important ? 'local_fire_department_filled' : 'local_fire_department'" :size="20" />
+          <AppIcon :name="task.important ? 'local_fire_department_filled' : 'local_fire_department'" :size="18" />
           {{ t("task.important") }}
         </button>
       </dd>
@@ -124,6 +131,10 @@ function createLabel(close: () => void) {
       <dt>{{ t("task.label") }}</dt>
       <dd>
         <ChoiceMenu :label="t('task.label')" :choices="labelChoices" :selected="task.label_id" @choose="emit('label', $event)">
+          <template #value>
+            <span v-if="task.label" class="chip ellipsis" :data-tone="toneOf(task.label.id)">{{ task.label.title }}</span>
+            <span v-else class="muted">{{ t("task.noLabel") }}</span>
+          </template>
           <template #default="{ close }">
             <hr class="menu__separator">
             <form class="row new-label" @submit.prevent="createLabel(close)">
@@ -142,23 +153,41 @@ function createLabel(close: () => void) {
       </dd>
     </div>
 
-    <p v-if="task.creator" class="small muted">
-      {{ t("task.creator", { name: task.creator.name, date: formatDate(language, task.created_at) }) }}
-    </p>
   </dl>
+  <p v-if="task.creator" class="details__creator">
+    {{ t("task.creator", { name: task.creator.name, date: formatDate(language, task.created_at) }) }}
+  </p>
 </template>
 
 <style scoped>
-.details { display: grid; gap: var(--space-2); }
+/* One grid for all rows, so the labels share a column. */
+.details {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+}
 
 .details__row {
-  display: grid;
-  gap: var(--space-1);
+  display: contents;
 
-  & dt { font-size: var(--text-sm); font-weight: 500; color: var(--color-muted); }
+  & dt { color: var(--color-muted); }
   & dd { margin: 0; min-inline-size: 0; }
 }
 
-.important-toggle[aria-pressed="true"] { border-color: var(--color-accent); color: var(--color-accent-dark); }
-.new-label { padding: var(--space-1) var(--space-3); }
+/* ChoiceMenu's trigger fills the value column. */
+.details__row dd > :deep(.menu-anchor) { display: flex; }
+
+.value { display: flex; align-items: center; gap: var(--space-2); min-inline-size: 0; }
+
+.details__deadline { display: flex; align-items: center; gap: var(--space-1); }
+.details__deadline .input { flex: 1 1 auto; min-inline-size: 0; padding-inline: var(--space-2); font-size: var(--text-sm); }
+.details__deadline .icon-button { --target-size: 32px; }
+
+.important-toggle { inline-size: 100%; justify-content: flex-start; padding-inline: var(--space-3); box-shadow: none; }
+.important-toggle[aria-pressed="true"] { border-color: var(--color-important); background: var(--color-overdue-bg); color: var(--color-overdue); }
+
+.details__creator { margin-block-start: var(--space-4); color: var(--color-muted); font-size: var(--text-xs); }
+.new-label { padding: var(--space-1) var(--space-2); }
 </style>

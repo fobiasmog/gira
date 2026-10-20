@@ -6,6 +6,7 @@ import AppMenu from "../components/ui/AppMenu.vue"
 import AppTextarea from "../components/ui/AppTextarea.vue"
 import AppToast from "../components/ui/AppToast.vue"
 import AppIcon from "../components/ui/AppIcon.vue"
+import ProgressBar from "../components/ProgressBar.vue"
 import { useMediaQuery } from "../composables/useMediaQuery.ts"
 import { useUiStore } from "../stores/ui.ts"
 
@@ -63,10 +64,32 @@ const wide = useMediaQuery("(min-width: 800px)")
     </AppField>
 
     <p class="row"><AppIcon name="settings" /> Wide: {{ wide ? "yes" : "no" }}</p>
+
+    <section class="panel stack styles" aria-label="Styles">
+      <p class="row row--wrap">
+        <span class="chip">Plain</span>
+        <span v-for="tone in 6" :key="tone" class="chip" :data-tone="tone">Tone {{ tone }}</span>
+      </p>
+      <p class="row row--wrap">
+        <span class="section-title">Subtasks <span class="badge">5</span></span>
+        <span v-for="tone in 6" :key="tone" class="marker" :data-tone="tone" />
+        <span class="dot" data-done />
+        <button type="button" class="button button--secondary">Secondary</button>
+        <button type="button" class="button button--text">Text</button>
+        <button type="button" class="icon-button" aria-label="Add"><AppIcon name="add" /></button>
+      </p>
+      <nav class="segmented" aria-label="Layout">
+        <button type="button" aria-pressed="true">Board</button>
+        <button type="button" aria-pressed="false">List</button>
+      </nav>
+      <input class="input" aria-label="Sample field" placeholder="Sample field">
+      <ProgressBar :done="3" :total="12" label="3 of 12 done" />
+    </section>
     <AppToast />
   </main>
 </template>
 
 <style scoped>
 .fixture { max-inline-size: 640px; margin: var(--space-6) auto; padding: var(--space-4); }
+.styles { padding: var(--space-4); }
 </style>

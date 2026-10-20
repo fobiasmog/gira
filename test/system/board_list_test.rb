@@ -99,4 +99,19 @@ class BoardListTest < ApplicationSystemTestCase
     within(".backlog") { assert_text "Idea" }
     assert_nil Task.find_by!(title: "Idea").status_id
   end
+
+  test "the backlog's placement button shows its purpose and keeps its accessible name" do
+    @project.tasks.create!(title: "Someday", creator: @user)
+    visit "/app/projects/#{@project.id}/backlog"
+
+    assert_selector "h1", text: "Backlog"
+    assert_selector "h1 .badge", text: "1"
+    button = find_button("Put GOAL-1 on the board")
+    assert_equal "To board", button.text
+    assert_equal "Put GOAL-1 on the board", button["aria-label"]
+
+    button.click
+    assert_button "In To Do"
+    assert_button "In Done"
+  end
 end

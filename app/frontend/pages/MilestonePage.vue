@@ -51,7 +51,7 @@ async function remove() {
     <ProgressBar :done="current.done" :total="current.total" :label="t('milestones.progress', { done: current.done, total: current.total })" />
     <p class="small muted">{{ t("milestones.progress", { done: current.done, total: current.total }) }}</p>
 
-    <ol v-if="current.tasks.length" role="list" class="milestone-tasks">
+    <ol v-if="current.tasks.length" role="list" class="milestone-tasks row-list">
       <li v-for="task in current.tasks" :key="task.id">
         <TaskRow
           :task="task"
@@ -76,5 +76,4 @@ async function remove() {
 
 <style scoped>
 .milestone-page { max-inline-size: 960px; }
-.milestone-tasks { display: grid; gap: var(--space-1); }
 </style>

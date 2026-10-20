@@ -70,11 +70,11 @@ onBeforeUnmount(() => {
 .dialog {
   inline-size: min(480px, 100vw - 2 * var(--space-4));
   max-block-size: calc(100dvh - 2 * var(--space-4));
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
   box-shadow: var(--shadow-popover);
 
-  &::backdrop { background: rgb(66 38 101 / 0.35); }
+  &::backdrop { background: rgb(43 29 63 / 0.4); }
 }
 
 .dialog--wide { inline-size: min(720px, 100vw - 2 * var(--space-4)); }
@@ -87,8 +87,14 @@ onBeforeUnmount(() => {
   border-radius: 0;
 }
 
+/* The navigation drawer takes the sidebar's colours. */
+.dialog--drawer { background: var(--color-nav-bg); color: var(--color-nav-text); }
+.dialog--drawer .icon-button { color: var(--color-nav-text); }
+.dialog--drawer .icon-button:hover { background: var(--color-nav-raised); color: var(--color-nav-strong); }
+.dialog--drawer .icon-button:focus-visible { outline-color: var(--color-nav-text); }
+
 .dialog--drawer .dialog__body { block-size: 100%; grid-template-rows: auto 1fr; padding: var(--space-2) 0 0; }
-.dialog--drawer .dialog__header { margin: 0; padding-inline: var(--space-4) var(--space-2); }
+.dialog--drawer .dialog__header { margin: 0; padding-inline: var(--space-4) var(--space-2); color: var(--color-nav-strong); }
 
 @media (prefers-reduced-motion: no-preference) {
   .dialog[open] {
