@@ -76,7 +76,8 @@ async function sendToBacklog(task: TaskCard) {
                 </span>
               </template>
               <template #actions>
-                <AppMenu :label="t('board.taskActions', { key: task.key })" align="end">
+                <!-- Its only action takes the task out of the active sprint. -->
+                <AppMenu v-if="board.activeSprint" :label="t('board.taskActions', { key: task.key })" align="end">
                   <template #trigger="{ id, expanded }">
                     <button type="button" class="icon-button" :popovertarget="id" :aria-expanded="expanded" :aria-label="t('board.taskActions', { key: task.key })">
                       <AppIcon name="more_vert" :size="20" />

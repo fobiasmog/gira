@@ -8,17 +8,16 @@ class Statistics
     @project_ids = subject == viewer ? subject.projects.kept.ids : viewer.shared_project_ids_with(subject)
   end
 
-  # Open root tasks grouped by project, then by column in column order
-  # (backlog last).
+  # Open root tasks grouped by project, then by column in column order.
   def overview
     tasks = open_tasks.includes(:status, :project).order(:number).to_a
 
     tasks.group_by(&:project).sort_by { |project, _| project.title }.map do |project, project_tasks|
-      columns = project_tasks.group_by(&:status).sort_by { |status, _| status ? status.position : Float::INFINITY }
+      columns = project_tasks.group_by(&:status).sort_by { |status, _| status.position }
       {
         project: project.slice(:id, :title, :short_name),
         columns: columns.map do |status, column_tasks|
-          { id: status&.id, title: status&.title, tasks: column_tasks.map { |task| task_json(task) } }
+          { id: status.id, title: status.title, tasks: column_tasks.map { |task| task_json(task) } }
         end
       }
     end

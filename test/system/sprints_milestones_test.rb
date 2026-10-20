@@ -98,6 +98,106 @@ class SprintsMilestonesTest < ApplicationSystemTestCase
     assert_includes second.tasks.kept.map(&:title), "Unfinished"
   end
 
+  # Sprint planning
+
+  def create_sprint(title, active: false)
+    @project.sprints.create!(title: title, starts_on: Date.current, ends_on: 13.days.from_now, active: active)
+  end
+
+  def sprint_toggle(title)
+    find("button[aria-controls]", text: title, exact_text: true)
+  end
+
+  def assert_expanded(title, expanded)
+    assert_selector "button[aria-controls][aria-expanded=#{expanded}]", text: title, exact_text: true
+  end
+
+  test "plan a task: listed under the sprint, neither on the board nor in the backlog" do
+    create_sprint("Sprint 1", active: true)
+    planned = create_sprint("Sprint 3")
+    visit "/app/projects/#{@project.id}/sprints"
+
+    assert_expanded "Sprint 3", true
+    within(sprint_card("Sprint 3")) do
+      assert_text "No tasks in this sprint yet."
+      fill_in "New task in Sprint 3", with: "Rate limiting"
+      click_button "Create"
+      assert_text "Rate limiting"
+      assert_text "1 task in total"
+    end
+    assert_equal [ planned, statuses(:goal_todo) ], Task.find_by!(title: "Rate limiting").then { |task| [ task.sprint, task.status ] }
+
+    within(".side-nav") { click_link "Board" }
+    assert_selector ".column h2", text: "To Do"
+    assert_no_text "Rate limiting"
+    within(".side-nav") { click_link "Backlog" }
+    assert_text "The backlog is empty."
+  end
+
+  test "move a planned task back to the backlog: its column is unchanged" do
+    planned = create_sprint("Sprint 3")
+    @project.tasks.create!(title: "TEST-9", creator: @user, status: statuses(:goal_work), sprint: planned)
+    visit "/app/projects/#{@project.id}/sprints"
+
+    within(sprint_card("Sprint 3")) { click_button "Move GOAL-1" }
+    click_button "Backlog"
+
+    assert_text "GOAL-1 moved to the backlog"
+    within(sprint_card("Sprint 3")) { assert_text "No tasks in this sprint yet." }
+    task = Task.find_by!(title: "TEST-9")
+    assert_equal [ nil, statuses(:goal_work) ], [ task.sprint, task.status ]
+
+    within(".side-nav") { click_link "Backlog" }
+    within(".backlog > li", text: "TEST-9") { assert_text "Work" }
+  end
+
+  test "active sprint: marked active, collapsed, and its section lists the board's tasks" do
+    active = create_sprint("Sprint 1", active: true)
+    @project.tasks.create!(title: "On the board", creator: @user, status: statuses(:goal_todo), sprint: active)
+    visit "/app/projects/#{@project.id}/sprints"
+
+    within(sprint_card("Sprint 1")) { assert_text "Active" }
+    assert_expanded "Sprint 1", false
+    assert_no_text "On the board"
+
+    sprint_toggle("Sprint 1").click
+    assert_expanded "Sprint 1", true
+    within(sprint_card("Sprint 1")) { assert_text "On the board" }
+  end
+
+  test "done and carried-over tasks in a sprint section" do
+    sprint2 = create_sprint("Sprint 2")
+    sprint3 = create_sprint("Sprint 3")
+    @project.tasks.create!(title: "GOAL-3 work", creator: @user, status: statuses(:goal_work), sprint: sprint2)
+    @project.tasks.create!(title: "GOAL-5 shipped", creator: @user, status: statuses(:goal_done), sprint: sprint2)
+    sprint2.carry_over_to(sprint3)
+    visit "/app/projects/#{@project.id}/sprints"
+
+    within(sprint_card("Sprint 2")) do
+      within(".row-list > li", text: "GOAL-5 shipped") { assert_selector ".chip", text: "Done" }
+      within(".row-list > li", text: "GOAL-3 work") do
+        assert_selector ".chip", text: "Carried to Sprint 3"
+        assert_text "Work"
+      end
+    end
+  end
+
+  test "sprint sections open and close from the keyboard" do
+    create_sprint("Sprint 3")
+    visit "/app/projects/#{@project.id}/sprints"
+    assert_expanded "Sprint 3", true
+    toggle = sprint_toggle("Sprint 3")
+
+    execute_script("arguments[0].focus()", toggle)
+    toggle.send_keys(:enter)
+    assert_expanded "Sprint 3", false
+    assert_no_field "New task in Sprint 3"
+
+    toggle.send_keys(:space)
+    assert_expanded "Sprint 3", true
+    assert_field "New task in Sprint 3"
+  end
+
   test "milestones: create, open with progress, delete and recover" do
     visit "/app/projects/#{@project.id}/milestones"
 

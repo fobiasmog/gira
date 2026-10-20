@@ -15,15 +15,16 @@ class Api::Projects::BoardsControllerTest < ActionDispatch::IntegrationTest
     response.parsed_body["tasks"].map { |task| task["title"] }.sort
   end
 
-  test "snapshot without sprints: root, non-archived tasks on a column outside any sprint" do
+  test "board without an active sprint: root, non-archived tasks in no sprint, done ones included" do
     sprint = @project.sprints.create!(title: "Planned", starts_on: Date.current, ends_on: 1.week.from_now)
     parent = create_task("On board")
     @project.tasks.create!(title: "Subtask", creator: users(:one), parent: parent, status: statuses(:goal_todo))
-    @project.tasks.create!(title: "Backlog", creator: users(:one))
+    @project.tasks.create!(title: "Created without a column", creator: users(:one))
+    create_task("Finished", status: statuses(:goal_done))
     create_task("Archived").archive!
     create_task("In planned sprint", sprint: sprint)
 
-    assert_equal [ "On board" ], board_titles
+    assert_equal [ "Created without a column", "Finished", "On board" ], board_titles
 
     body = response.parsed_body
     assert_equal [ "To Do", "Work", "Done" ], body["columns"].map { |c| c["title"] }

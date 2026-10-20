@@ -7,9 +7,9 @@ class Api::StatisticsTest < ActionDispatch::IntegrationTest
     @bob = users(:two)
   end
 
-  def task(project, title, assignee:, status: nil, **attributes)
-    status ||= project.statuses.first
-    project.tasks.create!(title: title, creator: assignee, assignee: assignee, status: status, **attributes)
+  # Without a status the task goes to the project's first column.
+  def task(project, title, assignee:, **attributes)
+    project.tasks.create!(title: title, creator: assignee, assignee: assignee, **attributes)
   end
 
   test "own overview groups open assigned tasks by project and column, excluding done and archived" do

@@ -84,6 +84,56 @@ class Api::Projects::SprintsControllerTest < ActionDispatch::IntegrationTest
     assert_equal sprint, task.reload.sprint
   end
 
+  test "move to another sprint: the column stays and the task leaves the old sprint" do
+    s3 = create_sprint("S3")
+    s4 = create_sprint("S4")
+    staying = create_task("staying", sprint: s3, status: statuses(:goal_work))
+    task = create_task("GOAL-9", sprint: s3, status: statuses(:goal_work))
+
+    put api_project_task_sprint_path(@project, task), params: { sprint_id: s4.id }, as: :json
+
+    assert_response :success
+    assert_equal [ s4, statuses(:goal_work) ], [ task.reload.sprint, task.status ]
+    assert_equal [ staying ], s3.tasks.kept.to_a
+  end
+
+  test "take a task out of its sprint: it keeps its column and is in the backlog" do
+    s3 = create_sprint("S3")
+    task = create_task("GOAL-9", sprint: s3, status: statuses(:goal_work))
+
+    put api_project_task_sprint_path(@project, task), params: { sprint_id: nil }, as: :json
+
+    assert_response :success
+    assert_equal [ nil, statuses(:goal_work) ], [ task.reload.sprint, task.status ]
+    get api_project_tasks_path(@project, view: "backlog")
+    assert_equal [ task.id ], response.parsed_body.map { |t| t["id"] }
+  end
+
+  test "send to backlog during a sprint: off the board, in the backlog with its column" do
+    s1 = create_sprint("S1", active: true)
+    task = create_task("GOAL-4", sprint: s1, status: statuses(:goal_work))
+
+    put api_project_task_sprint_path(@project, task), params: { sprint_id: nil }, as: :json
+
+    get api_project_board_path(@project)
+    assert_empty response.parsed_body["tasks"]
+    get api_project_tasks_path(@project, view: "backlog")
+    assert_equal [ [ task.id, statuses(:goal_work).id ] ], response.parsed_body.map { |t| t.values_at("id", "status_id") }
+    assert_empty s1.tasks.reload
+  end
+
+  test "an archived sprint is rejected and the task's sprint is unchanged" do
+    sprint = create_sprint("S1")
+    archived = create_sprint("Old")
+    archived.archive!
+    task = create_task("t", sprint: sprint)
+
+    put api_project_task_sprint_path(@project, task), params: { sprint_id: archived.id }, as: :json
+
+    assert_response :unprocessable_content
+    assert_equal sprint, task.reload.sprint
+  end
+
   test "sprint of another project is rejected and the task's sprint is unchanged" do
     sprint = create_sprint("S1")
     task = create_task("t", sprint: sprint)
@@ -148,6 +198,72 @@ class Api::Projects::SprintsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :not_found
     assert_not s1.reload.archived?
+  end
+
+  # Sprint task list
+
+  def sprint_task_titles(sprint)
+    get api_project_sprint_tasks_path(@project, sprint)
+    response.parsed_body.map { |task| task["title"] }
+  end
+
+  test "tasks of a planned sprint: root, non-archived, done included, in column order" do
+    s3 = create_sprint("S3", starts_on: 2.weeks.from_now.to_date, ends_on: 3.weeks.from_now.to_date)
+    create_task("Done one", sprint: s3, status: statuses(:goal_done))
+    first = create_task("First", sprint: s3)
+    create_task("Second", sprint: s3)
+    create_task("Archived", sprint: s3).archive!
+    @project.tasks.create!(title: "Sub", creator: users(:one), parent: first, status: statuses(:goal_todo))
+    create_task("Elsewhere", sprint: nil)
+
+    assert_equal [ "First", "Second", "Done one" ], sprint_task_titles(s3)
+    assert_equal [ statuses(:goal_todo).id, 1, nil ], response.parsed_body.first.values_at("status_id", "subtask_count", "carried_to")
+  end
+
+  test "carried-over task: listed with the sprint holding its most recent copy" do
+    s1 = create_sprint("S1", active: true)
+    s2 = create_sprint("S2")
+    s3 = create_sprint("S3")
+    goal3 = create_task("GOAL-3", sprint: s1)
+    create_task("Finished", sprint: s1, status: statuses(:goal_done))
+    s1.carry_over_to(s2)
+    s1.carry_over_to(s3)
+
+    get api_project_sprint_tasks_path(@project, s1)
+
+    carried = response.parsed_body.to_h { |task| [ task["title"], task["carried_to"] ] }
+    assert_equal({ "id" => s3.id, "title" => "S3" }, carried["GOAL-3"])
+    assert_nil carried["Finished"]
+    assert_equal goal3.id, Task.find_by!(sprint: s3, title: "GOAL-3").origin_task_id
+  end
+
+  test "task list of a sprint of another project is 404" do
+    foreign = projects(:side).sprints.create!(title: "Theirs", starts_on: Date.current, ends_on: Date.current)
+    projects(:side).tasks.create!(title: "Secret", creator: users(:two), sprint: foreign)
+
+    get api_project_sprint_tasks_path(@project, foreign)
+
+    assert_response :not_found
+    assert_not_includes response.body, "Secret"
+  end
+
+  test "the sprint task list's query count does not grow with the number of tasks" do
+    s1 = create_sprint("S1")
+    s2 = create_sprint("S2")
+    count_queries = lambda do
+      counter = ActiveRecord::Assertions::QueryAssertions::SQLCounter.new
+      ActiveSupport::Notifications.subscribed(counter, "sql.active_record") { get api_project_sprint_tasks_path(@project, s1) }
+      counter.log.size
+    end
+    create_task("t0", sprint: s1, assignee: users(:two))
+    s1.carry_over_to(s2)
+    baseline = count_queries.call
+
+    4.times { |i| create_task("t#{i + 1}", sprint: s1, assignee: users(:two), status: statuses(:goal_work)) }
+    s1.carry_over_to(s2)
+
+    assert_queries_count(baseline) { get api_project_sprint_tasks_path(@project, s1) }
+    assert_equal 5, response.parsed_body.count { |task| task["carried_to"] }
   end
 
   test "archived tasks are excluded from sprint task lists" do

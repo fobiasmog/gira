@@ -3,15 +3,18 @@ class Api::Projects::TasksController < Api::BaseController
   include ProjectScoped
   before_action :set_task, only: %i[ show update destroy ]
 
-  VIEWS = %w[board backlog archived].freeze
+  VIEWS = %w[board backlog backlog_done archived].freeze
 
-  # ?view=board (default): root tasks on the board, honouring the active sprint
-  # ?view=backlog: root tasks not placed on a column
+  # ?view=board (default): root tasks on the board: the active sprint's, or
+  #   those in no sprint when none is active
+  # ?view=backlog: open root tasks in no sprint, in column order
+  # ?view=backlog_done: done root tasks in no sprint, most recently completed first
   # ?view=archived: archived tasks, newest first
   def index
     tasks = case params.fetch(:view, "board").presence_in(VIEWS)
     when "board" then board_tasks(@project)
-    when "backlog" then @project.tasks.kept.roots.in_backlog.order(:sprint_id, :position)
+    when "backlog" then @project.tasks.kept.roots.in_backlog.not_done.in_column_order
+    when "backlog_done" then @project.tasks.kept.roots.in_backlog.done.order(Task.arel_table[:completed_at].desc.nulls_last, id: :desc)
     when "archived" then @project.tasks.archived.order(archived_at: :desc, id: :desc)
     else raise ActiveRecord::RecordNotFound
     end
@@ -23,11 +26,12 @@ class Api::Projects::TasksController < Api::BaseController
     render json: TaskSerializer.new(@task).detail
   end
 
-  # A task created on a column joins the active sprint unless the client asks
-  # for it to stay outside (outside_sprint: true).
+  # A named sprint_id wins (null: no sprint). Otherwise a task created on a
+  # column joins the active sprint, and one created without a column goes to
+  # the first column in no sprint.
   def create
     task = @project.tasks.new(task_params.merge(status_id: params[:status_id], label_id: params[:label_id], creator: Current.user))
-    task.sprint = @project.active_sprint if task.status_id && !ActiveModel::Type::Boolean.new.cast(params[:outside_sprint])
+    task.sprint_id = params.key?(:sprint_id) ? params[:sprint_id] : (@project.active_sprint&.id if task.status_id)
     track_assignment(task) { task.save! }
 
     render json: TaskSerializer.new(task).detail, status: :created
@@ -58,7 +62,7 @@ class Api::Projects::TasksController < Api::BaseController
     end
 
     def board_tasks(project)
-      project.tasks.kept.roots.on_board.where(sprint_id: project.active_sprint&.id).order(:status_id, :position)
+      project.tasks.kept.roots.where(sprint_id: project.active_sprint&.id).in_column_order
     end
 
     # Runs the save and, only when it succeeds, notifies a newly assigned user.

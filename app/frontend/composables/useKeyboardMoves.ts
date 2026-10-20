@@ -19,7 +19,7 @@ export function useKeyboardMoves() {
   }
 
   function onTaskKey(event: KeyboardEvent, task: TaskCard) {
-    if (!isMoveKey(event) || task.status_id === null) return
+    if (!isMoveKey(event)) return
     const columns = board.columns
     const columnIndex = columns.findIndex((column) => column.id === task.status_id)
     const index = board.tasksIn(task.status_id).findIndex((t) => t.id === task.id)

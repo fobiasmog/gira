@@ -23,13 +23,13 @@ class Api::Projects::StatusesControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Work", response.parsed_body.find { |c| c["done"] }["title"]
   end
 
-  test "delete a column with tasks moves them to the backlog" do
+  test "delete a column with tasks moves them to the first column" do
     tasks = 3.times.map { |i| @project.tasks.create!(title: "t#{i}", creator: users(:one), status: statuses(:goal_work)) }
 
     delete api_project_status_path(@project, statuses(:goal_work))
 
     assert_equal [ "To Do", "Done" ], titles
-    assert tasks.all? { |task| task.reload.status_id.nil? }
+    assert_equal [ statuses(:goal_todo) ] * 3, tasks.map { |task| task.reload.status }
   end
 
   test "delete the only column is rejected" do

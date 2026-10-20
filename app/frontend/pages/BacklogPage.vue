@@ -1,29 +1,46 @@
 <script setup lang="ts">
-import { ref, watch } from "vue"
+import { computed, ref, watch } from "vue"
 import { storeToRefs } from "pinia"
 import AppIcon from "../components/ui/AppIcon.vue"
 import AppMenu from "../components/ui/AppMenu.vue"
 import TaskRow from "../components/board/TaskRow.vue"
 import StatusDot from "../components/board/StatusDot.vue"
-import type { Column, TaskCard } from "../api/types.ts"
+import type { Column, Sprint, TaskCard } from "../api/types.ts"
 import { useBacklogStore } from "../stores/backlog.ts"
 import { useBoardStore } from "../stores/board.ts"
+import { useSprintsStore } from "../stores/sprints.ts"
 import { useUiStore } from "../stores/ui.ts"
 import { t } from "../i18n/index.ts"
 
+// Open tasks in no sprint, each with its column, and the done ones below.
+// Each task moves into an open sprint or, while a sprint is active, onto the
+// board (spec web-client, "Backlog screen").
 const props = defineProps<{ projectId: number }>()
 const backlog = useBacklogStore()
-const { tasks } = storeToRefs(backlog)
+const { tasks, done } = storeToRefs(backlog)
 const board = useBoardStore()
+const { activeSprint } = storeToRefs(board)
+const sprintsStore = useSprintsStore()
+const { sprints } = storeToRefs(sprintsStore)
 const ui = useUiStore()
 const loaded = ref(false)
 const newTitle = ref("")
 
 watch(() => props.projectId, async (id) => {
   loaded.value = false
-  await ui.load(Promise.all([backlog.load(id), board.load(id)]))
-  loaded.value = backlog.projectId === id && board.projectId === id
+  await ui.load(Promise.all([backlog.load(id), board.load(id), sprintsStore.load(id)]))
+  loaded.value = backlog.projectId === id && board.projectId === id && sprintsStore.projectId === id
 }, { immediate: true })
+
+const columnById = computed(() => new Map(board.columns.map((column) => [column.id, column])))
+
+const rowProps = (task: TaskCard) => ({
+  task,
+  projectId: props.projectId,
+  column: columnById.value.get(task.status_id) ?? null,
+  assignee: task.assignee_id ? board.memberById.get(task.assignee_id) ?? null : null,
+  label: task.label_id ? board.labelById.get(task.label_id) ?? null : null,
+})
 
 async function create() {
   const title = newTitle.value.trim()
@@ -36,9 +53,22 @@ async function create() {
   }
 }
 
-async function place(task: TaskCard, column: Column) {
+// The board follows along, so it shows the task when it joins the active sprint.
+async function moveToSprint(task: TaskCard, sprint: Sprint) {
   try {
-    await backlog.placeOnColumn(props.projectId, task.id, column.id, board.tasksIn(column.id).length)
+    board.upsertCard(await backlog.moveToSprint(props.projectId, task.id, sprint.id))
+    ui.toast(t("backlog.movedToSprint", { key: task.key, sprint: sprint.title }))
+  } catch (error) {
+    ui.fail(error)
+  }
+}
+
+// To the end of the column, in the active sprint.
+async function place(task: TaskCard, column: Column) {
+  const sprint = activeSprint.value
+  if (!sprint) return
+  try {
+    board.upsertCard(await backlog.placeOnColumn(props.projectId, task.id, column.id, board.tasksIn(column.id).length, sprint.id))
     ui.toast(t("backlog.placed", { key: task.key, column: column.title }))
   } catch (error) {
     ui.fail(error)
@@ -61,29 +91,39 @@ async function place(task: TaskCard, column: Column) {
 
     <ol v-if="tasks.length" role="list" class="backlog row-list">
       <li v-for="task in tasks" :key="task.id">
-        <TaskRow
-          :task="task"
-          :project-id="projectId"
-          :assignee="task.assignee_id ? board.memberById.get(task.assignee_id) ?? null : null"
-          :label="task.label_id ? board.labelById.get(task.label_id) ?? null : null"
-        >
+        <TaskRow v-bind="rowProps(task)">
           <template #actions>
-            <AppMenu :label="t('backlog.placeOnBoard', { key: task.key })" align="end">
+            <AppMenu :label="t('backlog.moveTask', { key: task.key })" align="end">
               <template #trigger="{ id, expanded }">
                 <button
                   type="button"
-                  class="button button--secondary to-board"
+                  class="button button--secondary move-button"
                   :popovertarget="id"
                   :aria-expanded="expanded"
-                  :aria-label="t('backlog.placeOnBoard', { key: task.key })"
+                  :aria-label="t('backlog.moveTask', { key: task.key })"
                 >
-                  <AppIcon name="view_kanban" :size="18" />{{ t("backlog.toBoard") }}<AppIcon name="expand_more" :size="18" />
+                  {{ t("backlog.move") }}<AppIcon name="expand_more" :size="18" />
                 </button>
               </template>
               <template #default="{ close }">
-                <button v-for="column in board.columns" :key="column.id" type="button" class="menu__item" @click="close(); place(task, column)">
-                  <StatusDot :column="column" />{{ t("backlog.placeIn", { column: column.title }) }}
-                </button>
+                <template v-if="sprints.length">
+                  <p :id="`move-${task.id}-sprints`" class="menu__heading">{{ t("backlog.toSprint") }}</p>
+                  <div role="group" :aria-labelledby="`move-${task.id}-sprints`">
+                    <button v-for="sprint in sprints" :key="sprint.id" type="button" class="menu__item" @click="close(); moveToSprint(task, sprint)">
+                      <AppIcon name="sprint" />{{ sprint.title }}
+                    </button>
+                  </div>
+                </template>
+                <template v-if="activeSprint">
+                  <hr v-if="sprints.length" class="menu__separator">
+                  <p :id="`move-${task.id}-board`" class="menu__heading">{{ t("backlog.toBoard") }}</p>
+                  <div role="group" :aria-labelledby="`move-${task.id}-board`">
+                    <button v-for="column in board.columns" :key="column.id" type="button" class="menu__item" @click="close(); place(task, column)">
+                      <StatusDot :column="column" />{{ column.title }}
+                    </button>
+                  </div>
+                </template>
+                <p v-if="!sprints.length && !activeSprint" class="menu__heading">{{ t("backlog.noTargets") }}</p>
               </template>
             </AppMenu>
           </template>
@@ -91,6 +131,15 @@ async function place(task: TaskCard, column: Column) {
       </li>
     </ol>
     <p v-else class="empty-state panel">{{ t("backlog.empty") }}</p>
+
+    <details v-if="done.length" class="done-group">
+      <summary>{{ t("backlog.done", { count: done.length }) }}</summary>
+      <ol role="list" class="row-list">
+        <li v-for="task in done" :key="task.id">
+          <TaskRow v-bind="rowProps(task)" />
+        </li>
+      </ol>
+    </details>
   </section>
 </template>
 
@@ -99,34 +148,7 @@ async function place(task: TaskCard, column: Column) {
 .backlog-page__intro { display: grid; gap: var(--space-2); }
 .backlog-page__title { display: flex; align-items: center; gap: var(--space-2); }
 .backlog-page__title .badge { font-size: var(--text-sm); }
-
-/* The new-task field and its button as one bar; the bar is the field's
-   visible boundary, so it takes the control border and the focus ring. */
-.new-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
-  border: 1px solid var(--color-control-border);
-  border-radius: var(--radius-card);
-  background: var(--color-surface);
-
-  &:hover { border-color: var(--color-main-dark); }
-  &:has(.new-bar__input:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 0; border-color: var(--color-primary); }
-}
-
-.new-bar__icon { color: var(--color-muted); }
-
-.new-bar__input,
-.new-bar__input:hover,
-.new-bar__input:focus-visible,
-.new-bar__input:focus-within {
-  flex-grow: 1;
-  padding-inline: 0;
-  border: none;
-  outline: none;
-  background: none;
-}
-
-.to-board { --target-size: 32px; padding: var(--space-1) var(--space-2); gap: var(--space-1); }
+.move-button { --target-size: 32px; padding: var(--space-1) var(--space-2); gap: var(--space-1); }
+.done-group summary { cursor: pointer; font-weight: 500; }
+.done-group ol { margin-block-start: var(--space-3); }
 </style>

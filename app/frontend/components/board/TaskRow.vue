@@ -2,13 +2,23 @@
 import { computed } from "vue"
 import AppIcon from "../ui/AppIcon.vue"
 import UserAvatar from "../UserAvatar.vue"
-import type { Label, TaskCard, UserCard } from "../../api/types.ts"
+import StatusDot from "./StatusDot.vue"
+import type { Column, Label, TaskCard, UserCard } from "../../api/types.ts"
 import { language, t } from "../../i18n/index.ts"
 import { formatDateTime, formatRelativeDay } from "../../i18n/format.ts"
 import { toneOf } from "../../styles/tones.ts"
 
-// One task as a list row (list layout, backlog, milestone, archive).
-const props = defineProps<{ task: TaskCard; projectId: number; assignee: UserCard | null; label: Label | null; describedBy?: string; archived?: boolean }>()
+// One task as a list row (list layout, backlog, sprints, milestone, archive).
+// column, when given, is shown next to the title.
+const props = defineProps<{
+  task: TaskCard
+  projectId: number
+  assignee: UserCard | null
+  label: Label | null
+  column?: Column | null
+  describedBy?: string
+  archived?: boolean
+}>()
 defineSlots<{ handle(): unknown; actions(): unknown }>()
 
 const overdue = computed(() => !!props.task.deadline && !props.task.completed_at && new Date(props.task.deadline) < new Date())
@@ -24,6 +34,7 @@ const overdue = computed(() => !!props.task.deadline && !props.task.completed_at
       :aria-describedby="describedBy"
       data-move-focus
     >{{ task.title }}</RouterLink>
+    <span v-if="column" class="task-row__column"><StatusDot :column="column" /><span class="ellipsis">{{ column.title }}</span></span>
     <span v-if="label" class="chip ellipsis task-row__label" :data-tone="toneOf(label.id)">{{ label.title }}</span>
     <span v-if="task.important" class="task-row__important" :title="t('board.important')">
       <AppIcon name="local_fire_department_filled" :size="18" />
@@ -64,6 +75,16 @@ const overdue = computed(() => !!props.task.deadline && !props.task.completed_at
   text-decoration: none;
 
   &:hover { color: var(--color-primary); text-decoration: underline; }
+}
+
+.task-row__column {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  max-inline-size: 10rem;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
 }
 
 .task-row__label { flex: none; }

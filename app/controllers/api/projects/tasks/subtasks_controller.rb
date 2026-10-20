@@ -9,8 +9,7 @@ class Api::Projects::Tasks::SubtasksController < Api::BaseController
   end
 
   def create
-    subtask = @project.tasks.new(title: params.require(:title), parent: @parent, creator: Current.user,
-      status: @project.first_status)
+    subtask = @project.tasks.new(title: params.require(:title), parent: @parent, creator: Current.user)
     subtask.save!
 
     render json: TaskSerializer.new(subtask).card, status: :created

@@ -25,12 +25,42 @@ class Api::Projects::TasksControllerTest < ActionDispatch::IntegrationTest
     assert_equal users(:one).id, response.parsed_body.dig("creator", "id")
   end
 
-  test "a task created without a column goes to the backlog" do
+  test "create without a column: at the end of the first column, in no sprint even during one, in the backlog" do
+    @project.sprints.create!(title: "S1", starts_on: Date.current, ends_on: 1.week.from_now, active: true)
+    create_task("Waiting")
+
     post api_project_tasks_path(@project), params: { title: "Later" }, as: :json
 
-    id, status_id = response.parsed_body.values_at("id", "status_id")
-    assert_nil status_id
+    assert_response :created
+    id, status_id, position, sprint_id = response.parsed_body.values_at("id", "status_id", "position", "sprint_id")
+    assert_equal [ statuses(:goal_todo).id, 1, nil ], [ status_id, position, sprint_id ]
     assert_includes task_ids("backlog"), id
+    assert_not_includes task_ids("board"), id
+  end
+
+  test "create in a planned sprint: in that sprint on the first column" do
+    planned = @project.sprints.create!(title: "S3", starts_on: 2.weeks.from_now, ends_on: 3.weeks.from_now)
+
+    post api_project_tasks_path(@project), params: { title: "Rate limiting", sprint_id: planned.id }, as: :json
+
+    assert_response :created
+    task = Task.find(response.parsed_body["id"])
+    assert_equal [ planned, statuses(:goal_todo) ], [ task.sprint, task.status ]
+    assert_not_includes task_ids("backlog"), task.id
+  end
+
+  test "creating in an archived sprint or a sprint of another project is rejected and nothing is created" do
+    archived = @project.sprints.create!(title: "Old", starts_on: Date.current, ends_on: 1.week.from_now)
+    archived.archive!
+    foreign = projects(:side).sprints.create!(title: "Theirs", starts_on: Date.current, ends_on: Date.current)
+
+    [ archived, foreign ].each do |sprint|
+      assert_no_difference -> { Task.count } do
+        post api_project_tasks_path(@project), params: { title: "T", sprint_id: sprint.id }, as: :json
+      end
+      assert_response :unprocessable_content
+      assert response.parsed_body.dig("error", "fields", "sprint").present?
+    end
   end
 
   test "title must be 1 to 255 characters" do
@@ -57,10 +87,10 @@ class Api::Projects::TasksControllerTest < ActionDispatch::IntegrationTest
     assert_includes task_ids("board"), id
   end
 
-  test "a board task can be created explicitly outside the active sprint" do
+  test "a task can be created on a column explicitly outside the active sprint" do
     @project.sprints.create!(title: "S1", starts_on: Date.current, ends_on: 1.week.from_now, active: true)
 
-    post api_project_tasks_path(@project), params: { title: "Outside", status_id: statuses(:goal_todo).id, outside_sprint: true }, as: :json
+    post api_project_tasks_path(@project), params: { title: "Outside", status_id: statuses(:goal_todo).id, sprint_id: nil }, as: :json
 
     id, sprint_id = response.parsed_body.values_at("id", "sprint_id")
     assert_nil sprint_id
@@ -181,14 +211,83 @@ class Api::Projects::TasksControllerTest < ActionDispatch::IntegrationTest
 
   # Placement and backlog
 
-  test "send to backlog" do
-    task = create_task
+  test "placement without a column is rejected and the task stays where it was" do
+    create_task("First")
+    task = create_task("Second")
 
     patch api_project_task_placement_path(@project, task), params: { status_id: nil, position: 0 }, as: :json
 
+    assert_response :unprocessable_content
+    assert_equal [ statuses(:goal_todo).id, 1 ], [ task.reload.status_id, task.position ]
+  end
+
+  test "put a backlog task on the board: it joins the active sprint at the chosen place" do
+    sprint = @project.sprints.create!(title: "S1", starts_on: Date.current, ends_on: 1.week.from_now, active: true)
+    create_task("Already in Work", status: statuses(:goal_work), sprint: sprint)
+    task = create_task("TEST-1")
+
+    patch api_project_task_placement_path(@project, task),
+      params: { status_id: statuses(:goal_work).id, position: 0, sprint_id: sprint.id }, as: :json
+
     assert_response :success
+    assert_equal [ sprint.id, statuses(:goal_work).id, 0 ], response.parsed_body.values_at("sprint_id", "status_id", "position")
+    assert_equal task.id, task_ids("board").first
+    assert_not_includes task_ids("backlog"), task.id
+  end
+
+  test "task on a column outside the active sprint: in the backlog with its column, not on the board" do
+    @project.sprints.create!(title: "S1", starts_on: Date.current, ends_on: 1.week.from_now, active: true)
+    task = create_task("TEST-1")
+
+    get api_project_tasks_path(@project, view: "backlog")
+
+    assert_equal [ [ task.id, statuses(:goal_todo).id ] ], response.parsed_body.map { |t| t.values_at("id", "status_id") }
     assert_not_includes task_ids("board"), task.id
-    assert_includes task_ids("backlog"), task.id
+    get api_project_board_path(@project)
+    assert_empty response.parsed_body["tasks"]
+  end
+
+  test "task in a planned sprint is not in the backlog" do
+    planned = @project.sprints.create!(title: "S3", starts_on: 2.weeks.from_now, ends_on: 3.weeks.from_now)
+    task = create_task("Planned", sprint: planned)
+
+    assert_not_includes task_ids("backlog"), task.id
+  end
+
+  test "no active sprint: open tasks in no sprint are in the backlog, all tasks in no sprint are on the board" do
+    open = create_task("Open")
+    done = create_task("Done", status: statuses(:goal_done))
+
+    assert_equal [ open.id ], task_ids("backlog")
+    assert_equal [ open.id, done.id ], task_ids("board")
+  end
+
+  test "done task outside sprints is not in the backlog" do
+    create_task("GOAL-7", status: statuses(:goal_done))
+
+    assert_empty task_ids("backlog")
+  end
+
+  test "list done tasks outside sprints: most recently completed first, with the completion time" do
+    sprint = @project.sprints.create!(title: "S1", starts_on: Date.current, ends_on: 1.week.from_now, active: true)
+    yesterday = travel_to(1.day.ago) { create_task("GOAL-7", status: statuses(:goal_done)) }
+    today = create_task("GOAL-8", status: statuses(:goal_done))
+    create_task("GOAL-9", status: statuses(:goal_done), sprint: sprint)
+    create_task("Open")
+
+    get api_project_tasks_path(@project, view: "backlog_done")
+
+    assert_equal [ today.id, yesterday.id ], response.parsed_body.map { |t| t["id"] }
+    assert_equal today.completed_at.as_json, response.parsed_body.first["completed_at"]
+  end
+
+  test "board and backlog are in column order, then position" do
+    work_first = create_task("Work 1", status: statuses(:goal_work))
+    todo = 2.times.map { |i| create_task("To Do #{i}") }
+    Board.new(@project).move_column(statuses(:goal_work), position: 0)
+
+    assert_equal [ work_first.id, *todo.map(&:id) ], task_ids("backlog")
+    assert_equal [ work_first.id, *todo.map(&:id) ], task_ids("board")
   end
 
   test "placing a task on a column of another project is rejected" do

@@ -12,6 +12,8 @@ class Board
     end
   end
 
+  KEEP_SPRINT = Object.new.freeze
+
   def initialize(project)
     @project = project
   end
@@ -40,8 +42,9 @@ class Board
     end
   end
 
-  # The column's tasks move to the backlog with all their data; the last
-  # remaining column cannot be deleted.
+  # The column's tasks move, with all their data, to the end of the first
+  # remaining column, each staying in its sprint; moving into the done column
+  # completes them. The last remaining column cannot be deleted.
   def delete_column(status)
     locked do
       if @project.statuses.count == 1
@@ -49,16 +52,20 @@ class Board
         raise Error, status
       end
 
+      target = @project.statuses.where.not(id: status.id).first
       # One at a time and freshly loaded: each move renumbers the remaining ones.
-      status.tasks.order(:position).ids.each { |id| Task.find(id).update!(status: nil) }
+      status.tasks.kept.order(:position, :id).ids.each { |id| Task.find(id).update!(status: target) }
+      # Archived tasks are read-only and have no position; only their column changes.
+      status.tasks.archived.update_all(status_id: target.id)
       status.destroy!
       recompute_done_column
     end
   end
 
-  # Moves a root task to a position in a column, or to the backlog when
-  # status_id is nil. Positions stay contiguous in both affected columns.
-  def place(task, status_id:, position:)
+  # Moves a root task to a position in a column (which is required), and into
+  # another sprint or none when sprint_id is given. Positions stay contiguous
+  # in both affected lists.
+  def place(task, status_id:, position:, sprint_id: KEEP_SPRINT)
     locked do
       task.lock!
       if task.parent_id
@@ -67,6 +74,7 @@ class Board
       end
 
       task.status_id = status_id
+      task.sprint_id = sprint_id unless sprint_id.equal?(KEEP_SPRINT)
       raise Error, task unless task.save
 
       siblings = Task.where(project_id: task.project_id, status_id: task.status_id, sprint_id: task.sprint_id, parent_id: nil).kept

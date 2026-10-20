@@ -5,7 +5,8 @@ class Api::Projects::BoardsController < Api::BaseController
 
   def show
     sprint = @project.active_sprint
-    tasks = @project.tasks.kept.roots.on_board.where(sprint_id: sprint&.id).order(:status_id, :position).includes(:project)
+    # The active sprint's tasks, or the tasks in no sprint when none is active.
+    tasks = @project.tasks.kept.roots.where(sprint_id: sprint&.id).in_column_order.includes(:project)
 
     render json: {
       project: ProjectSerializer.new(@project, viewer: Current.user),

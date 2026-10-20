@@ -38,6 +38,9 @@ class AccessibilityTest < ApplicationSystemTestCase
     @project.tasks.create!(title: "Subtask", creator: @user, parent: @task, status: statuses(:goal_todo))
     @task.comments.create!(author: @user, body: "A comment")
     @project.tasks.create!(title: "Backlog task", creator: @user)
+    @project.tasks.create!(title: "Done outside sprints", creator: @user, status: statuses(:goal_done))
+    planned = @project.sprints.create!(title: "Sprint 2", starts_on: 8.days.from_now, ends_on: 14.days.from_now)
+    @project.tasks.create!(title: "Planned task", creator: @user, status: statuses(:goal_work), sprint: planned)
     @milestone = @project.milestones.create!(title: "Release")
     @archived = @project.tasks.create!(title: "Archived task", creator: @user, status: statuses(:goal_done))
     @archived.archive!
@@ -93,8 +96,8 @@ class AccessibilityTest < ApplicationSystemTestCase
   end
 
   # Tabs through the page and returns the focused elements that show no focus
-  # indicator (an outline on the element, or on the card, editor or comment
-  # composer around it).
+  # indicator (an outline on the element, or on the card, editor, comment
+  # composer or new-task bar around it).
   def unfocusable_indicators(steps)
     find("body").click
     misses = []
@@ -105,7 +108,7 @@ class AccessibilityTest < ApplicationSystemTestCase
           const el = document.activeElement
           if (!el || el === document.body) return null
           const shown = (node) => node && getComputedStyle(node).outlineStyle !== "none"
-          return shown(el) || shown(el.closest(".card, .description-editor, .composer")) ? null : el.outerHTML.slice(0, 100)
+          return shown(el) || shown(el.closest(".card, .description-editor, .composer, .new-bar")) ? null : el.outerHTML.slice(0, 100)
         })()
       JS
       misses << miss if miss

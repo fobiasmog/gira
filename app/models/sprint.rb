@@ -52,7 +52,7 @@ class Sprint < ApplicationRecord
   # Non-archived task counts per column id, plus the total.
   def task_counts
     by_status = tasks.kept.group(:status_id).count
-    { by_status: by_status.transform_keys { |id| id || "backlog" }, total: by_status.values.sum }
+    { by_status: by_status, total: by_status.values.sum }
   end
 
   private

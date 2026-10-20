@@ -57,16 +57,54 @@ class BoardTest < ActiveSupport::TestCase
     assert_raises(ActiveRecord::RecordInvalid) { @board.add_column(title: "") }
   end
 
-  test "delete a column with tasks: they go to the backlog intact" do
-    tasks = 3.times.map { |i| create_task("T#{i}", status: @work, description: "notes #{i}", important: true) }
+  test "delete a column with tasks: they go to the end of the first column intact, in their sprints" do
+    sprint = @project.sprints.create!(title: "S1", starts_on: Date.current, ends_on: 1.week.from_now, active: true)
+    create_task("waiting")
+    create_task("sprint waiting", sprint: sprint)
+    tasks = 2.times.map { |i| create_task("T#{i}", status: @work, description: "notes #{i}", important: true) }
+    in_sprint = create_task("T2", status: @work, description: "notes 2", important: true, sprint: sprint)
 
     @board.delete_column(@work)
 
     assert_equal [ "To Do", "Done" ], titles
     tasks.each(&:reload)
-    assert tasks.all? { |task| task.status_id.nil? && task.important }
-    assert_equal [ "notes 0", "notes 1", "notes 2" ], tasks.map(&:description)
-    assert_equal [ [ "T0", 0 ], [ "T1", 1 ], [ "T2", 2 ] ], column(nil)
+    in_sprint.reload
+    assert [ *tasks, in_sprint ].all? { |task| task.status == @todo && task.important && task.completed_at.nil? }
+    assert_equal [ "notes 0", "notes 1", "notes 2" ], [ *tasks, in_sprint ].map(&:description)
+    assert_equal sprint, in_sprint.sprint
+    assert_equal [ [ "waiting", 0 ], [ "T0", 1 ], [ "T1", 2 ] ], column(@todo)
+    assert_equal [ [ "sprint waiting", 0 ], [ "T2", 1 ] ], column(@todo, sprint: sprint)
+  end
+
+  test "delete the first column: its tasks go to the end of the next one" do
+    create_task("working", status: @work)
+    2.times { |i| create_task("T#{i}") }
+
+    @board.delete_column(@todo)
+
+    assert_equal [ "Work", "Done" ], titles
+    assert_equal [ [ "working", 0 ], [ "T0", 1 ], [ "T1", 2 ] ], column(@work)
+  end
+
+  test "only the done column remains: the moved tasks are completed at the time of the deletion" do
+    @board.delete_column(@work)
+    tasks = 2.times.map { |i| create_task("T#{i}") }
+
+    freeze_time do
+      @board.delete_column(@todo)
+
+      assert_equal [ "Done" ], titles
+      assert tasks.map(&:reload).all? { |task| task.status == @done && task.completed_at == Time.current }
+    end
+  end
+
+  test "archived tasks of a deleted column move to the first column too" do
+    task = create_task("old", status: @work)
+    task.archive!
+
+    @board.delete_column(@work)
+
+    assert_equal [ @todo.id, nil ], [ task.reload.status_id, task.position ]
   end
 
   test "deleting the done column makes the new last column the done column" do
@@ -113,15 +151,48 @@ class BoardTest < ActiveSupport::TestCase
     assert_nil task.reload.completed_at
   end
 
-  test "send to backlog" do
+  test "placement without a column is rejected and the task stays" do
+    create_task("first")
     task = create_task("t")
-    create_task("other")
 
-    @board.place(task, status_id: nil, position: 0)
+    assert_raises(Board::Error) { @board.place(task, status_id: nil, position: 0) }
+    assert_equal [ @todo.id, 1 ], [ task.reload.status_id, task.position ]
+  end
 
-    assert_nil task.reload.status_id
-    assert_equal [ [ "other", 0 ] ], column(@todo)
-    assert_equal [ [ "t", 0 ] ], column(nil)
+  test "placement with a sprint change: both lists stay contiguous" do
+    sprint = @project.sprints.create!(title: "S1", starts_on: Date.current, ends_on: 1.week.from_now, active: true)
+    backlog = 3.times.map { |i| create_task("backlog#{i}") }
+    2.times { |i| create_task("sprint#{i}", status: @work, sprint: sprint) }
+
+    @board.place(backlog[1], status_id: @work.id, position: 0, sprint_id: sprint.id)
+
+    assert_equal sprint, backlog[1].reload.sprint
+    assert_equal [ [ "backlog1", 0 ], [ "sprint0", 1 ], [ "sprint1", 2 ] ], column(@work, sprint: sprint)
+    assert_equal [ [ "backlog0", 0 ], [ "backlog2", 1 ] ], column(@todo)
+  end
+
+  test "changing the sprint keeps the column; both lists stay contiguous" do
+    s1 = @project.sprints.create!(title: "S1", starts_on: Date.current, ends_on: 1.week.from_now)
+    s2 = @project.sprints.create!(title: "S2", starts_on: Date.current, ends_on: 1.week.from_now)
+    tasks = 3.times.map { |i| create_task("s1-#{i}", status: @work, sprint: s1) }
+    create_task("s2-0", status: @work, sprint: s2)
+
+    # Freshly loaded each time, as the sprint endpoint does.
+    Task.find(tasks[0].id).update!(sprint: s2)
+    Task.find(tasks[1].id).update!(sprint: nil)
+
+    assert_equal [ [ "s1-2", 0 ] ], column(@work, sprint: s1)
+    assert_equal [ [ "s2-0", 0 ], [ "s1-0", 1 ] ], column(@work, sprint: s2)
+    assert_equal [ [ "s1-1", 0 ] ], column(@work)
+  end
+
+  test "placement without sprint_id keeps the sprint" do
+    sprint = @project.sprints.create!(title: "S1", starts_on: Date.current, ends_on: 1.week.from_now)
+    task = create_task("t", sprint: sprint)
+
+    @board.place(task, status_id: @work.id, position: 0)
+
+    assert_equal [ @work, sprint ], [ task.reload.status, task.sprint ]
   end
 
   test "column from another project is rejected and the task stays" do

@@ -19,7 +19,7 @@ const props = defineProps<{
   sprints: SprintSummary[]
 }>()
 const emit = defineEmits<{
-  status: [columnId: number | null]
+  status: [columnId: number]
   complete: [complete: boolean]
   update: [fields: { assignee_id?: number | null; deadline?: string | null; important?: boolean; milestone_id?: number | null }]
   label: [labelId: number | null]
@@ -27,10 +27,7 @@ const emit = defineEmits<{
   sprint: [sprintId: number | null]
 }>()
 
-const statusChoices = computed<Choice<number | null>[]>(() => [
-  ...props.columns.map((column) => ({ value: column.id, label: column.title })),
-  { value: null, label: t("task.backlog") },
-])
+const statusChoices = computed<Choice<number>[]>(() => props.columns.map((column) => ({ value: column.id, label: column.title })))
 const assigneeChoices = computed<Choice<number | null>[]>(() => [
   { value: null, label: t("task.unassigned") },
   ...props.members.map((member) => ({ value: member.id, label: member.name })),
@@ -78,7 +75,7 @@ function createLabel(close: () => void) {
         </label>
         <ChoiceMenu v-else :label="t('task.status')" :choices="statusChoices" :selected="task.status_id" @choose="emit('status', $event)">
           <template #value>
-            <span class="value"><StatusDot v-if="statusColumn" :column="statusColumn" /><span class="ellipsis">{{ statusColumn?.title ?? t("task.backlog") }}</span></span>
+            <span class="value"><StatusDot v-if="statusColumn" :column="statusColumn" /><span class="ellipsis">{{ statusColumn?.title ?? task.status.title }}</span></span>
           </template>
         </ChoiceMenu>
       </dd>

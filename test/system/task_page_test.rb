@@ -39,8 +39,11 @@ class TaskPageTest < ApplicationSystemTestCase
 
     choose "Status", "Work"
     eventually { @task.reload.status == statuses(:goal_work) }
-    choose "Status", "Backlog"
-    eventually { @task.reload.status_id.nil? }
+    find("button[aria-label^='Change Status:']").click
+    assert_button "Done"
+    assert_no_button "Backlog" # every task is in a column; the backlog is a matter of sprints
+    click_button "To Do"
+    eventually { @task.reload.status == statuses(:goal_todo) }
 
     choose "Assignee", "User Two"
     assert_selector "button[aria-label='Change Assignee: User Two']"

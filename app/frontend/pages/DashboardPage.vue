@@ -78,8 +78,8 @@ function showTasksOf(event: Event) {
             </RouterLink>
           </header>
           <div class="project-card__columns">
-            <section v-for="column in group.columns" :key="column.id ?? 'backlog'" class="column-group">
-              <h4 class="column-group__title">{{ column.title ?? t("dashboard.backlog") }} · {{ tc("board.taskCount", column.tasks.length) }}</h4>
+            <section v-for="column in group.columns" :key="column.id" class="column-group">
+              <h4 class="column-group__title">{{ column.title }} · {{ tc("board.taskCount", column.tasks.length) }}</h4>
               <ul role="list" class="column-group__tasks">
                 <li v-for="task in column.tasks" :key="task.id" class="tile">
                   <span class="tile__top">

@@ -17,8 +17,14 @@ export function reorder<T extends { position: number | null }>(from: T[], to: T[
   to.forEach((t, i) => { t.position = i })
 }
 
+// Whether a card belongs on the board: a root, non-archived task of the active
+// sprint, or of no sprint when none is active.
+export function onBoard(card: Pick<TaskCard, "parent_id" | "archived_at" | "sprint_id">, activeSprintId: Id | null): boolean {
+  return card.parent_id === null && card.archived_at === null && card.sprint_id === activeSprintId
+}
+
 // The board of one project: columns in order and the root tasks on them
-// (honouring the active sprint), plus the members and labels cards refer to.
+// (see onBoard), plus the members and labels cards refer to.
 export const useBoardStore = defineStore("board", () => {
   const projectId = ref<Id | null>(null)
   const columns = ref<Column[]>([])
@@ -29,7 +35,7 @@ export const useBoardStore = defineStore("board", () => {
 
   const tasksByColumn = computed(() => {
     const groups = new Map<Id, TaskCard[]>(columns.value.map((column) => [column.id, []]))
-    for (const task of tasks.value) if (task.status_id !== null) groups.get(task.status_id)?.push(task)
+    for (const task of tasks.value) groups.get(task.status_id)?.push(task)
     for (const list of groups.values()) list.sort(byPosition)
     return groups
   })
@@ -65,7 +71,7 @@ export const useBoardStore = defineStore("board", () => {
   // toIndex is as for reorder().
   async function moveTask(taskId: Id, toColumnId: Id, toIndex: number) {
     const task = tasks.value.find((t) => t.id === taskId)
-    if (!task || task.status_id === null) return
+    if (!task) return
     const restore = snapshot()
     const from = tasksIn(task.status_id)
     const to = toColumnId === task.status_id ? from : tasksIn(toColumnId)
@@ -79,8 +85,9 @@ export const useBoardStore = defineStore("board", () => {
     }
   }
 
+  // Takes the task out of the active sprint; it keeps its column.
   async function sendToBacklog(taskId: Id) {
-    await tasksApi.place(requireProject(), taskId, { status_id: null, position: 0 })
+    await tasksApi.setSprint(requireProject(), taskId, null)
     removeTask(taskId)
   }
 
@@ -107,10 +114,11 @@ export const useBoardStore = defineStore("board", () => {
     columns.value = (await columnsApi.rename(requireProject(), columnId, title)).sort(byPosition)
   }
 
-  // The column's tasks go to the backlog.
+  // The column's tasks move to the end of the first remaining column (and are
+  // completed if that is the done column), so the board is loaded again.
   async function deleteColumn(columnId: Id) {
-    columns.value = (await columnsApi.delete(requireProject(), columnId)).sort(byPosition)
-    tasks.value = tasks.value.filter((task) => task.status_id !== columnId)
+    await columnsApi.delete(requireProject(), columnId)
+    await load(requireProject())
   }
 
   async function createTask(fields: NewTask): Promise<TaskCard> {
@@ -122,10 +130,8 @@ export const useBoardStore = defineStore("board", () => {
   // Keeps the board in step with changes made elsewhere (task page, keyboard
   // moves): a card that left the board is removed.
   function upsertCard(card: TaskCard) {
-    const onBoard = card.status_id !== null && card.parent_id === null && card.archived_at === null
-      && card.sprint_id === (activeSprint.value?.id ?? null)
     const index = tasks.value.findIndex((t) => t.id === card.id)
-    if (!onBoard) {
+    if (!onBoard(card, activeSprint.value?.id ?? null)) {
       if (index !== -1) tasks.value.splice(index, 1)
       return
     }

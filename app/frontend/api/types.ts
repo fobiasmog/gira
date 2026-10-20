@@ -50,7 +50,7 @@ export interface TaskCard {
   number: number
   key: string
   title: string
-  status_id: Id | null
+  status_id: Id
   position: number | null
   parent_id: Id | null
   sprint_id: Id | null
@@ -80,7 +80,7 @@ export interface TaskDetail extends TaskCard {
   created_at: Timestamp
   creator: UserCard | null
   assignee: UserCard | null
-  status: Pick<Column, "id" | "title" | "done"> | null
+  status: Pick<Column, "id" | "title" | "done">
   milestone: { id: Id; title: string } | null
   label: Label | null
   sprint: { id: Id; title: string } | null
@@ -121,8 +121,14 @@ export interface SprintSummary {
 export interface Sprint extends SprintSummary {
   active: boolean
   archived_at: Timestamp | null
-  // by_status keys are column ids, or "backlog" for tasks not on a column.
+  // by_status keys are column ids.
   task_counts: { by_status: Record<string, number>; total: number }
+}
+
+// A task in a sprint's task list: carried_to names the sprint holding the
+// task's most recent carried-over copy.
+export interface SprintTaskCard extends TaskCard {
+  carried_to: { id: Id; title: string } | null
 }
 
 export interface Milestone {
@@ -161,8 +167,7 @@ export interface StatisticsTask {
 
 export interface StatisticsProject {
   project: Pick<Project, "id" | "title" | "short_name">
-  // A column with a null id and title holds the project's backlog tasks.
-  columns: { id: Id | null; title: string | null; tasks: StatisticsTask[] }[]
+  columns: { id: Id; title: string; tasks: StatisticsTask[] }[]
 }
 
 export interface Deadline extends StatisticsTask {

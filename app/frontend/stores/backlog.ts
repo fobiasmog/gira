@@ -3,26 +3,44 @@ import { ref } from "vue"
 import { tasksApi } from "../api/tasks.ts"
 import type { Id, TaskCard } from "../api/types.ts"
 
-// Root tasks of a project that are not on a column.
+// The project's backlog: open root tasks in no sprint, in column order, and
+// apart from them the done ones, most recently completed first.
 export const useBacklogStore = defineStore("backlog", () => {
   const projectId = ref<Id | null>(null)
   const tasks = ref<TaskCard[]>([])
+  const done = ref<TaskCard[]>([])
 
   async function load(id: Id) {
-    tasks.value = await tasksApi.list(id, "backlog")
+    const [open, finished] = await Promise.all([tasksApi.list(id, "backlog"), tasksApi.list(id, "backlog_done")])
+    tasks.value = open
+    done.value = finished
     projectId.value = id
   }
 
+  // On the first column, in no sprint even while a sprint is active. Loads the
+  // lists again to show it in column order.
   async function create(id: Id, title: string) {
-    const task = await tasksApi.create(id, { title, status_id: null })
-    tasks.value.push(task)
+    await tasksApi.create(id, { title, sprint_id: null })
+    await load(id)
   }
 
-  // Puts a task at the end of a column on the board.
-  async function placeOnColumn(id: Id, taskId: Id, columnId: Id, position: number) {
-    await tasksApi.place(id, taskId, { status_id: columnId, position })
+  function remove(taskId: Id) {
     tasks.value = tasks.value.filter((task) => task.id !== taskId)
   }
 
-  return { projectId, tasks, load, create, placeOnColumn }
+  async function moveToSprint(id: Id, taskId: Id, sprintId: Id): Promise<TaskCard> {
+    const card = await tasksApi.setSprint(id, taskId, sprintId)
+    remove(taskId)
+    return card
+  }
+
+  // Puts a task at a position in a column on the board, adding it to the
+  // active sprint (sprintId) in the same request.
+  async function placeOnColumn(id: Id, taskId: Id, columnId: Id, position: number, sprintId: Id): Promise<TaskCard> {
+    const card = await tasksApi.place(id, taskId, { status_id: columnId, position, sprint_id: sprintId })
+    remove(taskId)
+    return card
+  }
+
+  return { projectId, tasks, done, load, create, moveToSprint, placeOnColumn }
 })

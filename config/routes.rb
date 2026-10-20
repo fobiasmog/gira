@@ -66,6 +66,7 @@ Rails.application.routes.draw do
           scope module: :sprints do
             resource :activation, only: :create
             resource :archival, only: :create
+            resources :tasks, only: :index
           end
         end
       end

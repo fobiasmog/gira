@@ -43,10 +43,6 @@ test("a range across a DST change counts calendar days", () => {
   assert.equal(sprintSummary({ ends_on: "2026-04-02" }, columns, [], new Date(2026, 2, 27, 0, 30)).daysLeft, 6)
 })
 
-test("tasks without a column do not count as done", () => {
-  assert.deepEqual(sprintSummary({ ends_on: "2026-10-26" }, columns, [{ status_id: null }, { status_id: 3 }], new Date(2026, 9, 19)).done, 1)
-})
-
 test("days left in English and Russian", () => {
   assert.equal(pluralize("en", 1, en.board.sprint.daysLeft), "1 day left")
   assert.equal(pluralize("en", 7, en.board.sprint.daysLeft), "7 days left")

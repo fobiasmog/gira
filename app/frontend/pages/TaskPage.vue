@@ -100,9 +100,9 @@ async function saveDescription(description: string) {
   syncBoard(updated)
 }
 
-// To the end of the column (the server clamps the position), or the backlog.
-const setStatus = (columnId: number | null) => run(async () => {
-  await tasksApi.place(props.projectId, id(), { status_id: columnId, position: columnId === null ? 0 : Number.MAX_SAFE_INTEGER })
+// To the end of the column (the server clamps the position).
+const setStatus = (columnId: number) => run(async () => {
+  await tasksApi.place(props.projectId, id(), { status_id: columnId, position: Number.MAX_SAFE_INTEGER })
   await refresh()
 })
 const setComplete = (complete: boolean) => run(async () => {
@@ -176,7 +176,7 @@ async function archive() {
           <span v-if="task.label" class="chip ellipsis" :data-tone="toneOf(task.label.id)">{{ task.label.title }}</span>
           <span class="status-chip">
             <StatusDot v-if="statusColumn" :column="statusColumn" />
-            {{ task.status?.title ?? t("task.backlog") }}
+            {{ task.status.title }}
           </span>
           <RouterLink v-if="parent" :to="{ name: 'task', params: { pid: projectId, ref: parent.key } }">
             {{ t("task.parent", { key: parent.key }) }}

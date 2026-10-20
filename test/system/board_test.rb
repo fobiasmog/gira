@@ -45,7 +45,7 @@ class BoardTest < ApplicationSystemTestCase
     assert_current_path "/app/projects/#{@project.id}/tasks/#{first.key}"
   end
 
-  test "add, rename and delete a column; the deleted column's tasks go to the backlog" do
+  test "add, rename and delete a column; the deleted column's tasks go to the first column" do
     task("Orphan", :goal_work)
     visit_board
 
@@ -64,10 +64,10 @@ class BoardTest < ApplicationSystemTestCase
     click_button "Delete column"
     within("dialog[open]") { click_button "Delete" }
     assert_no_selector ".column h2", text: "Work"
-    assert_no_text "Orphan"
+    within(".column", text: "To Do", match: :first) { assert_text "Orphan" }
 
     assert_equal [ "To Do", "QA", "Done" ], @project.statuses.reload.map(&:title)
-    assert_nil Task.find_by!(title: "Orphan").status_id
+    assert_equal statuses(:goal_todo), Task.find_by!(title: "Orphan").status
   end
 
   test "add a task to a column" do

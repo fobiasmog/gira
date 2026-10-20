@@ -10,24 +10,30 @@ export interface TaskFields {
   milestone_id?: Id | null
 }
 
+// Without status_id the task goes to the first column. sprint_id, when
+// present, wins (null: no sprint); when absent, a task created on a column
+// joins the active sprint and any other task joins no sprint.
 export interface NewTask extends TaskFields {
   title: string
-  status_id?: Id | null
+  status_id?: Id
   label_id?: Id | null
-  outside_sprint?: boolean
+  sprint_id?: Id | null
 }
 
-// status_id null puts the task in the backlog.
+// sprint_id, when present, also moves the task into that sprint (null: none).
 export interface Placement {
-  status_id: Id | null
+  status_id: Id
   position: number
+  sprint_id?: Id | null
 }
+
+export type TaskView = "board" | "backlog" | "backlog_done" | "archived"
 
 const base = (projectId: Id) => `/projects/${projectId}/tasks`
 
 export const tasksApi = {
   board: (projectId: Id) => api.get<Board>(`/projects/${projectId}/board`),
-  list: (projectId: Id, view: "board" | "backlog" | "archived") => api.get<TaskCard[]>(base(projectId), { view }),
+  list: (projectId: Id, view: TaskView) => api.get<TaskCard[]>(base(projectId), { view }),
   show: (projectId: Id, ref: string | Id) => api.get<TaskDetail>(`${base(projectId)}/${encodeURIComponent(ref)}`),
   create: (projectId: Id, fields: NewTask) => api.post<TaskDetail>(base(projectId), fields),
   update: (projectId: Id, id: Id, fields: TaskFields) => api.patch<TaskDetail>(`${base(projectId)}/${id}`, fields),

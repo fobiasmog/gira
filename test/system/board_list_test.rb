@@ -66,52 +66,67 @@ class BoardListTest < ApplicationSystemTestCase
     assert_equal "Two", evaluate_script("document.activeElement.textContent.trim()")
   end
 
-  test "backlog round trip: send a task to the backlog and put it back on the board" do
-    task("Someday", :goal_todo)
+  test "move to backlog during a sprint, then put the task back on the board" do
+    sprint = @project.sprints.create!(title: "Sprint 1", starts_on: Date.current, ends_on: 13.days.from_now, active: true)
+    task("Someday", :goal_work).update!(sprint: sprint)
     visit "/app/projects/#{@project.id}/list"
 
     click_button "Actions for GOAL-1"
     click_button "Move to backlog"
     assert_text "GOAL-1 moved to the backlog"
-    assert_empty rows("To Do")
-    assert_nil Task.find_by!(title: "Someday").status_id
+    assert_empty rows("Work")
+    moved = Task.find_by!(title: "Someday")
+    assert_equal [ nil, statuses(:goal_work) ], [ moved.sprint, moved.status ]
 
     within(".side-nav") { click_link "Backlog" }
     assert_selector "h1", text: "Backlog"
-    assert_text "Someday"
+    within(".backlog > li", text: "Someday") { assert_text "Work" }
 
-    click_button "Put GOAL-1 on the board"
-    click_button "In Work"
-    assert_text "GOAL-1 is now in Work"
+    click_button "Move GOAL-1"
+    click_button "To Do"
+    assert_text "GOAL-1 is now in To Do"
     assert_text "The backlog is empty."
 
     within(".side-nav") { click_link "Board" }
-    within(".column", text: "Work", match: :first) { assert_text "Someday" }
-    assert_equal statuses(:goal_work), Task.find_by!(title: "Someday").status
+    within(".column", text: "To Do", match: :first) { assert_text "Someday" }
+    assert_equal [ sprint, statuses(:goal_todo) ], [ moved.reload.sprint, moved.status ]
   end
 
-  test "a task created in the backlog stays off the board" do
+  test "no active sprint: the board offers no move to the backlog" do
+    task("Someday", :goal_todo)
+    visit "/app/projects/#{@project.id}/list"
+
+    assert_equal [ "Someday" ], rows("To Do")
+    assert_no_button "Actions for GOAL-1"
+    assert_no_button "Move to backlog"
+  end
+
+  test "a task created in the backlog during a sprint stays off the board" do
+    @project.sprints.create!(title: "Sprint 1", starts_on: Date.current, ends_on: 13.days.from_now, active: true)
     visit "/app/projects/#{@project.id}/backlog"
 
     fill_in "New backlog task", with: "Idea"
     click_button "Create"
 
     within(".backlog") { assert_text "Idea" }
-    assert_nil Task.find_by!(title: "Idea").status_id
+    idea = Task.find_by!(title: "Idea")
+    assert_equal [ nil, statuses(:goal_todo) ], [ idea.sprint, idea.status ]
   end
 
-  test "the backlog's placement button shows its purpose and keeps its accessible name" do
+  test "the backlog's move button shows its purpose and keeps its accessible name" do
+    @project.sprints.create!(title: "Sprint 1", starts_on: Date.current, ends_on: 13.days.from_now, active: true)
     @project.tasks.create!(title: "Someday", creator: @user)
     visit "/app/projects/#{@project.id}/backlog"
 
     assert_selector "h1", text: "Backlog"
     assert_selector "h1 .badge", text: "1"
-    button = find_button("Put GOAL-1 on the board")
-    assert_equal "To board", button.text
-    assert_equal "Put GOAL-1 on the board", button["aria-label"]
+    button = find_button("Move GOAL-1")
+    assert_equal "Move", button.text
+    assert_equal "Move GOAL-1", button["aria-label"]
 
     button.click
-    assert_button "In To Do"
-    assert_button "In Done"
+    assert_button "Sprint 1"
+    assert_button "To Do"
+    assert_button "Done"
   end
 end

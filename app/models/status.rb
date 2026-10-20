@@ -2,7 +2,7 @@
 # the last column is the done column (see Board).
 class Status < ApplicationRecord
   belongs_to :project
-  has_many :tasks, dependent: nil # deleting a column moves its tasks to the backlog (Board#delete_column)
+  has_many :tasks, dependent: nil # deleting a column moves its tasks to the first remaining one (Board#delete_column)
 
   acts_as_list scope: :project, top_of_list: 0, add_new_at: :bottom
 

@@ -1,5 +1,5 @@
 import { api } from "./client.ts"
-import type { DateString, Id, Sprint } from "./types.ts"
+import type { DateString, Id, Sprint, SprintTaskCard } from "./types.ts"
 
 export interface NewSprint {
   title: string
@@ -17,4 +17,5 @@ export const sprintsApi = {
   activate: (projectId: Id, id: Id) => api.post<Sprint>(`${base(projectId)}/${id}/activation`),
   archive: (projectId: Id, id: Id, carryToSprintId: Id | null) =>
     api.post<Sprint>(`${base(projectId)}/${id}/archival`, { carry_to_sprint_id: carryToSprintId }),
+  tasks: (projectId: Id, id: Id) => api.get<SprintTaskCard[]>(`${base(projectId)}/${id}/tasks`),
 }

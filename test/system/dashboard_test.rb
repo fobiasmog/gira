@@ -14,7 +14,7 @@ class DashboardTest < ApplicationSystemTestCase
 
   test "the dashboard lists my open tasks by project and column, and my deadlines" do
     task("Mine in progress", @one, :goal_work, deadline: 2.days.from_now, important: true)
-    task("Mine in backlog", @one, nil)
+    task("Mine without a column", @one, nil)
     task("Mine and done", @one, :goal_done)
     task("Not mine", @two, :goal_todo)
     sign_in @one.email_address, "correct horse battery"
@@ -22,10 +22,10 @@ class DashboardTest < ApplicationSystemTestCase
     visit "/app"
     assert_selector "h1", text: "My tasks"
     within(".dashboard__project", text: "Goalner") do
+      assert_text(/To Do · 1 task/i) # a task created without a column is in the first one
       assert_text(/Work · 1 task/i)
-      assert_text(/Backlog · 1 task/i)
       assert_link "Mine in progress"
-      assert_link "Mine in backlog"
+      assert_link "Mine without a column"
       assert_no_text "Mine and done"
       assert_no_text "Not mine"
     end

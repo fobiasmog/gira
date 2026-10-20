@@ -34,7 +34,7 @@ export function sprintSummary(
   const doneColumns = new Set(columns.filter((column) => column.done).map((column) => column.id))
   const left = parseDay(sprint.ends_on) - dayNumber(today.getFullYear(), today.getMonth(), today.getDate())
   return {
-    done: tasks.filter((task) => task.status_id !== null && doneColumns.has(task.status_id)).length,
+    done: tasks.filter((task) => doneColumns.has(task.status_id)).length,
     total: tasks.length,
     daysLeft: Math.max(0, left),
     state: left > 0 ? "running" : left === 0 ? "last-day" : "ended",
