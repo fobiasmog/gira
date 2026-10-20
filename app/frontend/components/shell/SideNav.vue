@@ -9,6 +9,8 @@ import { projectSections, sectionOf, type ProjectSection } from "../../router/se
 import { toneOf } from "../../styles/tones.ts"
 import { t } from "../../i18n/index.ts"
 
+// Collapsed: a rail of icons. Labels stay as accessible names and tooltips.
+defineProps<{ collapsed?: boolean }>()
 const emit = defineEmits<{ navigate: [] }>()
 const route = useRoute()
 const { list, current } = storeToRefs(useProjectsStore())
@@ -18,25 +20,39 @@ const isActive = (section: ProjectSection) => sectionOf(route.name) === section
 </script>
 
 <template>
-  <nav class="side-nav" :aria-label="t('navigation.menu')" @click="(e) => (e.target as Element).closest('a') && emit('navigate')">
-    <RouterLink :to="{ name: 'dashboard' }" class="logo">
+  <nav
+    class="side-nav"
+    :class="{ 'side-nav--collapsed': collapsed }"
+    :aria-label="t('navigation.menu')"
+    @click="(e) => (e.target as Element).closest('a') && emit('navigate')"
+  >
+    <RouterLink :to="{ name: 'dashboard' }" class="logo" :title="collapsed ? 'Goalner' : undefined">
       <span class="logo__mark" aria-hidden="true">G</span>
-      <span>Goalner</span>
+      <span :class="{ 'visually-hidden': collapsed }">Goalner</span>
     </RouterLink>
 
     <AppMenu :label="t('navigation.switchProject')">
       <template #trigger="{ id, expanded }">
-        <button type="button" class="switcher" :popovertarget="id" :aria-expanded="expanded">
+        <button
+          type="button"
+          class="switcher"
+          :popovertarget="id"
+          :aria-expanded="expanded"
+          :title="collapsed ? current?.title ?? t('navigation.chooseProject') : undefined"
+        >
           <template v-if="current">
             <span class="switcher__initial" :data-tone="toneOf(current.id)" aria-hidden="true">{{ current.title.charAt(0).toUpperCase() }}</span>
-            <span class="switcher__text">
+            <span class="switcher__text" :class="{ 'visually-hidden': collapsed }">
               <span class="visually-hidden">{{ t("navigation.switchProject") }}: </span>
               <span class="switcher__title ellipsis">{{ current.title }}</span>
               <span class="switcher__short">{{ current.short_name }}</span>
             </span>
           </template>
-          <span v-else class="switcher__text switcher__title">{{ t("navigation.chooseProject") }}</span>
-          <AppIcon name="expand_more" :size="20" />
+          <template v-else>
+            <AppIcon v-if="collapsed" name="folder_open" :size="20" />
+            <span class="switcher__text switcher__title" :class="{ 'visually-hidden': collapsed }">{{ t("navigation.chooseProject") }}</span>
+          </template>
+          <AppIcon v-if="!collapsed" name="expand_more" :size="20" />
         </button>
       </template>
       <template #default="{ close }">
@@ -60,8 +76,13 @@ const isActive = (section: ProjectSection) => sectionOf(route.name) === section
 
     <ul role="list" class="side-nav__list">
       <li>
-        <RouterLink :to="{ name: 'dashboard' }" class="side-nav__link" exact-active-class="is-active">
-          <AppIcon name="home" :size="20" />{{ t("navigation.dashboard") }}
+        <RouterLink
+          :to="{ name: 'dashboard' }"
+          class="side-nav__link"
+          exact-active-class="is-active"
+          :title="collapsed ? t('navigation.dashboard') : undefined"
+        >
+          <AppIcon name="home" :size="20" /><span :class="{ 'visually-hidden': collapsed }">{{ t("navigation.dashboard") }}</span>
         </RouterLink>
       </li>
     </ul>
@@ -75,14 +96,16 @@ const isActive = (section: ProjectSection) => sectionOf(route.name) === section
             class="side-nav__link"
             :class="{ 'is-active': isActive(section) }"
             :aria-current="isActive(section) ? 'page' : undefined"
+            :title="collapsed ? t(section.label) : undefined"
           >
-            <AppIcon :name="section.icon" :size="20" />{{ t(section.label) }}
+            <AppIcon :name="section.icon" :size="20" /><span :class="{ 'visually-hidden': collapsed }">{{ t(section.label) }}</span>
           </RouterLink>
         </li>
       </ul>
     </section>
 
-    <section class="side-nav__section" aria-labelledby="projects-nav">
+    <!-- The switcher lists the same projects, so the rail leaves this out. -->
+    <section v-if="!collapsed" class="side-nav__section" aria-labelledby="projects-nav">
       <h2 id="projects-nav" class="side-nav__heading">
         <RouterLink :to="{ name: 'projects' }" class="side-nav__heading-link">{{ t("navigation.projects") }}</RouterLink>
       </h2>
@@ -133,6 +156,7 @@ const isActive = (section: ProjectSection) => sectionOf(route.name) === section
   font-size: var(--text-lg);
   font-weight: 700;
   text-decoration: none;
+  white-space: nowrap;
 
   &:hover { color: var(--color-nav-strong); }
   &:focus-visible { outline-color: var(--color-nav-text); }
@@ -217,6 +241,7 @@ const isActive = (section: ProjectSection) => sectionOf(route.name) === section
   border-radius: var(--radius);
   color: var(--color-nav-text);
   text-decoration: none;
+  white-space: nowrap;
 
   &:hover { background: var(--color-nav-raised); color: var(--color-nav-strong); }
   &.is-active { background: var(--color-nav-active); color: var(--color-nav-strong); font-weight: 500; }
@@ -230,5 +255,13 @@ const isActive = (section: ProjectSection) => sectionOf(route.name) === section
   display: grid;
   padding-block-start: var(--space-3);
   border-block-start: 1px solid rgb(255 255 255 / 0.08);
+}
+
+/* Icons centred in the rail's column. */
+.side-nav--collapsed {
+  padding-inline: var(--space-2);
+
+  .logo, .switcher, .side-nav__link { justify-content: center; padding-inline: 0; }
+  .switcher { padding-block: var(--space-1); }
 }
 </style>

@@ -171,4 +171,96 @@ class AppShellTest < ApplicationSystemTestCase
     visit "/app"
     assert_current_path new_session_path
   end
+
+  # Spec web-client, "Collapsible sidebar".
+  test "collapse the sidebar to icons and navigate from the rail" do
+    board = "/app/projects/#{projects(:goal).id}/board"
+    sign_in users(:one).email_address, PASSWORD
+    visit board
+    main_width = find(".shell__main").evaluate_script("this.offsetWidth")
+
+    click_button "Collapse menu"
+    assert_sidebar_width 64
+    assert_operator find(".shell__main").evaluate_script("this.offsetWidth"), :>, main_width
+    within(".side-nav") do
+      assert_equal 1, label_width("Backlog")
+      assert_no_link "Goalner", href: board
+      assert_link "Dashboard"
+      click_link "Backlog"
+    end
+
+    assert_current_path "/app/projects/#{projects(:goal).id}/backlog"
+    assert_selector ".side-nav a[aria-current=page][title=Backlog]"
+  end
+
+  test "switch project from the collapsed sidebar" do
+    other = Project.create!(title: "Mobile app", short_name: "MOB", owner: users(:one))
+    sign_in users(:one).email_address, PASSWORD
+    visit "/app/projects/#{projects(:goal).id}/board"
+
+    click_button "Collapse menu"
+    within(".side-nav") { click_button "Switch project: Goalner" }
+    within(".menu:popover-open") { click_link "Mobile app" }
+
+    assert_current_path "/app/projects/#{other.id}/board"
+    assert_selector ".side-nav .switcher[title='Mobile app']"
+  end
+
+  test "expanding the sidebar restores the labels and keeps focus on the toggle" do
+    sign_in users(:one).email_address, PASSWORD
+    visit "/app/projects/#{projects(:goal).id}/board"
+
+    click_button "Collapse menu"
+    assert_sidebar_width 64
+    click_button "Expand menu"
+
+    assert_sidebar_width 256
+    within(".side-nav") do
+      assert_operator label_width("Backlog"), :>, 1
+      assert_link "Goalner", href: "/app/projects/#{projects(:goal).id}/board"
+    end
+    assert_equal "Collapse menu", evaluate_script("document.activeElement.textContent.trim()")
+  end
+
+  test "the collapsed sidebar is remembered after a reload" do
+    sign_in users(:one).email_address, PASSWORD
+    visit "/app"
+
+    click_button "Collapse menu"
+    assert_button "Expand menu"
+    page.driver.browser.navigate.refresh
+
+    assert_button "Expand menu"
+    assert_sidebar_width 64
+  end
+
+  test "the narrow-screen menu is never collapsed" do
+    sign_in users(:one).email_address, PASSWORD
+    visit "/app/projects/#{projects(:goal).id}/board"
+    click_button "Collapse menu"
+    assert_button "Expand menu"
+
+    page.driver.browser.manage.window.resize_to(600, 900)
+    click_button "Menu"
+    within("dialog[open]") do
+      assert_operator label_width("Backlog"), :>, 1
+      assert_link "Goalner", href: "/app/projects/#{projects(:goal).id}/board"
+      assert_no_button "Collapse menu"
+      assert_no_button "Expand menu"
+    end
+  ensure
+    page.driver.browser.manage.window.resize_to(1400, 1000)
+  end
+
+  private
+    # Waits out the width transition.
+    def assert_sidebar_width(width)
+      assert_selector(".shell__sidebar") { |aside| aside.evaluate_script("this.getBoundingClientRect().width") == width }
+    end
+
+    # The rendered width of a navigation link's label: 1px when it is there
+    # for screen readers only.
+    def label_width(link)
+      find_link(link).find("span", visible: :all).evaluate_script("this.getBoundingClientRect().width")
+    end
 end

@@ -10,6 +10,25 @@ export interface Toast {
 }
 
 const TOAST_MS = 5000
+const SIDEBAR_KEY = "goalner.sidebarCollapsed"
+
+// Storage can be blocked (private mode, site data disabled); the preference
+// is then kept for this page only.
+function readStored(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writeStored(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Not remembered.
+  }
+}
 
 export const useUiStore = defineStore("ui", () => {
   // Count of pending page loads; the shell shows a progress bar while > 0.
@@ -22,6 +41,13 @@ export const useUiStore = defineStore("ui", () => {
   let nextId = 1
   // Text for the screen-reader-only live region in the shell.
   const announcement = ref("")
+  // Whether the wide-screen sidebar is collapsed to a rail of icons.
+  const sidebarCollapsed = ref(readStored(SIDEBAR_KEY) === "true")
+
+  function toggleSidebar() {
+    sidebarCollapsed.value = !sidebarCollapsed.value
+    writeStored(SIDEBAR_KEY, String(sidebarCollapsed.value))
+  }
 
   async function announce(message: string) {
     announcement.value = ""
@@ -61,5 +87,7 @@ export const useUiStore = defineStore("ui", () => {
     }
   }
 
-  return { loading, notFound, load, fail, toasts, toast, dismiss, announcement, announce }
+  return {
+    loading, notFound, load, fail, toasts, toast, dismiss, announcement, announce, sidebarCollapsed, toggleSidebar,
+  }
 })

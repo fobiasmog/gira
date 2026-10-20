@@ -47,6 +47,8 @@ export const ru: Messages = {
     switchProject: "Сменить проект",
     chooseProject: "Выберите проект",
     breadcrumb: "Навигационная цепочка",
+    collapse: "Свернуть меню",
+    expand: "Развернуть меню",
   },
   app: {
     loadFailed: "Не удалось загрузить Goalner. Проверьте подключение и попробуйте ещё раз.",

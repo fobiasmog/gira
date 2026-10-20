@@ -19,7 +19,8 @@ import { t } from "../../i18n/index.ts"
 
 const route = useRoute()
 const projects = useProjectsStore()
-const { loading, notFound, announcement } = storeToRefs(useUiStore())
+const ui = useUiStore()
+const { loading, notFound, announcement, sidebarCollapsed: collapsed } = storeToRefs(ui)
 const wide = useMediaQuery("(min-width: 1024px)")
 const drawerOpen = ref(false)
 const feedbackOpen = ref(false)
@@ -46,17 +47,28 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
   <div class="shell">
     <div v-if="loading" class="progress" role="progressbar" :aria-label="t('common.loading')" />
 
-    <aside v-if="wide" class="shell__sidebar">
-      <SideNav>
+    <aside v-if="wide" class="shell__sidebar" :class="{ 'shell__sidebar--collapsed': collapsed }">
+      <SideNav :collapsed="collapsed">
         <template #footer>
-          <button type="button" class="feedback-button" @click="feedbackOpen = true"><AppIcon name="mail" :size="20" />{{ t("navigation.feedback") }}</button>
+          <button type="button" class="nav-button" :title="collapsed ? t('navigation.feedback') : undefined" @click="feedbackOpen = true">
+            <AppIcon name="mail" :size="20" /><span :class="{ 'visually-hidden': collapsed }">{{ t("navigation.feedback") }}</span>
+          </button>
+          <button
+            type="button"
+            class="nav-button"
+            :title="collapsed ? t('navigation.expand') : undefined"
+            @click="ui.toggleSidebar()"
+          >
+            <AppIcon :name="collapsed ? 'chevron_right' : 'chevron_left'" :size="20" />
+            <span :class="{ 'visually-hidden': collapsed }">{{ collapsed ? t("navigation.expand") : t("navigation.collapse") }}</span>
+          </button>
         </template>
       </SideNav>
     </aside>
     <AppDialog v-else v-model:open="drawerOpen" :title="t('navigation.menu')" drawer>
       <SideNav @navigate="drawerOpen = false">
         <template #footer>
-          <button type="button" class="feedback-button" @click="drawerOpen = false; feedbackOpen = true"><AppIcon name="mail" :size="20" />{{ t("navigation.feedback") }}</button>
+          <button type="button" class="nav-button" @click="drawerOpen = false; feedbackOpen = true"><AppIcon name="mail" :size="20" />{{ t("navigation.feedback") }}</button>
         </template>
       </SideNav>
     </AppDialog>
@@ -103,9 +115,12 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
   top: 0;
   inline-size: var(--sidebar-width);
   block-size: 100dvh;
-  overflow-y: auto;
+  overflow: hidden auto;
   background: var(--color-nav-bg);
+  transition: inline-size 150ms ease;
 }
+
+.shell__sidebar--collapsed { inline-size: var(--sidebar-rail-width); }
 
 .shell__main {
   display: flex;
@@ -157,7 +172,7 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
 
 .breadcrumb__current { color: var(--color-text); font-weight: 500; }
 
-.feedback-button {
+.nav-button {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -168,9 +183,12 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
   background: none;
   color: var(--color-nav-text);
   text-align: start;
+  white-space: nowrap;
 
   &:hover { background: var(--color-nav-raised); color: var(--color-nav-strong); }
   &:focus-visible { outline-color: var(--color-nav-text); outline-offset: 0; }
+
+  .shell__sidebar--collapsed & { justify-content: center; padding-inline: 0; }
 }
 
 .progress {
@@ -191,5 +209,6 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
 
 @media (prefers-reduced-motion: reduce) {
   .progress { animation: none; background: var(--color-primary); }
+  .shell__sidebar { transition: none; }
 }
 </style>

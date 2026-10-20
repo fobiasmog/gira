@@ -60,6 +60,8 @@ export const en = {
     switchProject: "Switch project",
     chooseProject: "Choose a project",
     breadcrumb: "Breadcrumb",
+    collapse: "Collapse menu",
+    expand: "Expand menu",
   },
   app: {
     loadFailed: "Goalner could not load. Check your connection and try again.",
