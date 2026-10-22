@@ -51,4 +51,9 @@ Rails.application.configure do
 
   # Raise error when a before_action's only/except options reference missing actions.
   config.action_controller.raise_on_missing_callback_actions = true
+
+  # The LiveKit media server for calls: `livekit-server --dev`, which the call
+  # system tests need. devkey and secret are the fixed, published keys of its
+  # development mode, not secrets.
+  config.x.livekit = { url: ENV.fetch("LIVEKIT_URL", "ws://localhost:7880"), api_key: "devkey", api_secret: "secret" }
 end

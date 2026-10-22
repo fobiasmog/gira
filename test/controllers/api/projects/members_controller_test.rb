@@ -16,7 +16,9 @@ class Api::Projects::MembersControllerTest < ActionDispatch::IntegrationTest
   test "owner removes a member: access is lost and their tasks become unassigned" do
     task = @project.tasks.create!(number: 1, title: "T", creator: users(:one), assignee: users(:two))
 
-    delete api_project_member_path(@project, users(:two))
+    assert_enqueued_with(job: CallEvictionJob, args: [ @project, users(:two) ]) do
+      delete api_project_member_path(@project, users(:two))
+    end
 
     assert_response :no_content
     assert_not @project.member?(users(:two))

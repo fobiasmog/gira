@@ -51,14 +51,16 @@ module DragAndDropHelper
     JS
   end
 
-  # Counts (or fails) the requests the page makes to URLs containing `fragment`.
+  # Counts (or fails) the requests that change something (not GETs) the page
+  # makes to URLs containing `fragment`. Reads are left alone: the board polls
+  # its call's participants in the background.
   def watch_requests(fragment, fail: false)
     execute_script(<<~JS, fragment, fail)
       const [fragment, fail] = arguments
       const original = window.fetch
       window.__requests = 0
       window.fetch = (url, init) => {
-        if (!String(url).includes(fragment)) return original(url, init)
+        if (!String(url).includes(fragment) || (init?.method ?? "GET") === "GET") return original(url, init)
         window.__requests++
         return fail ? Promise.reject(new TypeError("Failed to fetch")) : original(url, init)
       }

@@ -11,6 +11,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      LIVEKIT_VERSION: v1.13.10
+      LIVEKIT_SHA256: c25a3e45fb922e9a93c6443d10c0ed041ba64342097e38632331736630283165
 
     services:
       postgres:
@@ -44,18 +47,34 @@ jobs:
       - name: Build the frontend
         run: npm ci --ignore-scripts && npx vite build --mode test
 
+      # The call system tests send real media through a LiveKit server. It runs
+      # on the runner itself, so no UDP ports have to be mapped through Docker.
+      - name: Start the LiveKit media server
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/livekit.tar.gz" \
+            "https://github.com/livekit/livekit/releases/download/${LIVEKIT_VERSION}/livekit_${LIVEKIT_VERSION#v}_linux_amd64.tar.gz"
+          echo "${LIVEKIT_SHA256}  $RUNNER_TEMP/livekit.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/livekit.tar.gz" -C "$RUNNER_TEMP" livekit-server
+          mkdir -p tmp
+          nohup "$RUNNER_TEMP/livekit-server" --dev > tmp/livekit.log 2>&1 &
+          for attempt in $(seq 30); do curl -sSf http://localhost:7880 && exit 0; sleep 1; done
+          cat tmp/livekit.log
+          exit 1
+
       - name: Run tests
         env:
           RAILS_ENV: test
           DATABASE_URL: postgres://postgres:postgres@localhost:5432
         run: bin/rails db:test:prepare test test:system
 
-      - name: Keep screenshots from failed system tests
+      - name: Keep screenshots and the LiveKit log from failed system tests
         uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: screenshots
-          path: ${{ github.workspace }}/tmp/screenshots
+          path: |
+            ${{ github.workspace }}/tmp/screenshots
+            ${{ github.workspace }}/tmp/livekit.log
           if-no-files-found: ignore
 
   frontend:

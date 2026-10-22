@@ -38,7 +38,8 @@ watch(() => toasts.value.length, (count, previous) => {
 <style scoped>
 .toasts {
   position: fixed;
-  inset: auto var(--space-4) var(--space-4) auto;
+  /* Above the docked call bar or tab, when there is one (AppShell). */
+  inset: auto var(--space-4) calc(var(--space-4) + var(--call-dock-height, 0px)) auto;
   display: grid;
   gap: var(--space-2);
   inline-size: min(400px, 100vw - 2 * var(--space-4));

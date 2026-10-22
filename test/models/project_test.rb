@@ -1,6 +1,8 @@
 require "test_helper"
 
 class ProjectTest < ActiveSupport::TestCase
+  include ActiveJob::TestHelper
+
   test "valid project: the creator is owner and only member, with the default columns" do
     project = Project.create!(title: "Goalner", short_name: "GOAL", owner: users(:one))
 
@@ -29,5 +31,21 @@ class ProjectTest < ActiveSupport::TestCase
     project = projects(:goal)
 
     assert_equal [ 1, 2 ], [ project.next_task_number!, project.next_task_number! ]
+  end
+
+  test "removing a member takes them out of the project's call" do
+    project = projects(:goal)
+
+    assert_enqueued_with(job: CallEvictionJob, args: [ project, users(:two) ]) do
+      project.remove_member!(users(:two))
+    end
+  end
+
+  test "archiving ends the project's call for everybody" do
+    project = projects(:goal)
+
+    assert_enqueued_with(job: CallEvictionJob, args: [ project ]) do
+      project.archive!
+    end
   end
 end
