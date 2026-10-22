@@ -9,7 +9,7 @@ const root = process.argv[2] ?? join(import.meta.dirname, "..")
 const frontend = join(root, "app/frontend")
 const errors = []
 
-const RUNTIME_REQUIRED = ["vue", "vue-router", "pinia", "@sentry/vue", "swagger-ui-dist"]
+const RUNTIME_REQUIRED = ["vue", "vue-router", "pinia", "@sentry/vue", "swagger-ui-dist", "livekit-client"]
 const RUNTIME_PATTERN = /^@tiptap\/[a-z0-9-]+$/
 const DEV_REQUIRED = ["vite", "@vitejs/plugin-vue", "typescript", "vue-tsc"]
 // Packages only one file may import: the API documentation viewer stays out

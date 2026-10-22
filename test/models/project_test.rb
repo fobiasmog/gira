@@ -1,6 +1,8 @@
 require "test_helper"
 
 class ProjectTest < ActiveSupport::TestCase
+  include ActiveJob::TestHelper
+
   test "valid project: the creator is owner and only member, with the default columns" do
     project = Project.create!(title: "Goalner", short_name: "GOAL", owner: users(:one))
 
@@ -33,7 +35,6 @@ class ProjectTest < ActiveSupport::TestCase
 
   # API tokens (spec api-tokens, "Token lifetime and revocation"). two has
   # tokens for goal and side; one has a token for goal.
-
   test "a member leaving deletes only their tokens for that project" do
     revoked = api_tokens(:two_goal_read_write, :two_goal_read)
 
@@ -59,5 +60,21 @@ class ProjectTest < ActiveSupport::TestCase
 
     assert_not projects(:goal).api_tokens.exists?
     assert ApiToken.exists?(api_tokens(:two_side_read_write).id), "tokens for other projects are kept"
+  end
+
+  test "removing a member takes them out of the project's call" do
+    project = projects(:goal)
+
+    assert_enqueued_with(job: CallEvictionJob, args: [ project, users(:two) ]) do
+      project.remove_member!(users(:two))
+    end
+  end
+
+  test "archiving ends the project's call for everybody" do
+    project = projects(:goal)
+
+    assert_enqueued_with(job: CallEvictionJob, args: [ project ]) do
+      project.archive!
+    end
   end
 end

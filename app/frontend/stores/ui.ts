@@ -2,6 +2,7 @@ import { defineStore } from "pinia"
 import { computed, nextTick, ref } from "vue"
 import { ApiError } from "../api/client.ts"
 import { errorMessage } from "../api/errors.ts"
+import { readStored, writeStored } from "../composables/storage.ts"
 
 export interface Toast {
   id: number
@@ -11,24 +12,6 @@ export interface Toast {
 
 const TOAST_MS = 5000
 const SIDEBAR_KEY = "goalner.sidebarCollapsed"
-
-// Storage can be blocked (private mode, site data disabled); the preference
-// is then kept for this page only.
-function readStored(key: string): string | null {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
-function writeStored(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value)
-  } catch {
-    // Not remembered.
-  }
-}
 
 export const useUiStore = defineStore("ui", () => {
   // Count of pending page loads; the shell shows a progress bar while > 0.

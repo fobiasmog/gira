@@ -7,6 +7,21 @@ require "support/production_probe"
 class ContentSecurityPolicyTest < ApplicationSystemTestCase
   include DragAndDropHelper
 
+  # Production has no media server configured yet, so neither does this test:
+  # the page then carries exactly the production policy. Every request gets
+  # the same SPA page in tests, so the browser cache goes, or a revisited page
+  # would be a 304 that keeps the policy cached by earlier tests.
+  setup do
+    @livekit = Rails.configuration.x.livekit
+    Rails.configuration.x.livekit = nil
+    execute_cdp("Network.clearBrowserCache")
+  end
+
+  teardown do
+    Rails.configuration.x.livekit = @livekit
+    execute_cdp("Network.clearBrowserCache")
+  end
+
   test "sign in, move a card, edit a description and post a comment with no CSP violation or third-party request" do
     project = projects(:goal)
     task = project.tasks.create!(title: "Policy check", creator: users(:one), status: statuses(:goal_todo))

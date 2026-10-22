@@ -31,11 +31,14 @@ class Project < ApplicationRecord
   # Hides the project and its content from every member. The data stays in
   # the database for operators to recover; API tokens for it are deleted, so
   # they stay revoked if it is restored.
+  # Ends its call.
   def archive!
     transaction do
       update!(archived_at: Time.current)
       api_tokens.delete_all
     end
+
+    CallEvictionJob.perform_later(self)
   end
 
   def done_status
@@ -51,8 +54,8 @@ class Project < ApplicationRecord
   end
 
   # Ends a user's membership; tasks assigned to them in this project become
-  # unassigned, and their API tokens for it are deleted for good. The owner
-  # cannot leave or be removed.
+  # unassigned, and they are taken out of its call, and their API tokens are deleted.
+  # The owner cannot leave or be removed.
   def remove_member!(user)
     raise ArgumentError, "the owner cannot leave the project" if owned_by?(user)
 
@@ -61,6 +64,8 @@ class Project < ApplicationRecord
       memberships.where(user: user).destroy_all
       api_tokens.where(user: user).delete_all
     end
+
+    CallEvictionJob.perform_later(self, user)
   end
 
   # The next task number, taken atomically so concurrent creations never get

@@ -48,6 +48,9 @@ Rails.application.routes.draw do
         resources :invitations, only: %i[index create destroy]
         resources :members, only: %i[index destroy]
         resource :board, only: :show
+        resource :call, only: :show do
+          resource :token, only: :create, module: :calls
+        end
         resources :statuses, only: %i[index create update destroy]
         resources :tasks, only: %i[index show create update destroy] do
           scope module: :tasks do

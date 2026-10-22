@@ -172,6 +172,19 @@ export interface NewApiToken extends ApiToken {
   token: string
 }
 
+// A project's call: whether calls are offered at all, and the members in it.
+export interface CallStatus {
+  available: boolean
+  participants: UserCard[]
+}
+
+// Where and how to join a project's call: the media server's WebSocket URL
+// and a short-lived access token for it.
+export interface CallToken {
+  url: string
+  token: string
+}
+
 export interface Announcement {
   id: Id
   body: string

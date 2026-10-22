@@ -73,6 +73,10 @@ Rails.application.configure do
     read_timeout: 10
   }
 
+  # The LiveKit media server for calls (url, api_key, api_secret). Without it in
+  # the credentials, calls are not offered.
+  config.x.livekit = Rails.application.credentials.livekit&.to_h&.slice(:url, :api_key, :api_secret)
+
   # Enable locale fallbacks for I18n (makes lookups for any locale fall back to
   # the I18n.default_locale when a translation cannot be found).
   config.i18n.fallbacks = true

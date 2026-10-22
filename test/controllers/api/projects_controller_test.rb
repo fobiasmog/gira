@@ -66,7 +66,9 @@ class Api::ProjectsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "owner archives: the project disappears for every member" do
-    delete api_project_path(projects(:goal))
+    assert_enqueued_with(job: CallEvictionJob, args: [ projects(:goal) ]) do
+      delete api_project_path(projects(:goal))
+    end
     assert_response :no_content
 
     [ users(:one), users(:two) ].each do |member|
@@ -85,7 +87,9 @@ class Api::ProjectsControllerTest < ActionDispatch::IntegrationTest
     task = project.tasks.create!(number: 1, title: "T", creator: users(:one), assignee: users(:two))
     sign_in_as users(:two)
 
-    delete api_project_membership_path(project)
+    assert_enqueued_with(job: CallEvictionJob, args: [ project, users(:two) ]) do
+      delete api_project_membership_path(project)
+    end
 
     assert_response :no_content
     assert_nil task.reload.assignee_id

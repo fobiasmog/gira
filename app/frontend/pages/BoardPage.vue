@@ -4,6 +4,7 @@ import { storeToRefs } from "pinia"
 import AppIcon from "../components/ui/AppIcon.vue"
 import KanbanColumn from "../components/board/KanbanColumn.vue"
 import BoardList from "../components/board/BoardList.vue"
+import CallButton from "../components/call/CallButton.vue"
 import ProgressBar from "../components/ProgressBar.vue"
 import { useDragSort, type DragMove } from "../composables/useDragSort.ts"
 import { sprintSummary } from "../composables/sprintSummary.ts"
@@ -110,6 +111,7 @@ async function addColumn() {
         </section>
       </div>
       <div class="board-header__actions">
+        <CallButton :project-id="projectId" :project-title="project?.title ?? ''" />
         <nav class="segmented" :aria-label="t('board.layout')">
           <RouterLink :to="{ name: 'board', params: { pid: projectId } }" :aria-current="layout === 'kanban' ? 'page' : undefined">
             <AppIcon name="view_kanban" :size="18" />{{ t("navigation.board") }}
