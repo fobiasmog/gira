@@ -48,6 +48,16 @@ class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
       assert_field(label) { |field| field["aria-invalid"] == "true" }
     end
 
+    # Chrome DevTools commands. The remote driver has no execute_cdp, so its
+    # endpoint is called directly.
+    def execute_cdp(command, **params)
+      browser = page.driver.browser
+      return browser.execute_cdp(command, **params) if browser.respond_to?(:execute_cdp)
+
+      bridge = browser.send(:bridge)
+      bridge.http.call(:post, "session/#{bridge.session_id}/goog/cdp/execute", cmd: command, params: params)
+    end
+
     def sign_in(email_address, password)
       visit new_session_path
       fill_in "Email", with: email_address

@@ -27,10 +27,11 @@ class Project < ApplicationRecord
     memberships.exists?(user: user)
   end
 
-  # Hides the project and its content from every member. The data stays in
-  # the database for operators to recover.
+  # Hides the project and its content from every member, and ends its call.
+  # The data stays in the database for operators to recover.
   def archive!
     update!(archived_at: Time.current)
+    CallEvictionJob.perform_later(self)
   end
 
   def done_status
@@ -46,7 +47,8 @@ class Project < ApplicationRecord
   end
 
   # Ends a user's membership; tasks assigned to them in this project become
-  # unassigned. The owner cannot leave or be removed.
+  # unassigned, and they are taken out of its call. The owner cannot leave or
+  # be removed.
   def remove_member!(user)
     raise ArgumentError, "the owner cannot leave the project" if owned_by?(user)
 
@@ -54,6 +56,7 @@ class Project < ApplicationRecord
       tasks.where(assignee: user).update_all(assignee_id: nil, updated_at: Time.current)
       memberships.where(user: user).destroy_all
     end
+    CallEvictionJob.perform_later(self, user)
   end
 
   # The next task number, taken atomically so concurrent creations never get

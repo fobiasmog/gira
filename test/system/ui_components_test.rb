@@ -66,4 +66,19 @@ class UiComponentsTest < ApplicationSystemTestCase
     within(region) { click_button "Close" }
     assert_no_text "Changes saved"
   end
+
+  test "the call icons render from the sprite" do
+    icons = %w[call call_end mic mic_off videocam videocam_off open_in_full close_fullscreen keyboard_arrow_down volume_up]
+    icons.each { |name| assert_selector "[data-icon=#{name}] svg use" }
+
+    # The sprite loads asynchronously; a symbol missing from it draws nothing.
+    page.document.synchronize do
+      blank = evaluate_script(<<~JS)
+        [...document.querySelectorAll("[data-icon] use")]
+          .filter((use) => use.getBBox().width === 0)
+          .map((use) => use.closest("[data-icon]").dataset.icon)
+      JS
+      raise Capybara::ExpectationNotMet, "icons that draw nothing: #{blank.join(", ")}" if blank.any?
+    end
+  end
 end

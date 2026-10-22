@@ -9,7 +9,7 @@ const root = process.argv[2] ?? join(import.meta.dirname, "..")
 const frontend = join(root, "app/frontend")
 const errors = []
 
-const RUNTIME_REQUIRED = ["vue", "vue-router", "pinia", "@sentry/vue"]
+const RUNTIME_REQUIRED = ["vue", "vue-router", "pinia", "@sentry/vue", "livekit-client"]
 const RUNTIME_PATTERN = /^@tiptap\/[a-z0-9-]+$/
 const DEV_REQUIRED = ["vite", "@vitejs/plugin-vue", "typescript", "vue-tsc"]
 const EXACT_VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/

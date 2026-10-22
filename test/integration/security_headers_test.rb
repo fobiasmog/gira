@@ -1,15 +1,31 @@
 require "test_helper"
 require "support/production_probe"
+require "support/live_kit_test_helper"
 
 class SecurityHeadersTest < ActionDispatch::IntegrationTest
+  include LiveKitTestHelper
+
   POLICY = "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; " \
     "img-src 'self' data: blob:; connect-src 'self'; frame-src 'self'; form-action 'self'; " \
     "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 
   test "HTML responses carry the strict content security policy" do
-    get rails_health_check_path
+    with_livekit(nil) { get rails_health_check_path }
 
     assert_equal POLICY, response.headers["Content-Security-Policy"]
+  end
+
+  test "the configured media server's WebSocket and HTTP addresses are allowed connections" do
+    with_livekit(url: "wss://media.example.com", api_key: "key", api_secret: "secret") { get rails_health_check_path }
+
+    assert_equal POLICY.sub("connect-src 'self'", "connect-src 'self' wss://media.example.com https://media.example.com"),
+      response.headers["Content-Security-Policy"]
+  end
+
+  test "a media server on another port keeps the port in both addresses" do
+    with_livekit(url: "ws://localhost:7880", api_key: "devkey", api_secret: "secret") { get rails_health_check_path }
+
+    assert_includes response.headers["Content-Security-Policy"], "connect-src 'self' ws://localhost:7880 http://localhost:7880;"
   end
 
   test "HTML responses carry the browser hardening headers" do
@@ -17,7 +33,7 @@ class SecurityHeadersTest < ActionDispatch::IntegrationTest
 
     assert_equal "nosniff", response.headers["X-Content-Type-Options"]
     assert_equal "strict-origin-when-cross-origin", response.headers["Referrer-Policy"]
-    assert_equal "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    assert_equal "camera=(self), microphone=(self), geolocation=(), payment=(), usb=()",
       response.headers["Permissions-Policy"]
   end
 
@@ -43,5 +59,7 @@ class SecurityHeadersTest < ActionDispatch::IntegrationTest
     assert_includes csp, "script-src 'self';"
     assert_includes csp, "frame-ancestors 'none'"
     assert_no_match(/unsafe-inline|unsafe-eval|localhost|127\.0\.0\.1/, csp)
+    # No media server in the (absent) credentials: no call destination either.
+    assert_includes csp, "connect-src 'self';"
   end
 end

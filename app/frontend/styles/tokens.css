@@ -97,6 +97,8 @@
     --sidebar-width: 256px;
     --sidebar-rail-width: 64px;
     --header-height: 56px;
+    --call-bar-height: 56px;
+    --call-tab-height: 36px;
     --column-width: 288px;
     --target-size: 36px;
   }
