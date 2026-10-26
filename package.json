@@ -13,7 +13,7 @@
     "policy": "node script/check-frontend-policy.mjs"
   },
   "dependencies": {
-    "@sentry/vue": "11.2.0",
+    "@sentry/vue": "11.8.0",
     "@tiptap/core": "3.31.4",
     "@tiptap/extension-list": "3.31.4",
     "@tiptap/extensions": "3.31.4",
