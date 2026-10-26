@@ -31,15 +31,17 @@ class PasswordsControllerTest < ActionDispatch::IntegrationTest
     assert_equal I18n.t("passwords.invalid"), flash[:alert]
   end
 
-  test "reset completes: password changed, link used up, all sessions ended" do
+  test "reset completes: password changed, link used up, all sessions ended, all API tokens deleted" do
     other_device = @user.sessions.create!
     token = @user.password_reset_token
+    assert @user.api_tokens.exists?
 
     put password_path(token), params: { password: "a brand new password", password_confirmation: "a brand new password" }
 
     assert_redirected_to new_session_path
     assert @user.reload.authenticate("a brand new password")
     assert_not Session.exists?(other_device.id)
+    assert_not @user.api_tokens.exists?
 
     get edit_password_path(token)
     assert_redirected_to new_password_path

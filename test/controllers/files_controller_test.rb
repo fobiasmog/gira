@@ -1,6 +1,9 @@
 require "test_helper"
+require "support/image_files"
 
 class FilesControllerTest < ActionDispatch::IntegrationTest
+  include ImageFiles
+
   setup do
     # two shares project "goal" with one; stranger shares nothing with one.
     users(:two).send(:attach_default_avatar)
@@ -51,5 +54,63 @@ class FilesControllerTest < ActionDispatch::IntegrationTest
 
     get file_path(users(:two).avatar.blob.signed_id, variant: "huge")
     assert_response :not_found
+  end
+
+  # With an API token (spec api-tokens, "File downloads with a token"). two
+  # has a token for goal and is also a member of side, with stranger.
+
+  def bearer(value = "glnr_two_goal_read")
+    { "Authorization" => "Bearer #{value}" }
+  end
+
+  def attachment_url(project)
+    task = project.tasks.create!(title: "t", creator: users(:two), status: project.first_status)
+    comment = task.comments.new(author: users(:two), body: "file")
+    comment.attach_uploads([ image_upload(format: "png", filename: "shot.png") ])
+    comment.save!
+    file_path(comment.attachments.first.blob.signed_id)
+  end
+
+  test "a token downloads an attachment in its project" do
+    get attachment_url(projects(:goal)), headers: bearer
+
+    assert_response :success
+    assert_match(/\Aattachment; filename="shot.png"/, response.headers["Content-Disposition"])
+  end
+
+  test "a token gets 404 for an attachment in another project of its owner" do
+    get attachment_url(projects(:side)), headers: bearer
+
+    assert_response :not_found
+  end
+
+  test "a token downloads the avatars of its project's members, its owner's included" do
+    users(:one).send(:attach_default_avatar)
+
+    [ @url, file_path(users(:one).avatar.blob.signed_id) ].each do |url|
+      get url, headers: bearer
+      assert_response :success
+    end
+  end
+
+  test "a token gets 404 for a teammate's avatar outside its project" do
+    users(:stranger).send(:attach_default_avatar)
+    url = file_path(users(:stranger).avatar.blob.signed_id)
+    sign_in_as users(:two)
+    get url
+    assert_response :success, "precondition: the session sees the teammate's avatar"
+
+    get url, headers: bearer
+
+    assert_response :not_found
+  end
+
+  test "an invalid token gets 401, even with a session" do
+    sign_in_as users(:two)
+
+    get @url, headers: bearer("glnr_unknown")
+
+    assert_response :unauthorized
+    assert_empty response.body
   end
 end

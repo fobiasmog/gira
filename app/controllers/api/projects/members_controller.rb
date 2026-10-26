@@ -1,6 +1,7 @@
 # Project members (spec project-membership, "Member list and removal").
 class Api::Projects::MembersController < Api::BaseController
   include ProjectScoped
+  allow_token_access only: :index
   before_action :require_owner!, only: :destroy
 
   def index

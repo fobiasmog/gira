@@ -152,6 +152,26 @@ export interface Board {
   active_sprint: SprintSummary | null
 }
 
+export type ApiTokenAccess = "read" | "read_write"
+
+// A personal API token. The value itself is never listed: only its last four
+// characters.
+export interface ApiToken {
+  id: Id
+  name: string
+  project: Pick<Project, "id" | "title" | "short_name">
+  access: ApiTokenAccess
+  last_characters: string
+  expires_at: Timestamp
+  created_at: Timestamp
+  last_used_at: Timestamp | null
+}
+
+// The creation response, the only one that carries the value.
+export interface NewApiToken extends ApiToken {
+  token: string
+}
+
 export interface Announcement {
   id: Id
   body: string

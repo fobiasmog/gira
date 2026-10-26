@@ -3,6 +3,7 @@
 # the task's most recent carried-over copy (carried_to), or null.
 class Api::Projects::Sprints::TasksController < Api::BaseController
   include ProjectScoped
+  allow_token_access only: :index
 
   def index
     sprint = @project.sprints.find(params[:sprint_id])

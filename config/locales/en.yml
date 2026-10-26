@@ -146,7 +146,7 @@ en:
     unlock:
       subject: Your Goalner account was locked
       greeting: Hello %{name},
-      text: Your account was locked after too many failed sign-in attempts. It unlocks automatically in one hour, or you can unlock it now.
+      text: Your account was locked after too many failed password attempts. It unlocks automatically in one hour, or you can unlock it now.
       action: Unlock my account
       ignore: If these attempts were not yours, consider changing your password after unlocking.
 
@@ -180,11 +180,20 @@ en:
   activerecord:
     errors:
       models:
+        api_token:
+          attributes:
+            base:
+              too_many: "You can have at most %{count} active API tokens. Revoke one to create another."
         task:
           attributes:
             base:
               archived: Archived tasks cannot be changed
     attributes:
+      api_token:
+        name: Name
+        project_id: Project
+        access: Access
+        expires_in_days: Expiry
       user:
         name: Name
         email_address: Email

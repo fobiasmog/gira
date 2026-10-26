@@ -39,6 +39,7 @@ async function change() {
     </header>
     <form class="panel stack settings__section" novalidate @submit.prevent="change">
       <h2>{{ t("settings.changePassword") }}</h2>
+      <p class="small muted">{{ t("settings.passwordRevokesTokens") }}</p>
       <AppField :label="t('settings.currentPassword')" :errors="errors.current_password">
         <template #default="{ control }"><input v-model="current" v-bind="control" class="input" type="password" autocomplete="current-password"></template>
       </AppField>

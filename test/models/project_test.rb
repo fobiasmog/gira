@@ -30,4 +30,34 @@ class ProjectTest < ActiveSupport::TestCase
 
     assert_equal [ 1, 2 ], [ project.next_task_number!, project.next_task_number! ]
   end
+
+  # API tokens (spec api-tokens, "Token lifetime and revocation"). two has
+  # tokens for goal and side; one has a token for goal.
+
+  test "a member leaving deletes only their tokens for that project" do
+    revoked = api_tokens(:two_goal_read_write, :two_goal_read)
+
+    projects(:goal).remove_member!(users(:two))
+
+    revoked.each { |token| assert_not ApiToken.exists?(token.id) }
+    assert ApiToken.exists?(api_tokens(:two_side_read_write).id), "the user's tokens for other projects are kept"
+    assert ApiToken.exists?(api_tokens(:one_goal_read_write).id), "other members' tokens are kept"
+  end
+
+  test "a member removed by the owner loses their tokens, which stay gone after rejoining" do
+    project = projects(:goal)
+    project.remove_member!(users(:two))
+    project.memberships.create!(user: users(:two))
+
+    assert_not users(:two).api_tokens.where(project: project).exists?
+    assert ApiToken.exists?(api_tokens(:two_side_read_write).id)
+    assert ApiToken.exists?(api_tokens(:one_goal_read_write).id)
+  end
+
+  test "archiving deletes every member's tokens for the project" do
+    projects(:goal).archive!
+
+    assert_not projects(:goal).api_tokens.exists?
+    assert ApiToken.exists?(api_tokens(:two_side_read_write).id), "tokens for other projects are kept"
+  end
 end

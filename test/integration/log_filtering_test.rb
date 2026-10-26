@@ -16,4 +16,21 @@ class LogFilteringTest < ActionDispatch::IntegrationTest
   ensure
     ActionController::Base.logger = original
   end
+
+  test "token request logged: the token value is not" do
+    output = StringIO.new
+    loggers = { Rails => Rails.logger, ActionController::Base => ActionController::Base.logger, ActiveRecord::Base => ActiveRecord::Base.logger }
+    loggers.each_key { |owner| owner.logger = ActiveSupport::Logger.new(output) }
+    headers = { "Authorization" => "Bearer glnr_two_goal_read_write" }
+
+    get api_project_board_path(projects(:goal)), headers: headers
+    post api_project_tasks_path(projects(:goal)), params: { title: "Logged" }, headers: headers, as: :json
+    get api_project_tasks_path(projects(:goal), token: "glnr_two_goal_read")
+
+    log = output.string
+    assert_includes log, "Api::Projects::TasksController#create"
+    assert_no_match(/glnr_two_goal_read/, log)
+  ensure
+    loggers.each { |owner, logger| owner.logger = logger }
+  end
 end

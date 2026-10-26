@@ -22,6 +22,18 @@ class SentryTest < ActiveSupport::TestCase
     assert_no_match(/private text|private\+text|session_id|abc|203\.0\.113\.9|ada@example/, payload)
   end
 
+  test "before_send removes the Authorization header of a token request" do
+    event = Sentry::ErrorEvent.new(configuration: Sentry::Configuration.new)
+    event.rack_env = Rack::MockRequest.env_for("https://goalner.test/api/projects/1/tasks",
+      method: "POST", "HTTP_AUTHORIZATION" => "Bearer glnr_secret_token_value")
+    assert_includes event.request.headers.keys, "Authorization", "precondition: the unscrubbed event carries the header"
+
+    payload = SentryScrubber.call(event, {}).to_json_compatible.to_s
+
+    assert_not_includes event.request.headers.keys, "Authorization"
+    assert_no_match(/glnr_secret_token_value/, payload)
+  end
+
   test "Sentry is configured to collect no personal data" do
     data_collection = Sentry.configuration.data_collection
 

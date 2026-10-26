@@ -9,5 +9,6 @@ const route = useRoute()
   <nav class="segmented" :aria-label="t('settings.sections')">
     <RouterLink :to="{ name: 'settings-profile' }" :aria-current="route.name === 'settings-profile' ? 'page' : undefined">{{ t("settings.profile") }}</RouterLink>
     <RouterLink :to="{ name: 'settings-security' }" :aria-current="route.name === 'settings-security' ? 'page' : undefined">{{ t("settings.security") }}</RouterLink>
+    <RouterLink :to="{ name: 'settings-api-tokens' }" :aria-current="route.name === 'settings-api-tokens' ? 'page' : undefined">{{ t("settings.apiTokens") }}</RouterLink>
   </nav>
 </template>

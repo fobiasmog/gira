@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_20_090000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_25_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -56,6 +56,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_20_090000) do
     t.boolean "welcome", default: false, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+  end
+
+  create_table "api_tokens", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.bigint "project_id", null: false
+    t.string "name", null: false
+    t.string "access", null: false
+    t.string "token_digest", null: false
+    t.string "last_characters", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "last_used_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["expires_at"], name: "index_api_tokens_on_expires_at"
+    t.index ["project_id"], name: "index_api_tokens_on_project_id"
+    t.index ["token_digest"], name: "index_api_tokens_on_token_digest", unique: true
+    t.index ["user_id"], name: "index_api_tokens_on_user_id"
   end
 
   create_table "comments", force: :cascade do |t|
@@ -365,6 +382,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_20_090000) do
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "announcement_dismissals", "announcements"
   add_foreign_key "announcement_dismissals", "users"
+  add_foreign_key "api_tokens", "projects"
+  add_foreign_key "api_tokens", "users"
   add_foreign_key "comments", "tasks"
   add_foreign_key "comments", "users", column: "author_id"
   add_foreign_key "invitations", "projects"

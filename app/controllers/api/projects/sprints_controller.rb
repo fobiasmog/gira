@@ -1,6 +1,7 @@
 # Sprints (spec sprints).
 class Api::Projects::SprintsController < Api::BaseController
   include ProjectScoped
+  allow_token_access only: %i[ index create ]
 
   VIEWS = %w[all available archived].freeze
 

@@ -2,6 +2,7 @@
 # (sprint_id: null). A task belongs to at most one sprint.
 class Api::Projects::Tasks::SprintsController < Api::BaseController
   include ProjectScoped
+  allow_token_access only: :update
 
   def update
     task = @project.tasks.kept.find(params[:task_id])

@@ -29,6 +29,7 @@ Rails.application.routes.draw do
     resource :me, only: %i[show update], controller: "me" do
       resource :password, only: :update, module: :me
       resource :avatar, only: :update, module: :me
+      resources :api_tokens, only: %i[index create destroy], module: :me
     end
 
     resources :teammates, only: :index

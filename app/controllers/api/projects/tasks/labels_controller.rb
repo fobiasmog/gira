@@ -1,6 +1,7 @@
 # A task's single label (spec labels, "Label a task").
 class Api::Projects::Tasks::LabelsController < Api::BaseController
   include ProjectScoped
+  allow_token_access only: %i[ update destroy ]
   before_action :set_task
 
   def update

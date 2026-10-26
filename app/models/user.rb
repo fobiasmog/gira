@@ -8,6 +8,7 @@ class User < ApplicationRecord
   has_many :sessions, dependent: :destroy
   has_many :memberships, dependent: :destroy
   has_many :projects, through: :memberships
+  has_many :api_tokens, dependent: :delete_all
   has_one_attached :avatar
 
   normalizes :email_address, with: ->(e) { e.strip.downcase }
@@ -20,6 +21,9 @@ class User < ApplicationRecord
   validate :contact_links_are_https_urls
 
   after_create :attach_default_avatar
+  # Changing or resetting the password revokes every API token (design.md,
+  # decision 8). Sessions are ended by the controllers, which keep the current one.
+  after_update_commit -> { api_tokens.delete_all }, if: :saved_change_to_password_digest?
 
   # Single use: confirming changes confirmed_at, and changing the address
   # invalidates links sent to the old one.
@@ -79,6 +83,22 @@ class User < ApplicationRecord
     update_columns(failed_login_attempts: 0, locked_until: nil)
   end
   alias_method :reset_failed_sign_ins!, :unlock!
+
+  # Checks the current password re-entered in settings (design.md, decision
+  # 7). It shares the sign-in lockout: a wrong password counts as a failed
+  # attempt, a correct one resets the count, and while the account is locked
+  # every password is refused without being counted.
+  def verify_reentered_password(password)
+    return false if locked?
+
+    if authenticate(password.to_s)
+      reset_failed_sign_ins!
+      true
+    else
+      register_failed_sign_in!
+      false
+    end
+  end
 
   # Merges submitted links into the stored ones; an empty value removes a link.
   def merge_contact_links(links)

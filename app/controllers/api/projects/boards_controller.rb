@@ -2,6 +2,7 @@
 # board snapshot").
 class Api::Projects::BoardsController < Api::BaseController
   include ProjectScoped
+  allow_token_access only: :show
 
   def show
     sprint = @project.active_sprint
