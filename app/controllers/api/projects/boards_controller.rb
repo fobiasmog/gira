@@ -11,7 +11,7 @@ class Api::Projects::BoardsController < Api::BaseController
 
     render json: {
       project: ProjectSerializer.new(@project, viewer: Current.user),
-      columns: @project.statuses.map { |status| status.slice(:id, :title, :color, :position, :done) },
+      columns: @project.statuses.map { |status| StatusSerializer.new(status) },
       tasks: TaskSerializer.cards(tasks),
       members: @project.members.with_attached_avatar.order(:name).map { |member| UserSerializer.new(member).card },
       labels: @project.labels.order(:title).map { |label| label.slice(:id, :title) },

@@ -146,6 +146,34 @@ class ApiTokenAccessTest < ActionDispatch::IntegrationTest
     assert_equal [ users(:one).id, users(:two).id ].sort, response.parsed_body.map { |member| member["id"] }.sort
   end
 
+  test "column list: a read-only token gets the project's columns in board order" do
+    get api_project_statuses_path(@goal), headers: bearer("glnr_two_goal_read")
+
+    assert_response :success
+    assert_equal [ statuses(:goal_todo), statuses(:goal_work), statuses(:goal_done) ].map(&:id), response.parsed_body.map { |column| column["id"] }
+  end
+
+  test "columns of another project of the owner: 404" do
+    get api_project_statuses_path(@side), headers: bearer("glnr_two_goal_read")
+
+    assert_response :not_found
+  end
+
+  test "changing columns: a read-write token gets 403 and the columns are unchanged" do
+    headers = bearer("glnr_two_goal_read_write")
+
+    assert_no_difference -> { @goal.statuses.count } do
+      post api_project_statuses_path(@goal), params: { title: "Review" }, headers: headers, as: :json
+      assert_equal [ 403, "token_not_allowed" ], [ response.status, error_code ]
+      patch api_project_status_path(@goal, statuses(:goal_done)), params: { title: "Shipped", position: 0 }, headers: headers, as: :json
+      assert_equal [ 403, "token_not_allowed" ], [ response.status, error_code ]
+      delete api_project_status_path(@goal, statuses(:goal_work)), headers: headers
+      assert_equal [ 403, "token_not_allowed" ], [ response.status, error_code ]
+    end
+
+    assert_equal [ "To Do", "Work", "Done" ], @goal.statuses.reload.map(&:title)
+  end
+
   test "own profile: the token's owner" do
     get api_me_path, headers: bearer("glnr_two_goal_read")
 

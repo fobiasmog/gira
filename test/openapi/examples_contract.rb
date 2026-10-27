@@ -15,6 +15,7 @@ class OpenapiExamplesContract < OpenapiContractTest
     "listProjects" => -> { get api_projects_path, headers: token },
     "showProject" => -> { get api_project_path(@project), headers: token },
     "showBoard" => -> { get api_project_board_path(@project), headers: token },
+    "listColumns" => -> { get api_project_statuses_path(@project), headers: token },
     "listMembers" => -> { get api_project_members_path(@project), headers: token },
 
     "listTasks" => -> { get api_project_tasks_path(@project, view: "backlog"), headers: token },

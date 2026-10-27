@@ -182,6 +182,7 @@ class ApiTokenAuthenticationTest < ForgeryProtectedIntegrationTest
     api/projects/sprints/activations#create
     api/projects/sprints/archivals#create
     api/projects/sprints/tasks#index
+    api/projects/statuses#index
     api/projects/tasks#create
     api/projects/tasks#destroy
     api/projects/tasks#index

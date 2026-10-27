@@ -8,6 +8,37 @@ class Api::Projects::StatusesControllerTest < ActionDispatch::IntegrationTest
 
   def titles(body = response.parsed_body) = body.map { |c| c["title"] }
 
+  test "list columns in board order, the last one done" do
+    Board.new(@project).add_column(title: "Review")
+
+    get api_project_statuses_path(@project)
+
+    assert_response :success
+    assert_equal [ "To Do", "Work", "Review", "Done" ], titles
+    assert_equal [ 0, 1, 2, 3 ], response.parsed_body.map { |c| c["position"] }
+    assert_equal [ false, false, false, true ], response.parsed_body.map { |c| c["done"] }
+    assert_equal %w[ color done id position title ], response.parsed_body.first.keys.sort
+  end
+
+  test "the column list equals the board's columns" do
+    get api_project_statuses_path(@project)
+    columns = response.parsed_body
+
+    get api_project_board_path(@project)
+
+    assert_equal response.parsed_body["columns"], columns
+  end
+
+  test "a non-member cannot list the columns" do
+    sign_out
+    sign_in_as users(:stranger)
+
+    get api_project_statuses_path(@project)
+
+    assert_response :not_found
+    assert_equal "not_found", response.parsed_body.dig("error", "code")
+  end
+
   test "add a column before Done" do
     post api_project_statuses_path(@project), params: { title: "Review" }, as: :json
 

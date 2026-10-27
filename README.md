@@ -63,7 +63,8 @@ curl -H "Authorization: Bearer glnr_..." http://localhost:3000/api/projects
 Endpoints available to tokens, all under `/api`:
 
 - `GET /me`; `GET /projects` (only the token's project); `GET /projects/:id`;
-  `GET /projects/:id/board`; `GET /projects/:id/members`;
+  `GET /projects/:id/board`; `GET /projects/:id/statuses` (the board's
+  columns); `GET /projects/:id/members`;
 - tasks: `/projects/:id/tasks` (list, show, create, update, archive with
   DELETE), and per task `placement`, `subtasks`, `completion`, `label`, `sprint`
   and `comments`; `PATCH`/`DELETE /comments/:id` for your own comments;
@@ -71,9 +72,9 @@ Endpoints available to tokens, all under `/api`:
   `archival` and `tasks`) under `/projects/:id`;
 - downloads of attachments and avatars from the `/files/...` URLs in responses.
 
-Everything else (projects, members, invitations, columns, your account,
-tokens, teammates, statistics, announcements and feedback) answers a token
-with 403.
+Everything else (projects, members, invitations, changing columns, your
+account, tokens, teammates, statistics, announcements and feedback) answers a
+token with 403.
 
 The full reference, with every parameter, body and response, is at
 **`/api/docs`** (for example http://localhost:3000/api/docs) for signed-in

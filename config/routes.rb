@@ -48,7 +48,7 @@ Rails.application.routes.draw do
         resources :invitations, only: %i[index create destroy]
         resources :members, only: %i[index destroy]
         resource :board, only: :show
-        resources :statuses, only: %i[create update destroy]
+        resources :statuses, only: %i[index create update destroy]
         resources :tasks, only: %i[index show create update destroy] do
           scope module: :tasks do
             resource :placement, only: :update

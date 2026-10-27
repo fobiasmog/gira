@@ -1,7 +1,13 @@
-# Board columns (spec project-board, "Manage columns" and "Done column").
+# Board columns (spec project-board, "List columns", "Manage columns" and
+# "Done column"). API tokens may only list them (spec api-tokens).
 class Api::Projects::StatusesController < Api::BaseController
   include ProjectScoped
+  allow_token_access only: :index
   before_action :set_status, only: %i[ update destroy ]
+
+  def index
+    render json: columns
+  end
 
   def create
     board.add_column(title: params.require(:title))
@@ -30,6 +36,6 @@ class Api::Projects::StatusesController < Api::BaseController
     end
 
     def columns
-      @project.statuses.reload.map { |status| status.slice(:id, :title, :color, :position, :done) }
+      @project.statuses.reload.map { |status| StatusSerializer.new(status) }
     end
 end

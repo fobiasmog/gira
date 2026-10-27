@@ -127,6 +127,33 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
+  /api/projects/{project_id}/statuses:
+    get:
+      operationId: listColumns
+      tags: [Projects]
+      summary: List the board's columns
+      description: |
+        The board's columns without its tasks, as in the board snapshot. The
+        last column is the done column. A column's `id` is the `status_id` that
+        moving a task to a column takes.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: The columns, in board order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Column"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
   /api/projects/{project_id}/members:
     get:
       operationId: listMembers

@@ -54,11 +54,12 @@ class OpenapiParityContract < OpenapiContractTest
     assert_equal operations.map(&:id).uniq, operations.map(&:id)
   end
 
-  test "session-only endpoint absent: no project archiving, invitations or teammates" do
+  test "session-only endpoint absent: no project archiving, invitations, teammates or column changes" do
     documented = OpenapiContractTest.operations.map { |operation| "#{operation.method} #{operation.path}" }
 
     assert_not_includes documented, "DELETE /api/projects/{id}"
-    assert_empty documented.grep(%r{/invitations|/teammates|/membership|/statuses})
+    assert_empty documented.grep(%r{/invitations|/teammates|/membership})
+    assert_equal [ "GET /api/projects/{project_id}/statuses" ], documented.grep(%r{/statuses})
   end
 
   test "opened endpoint documented: creating a task, with its body, its 201 task and Bearer authentication" do
