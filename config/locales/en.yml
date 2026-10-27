@@ -1,5 +1,10 @@
 en:
   app_name: Goalner
+
+  api_docs:
+    title: API reference
+    tokens: Your API tokens
+
   layout:
     language: Language
     sign_in: Sign in

@@ -9,9 +9,12 @@ const root = process.argv[2] ?? join(import.meta.dirname, "..")
 const frontend = join(root, "app/frontend")
 const errors = []
 
-const RUNTIME_REQUIRED = ["vue", "vue-router", "pinia", "@sentry/vue"]
+const RUNTIME_REQUIRED = ["vue", "vue-router", "pinia", "@sentry/vue", "swagger-ui-dist"]
 const RUNTIME_PATTERN = /^@tiptap\/[a-z0-9-]+$/
 const DEV_REQUIRED = ["vite", "@vitejs/plugin-vue", "typescript", "vue-tsc"]
+// Packages only one file may import: the API documentation viewer stays out
+// of the single-page application.
+const IMPORTED_ONLY_BY = { "swagger-ui-dist": "app/frontend/entrypoints/api-docs.ts" }
 const EXACT_VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/
 
 // --- package.json ---------------------------------------------------------
@@ -92,6 +95,8 @@ if (existsSync(frontend)) {
         const name = packageOf(specifier)
         if (!(name in runtime)) {
           errors.push(`${rel}:${lineOf(text, match.index)}: imports "${specifier}", but "${name}" is not a direct dependency`)
+        } else if (IMPORTED_ONLY_BY[name] && IMPORTED_ONLY_BY[name] !== rel) {
+          errors.push(`${rel}:${lineOf(text, match.index)}: imports "${specifier}", which only ${IMPORTED_ONLY_BY[name]} may import`)
         }
       }
     }

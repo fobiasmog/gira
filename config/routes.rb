@@ -73,6 +73,10 @@ Rails.application.routes.draw do
       end
     end
 
+    # Documentation of the token API, for signed-in users (spec api-documentation).
+    get "docs", to: "docs#show"
+    get "openapi.yaml", to: "openapi#show", format: false, as: :openapi_document
+
     # Must stay last in the namespace: unknown API paths get the JSON 404 envelope.
     match "*path", to: "base#route_not_found", via: :all
   end

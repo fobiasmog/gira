@@ -88,4 +88,13 @@ class ApiTokensTest < ApplicationSystemTestCase
 
     assert_text "Changing your password revokes all your API tokens."
   end
+
+  test "the API tokens screen links to the API documentation" do
+    visit "/app/settings/api-tokens"
+
+    click_link "API reference"
+
+    assert_current_path "/api/docs"
+    assert_selector ".opblock-summary-path", text: "/api/me"
+  end
 end

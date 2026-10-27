@@ -102,7 +102,8 @@ const accessLabel = (value: ApiTokenAccess) => t(value === "read" ? "apiTokens.r
       <SettingsTabs />
     </header>
 
-    <p class="muted">{{ t("apiTokens.intro") }}</p>
+    <!-- A server-rendered page outside the SPA, so a plain link. -->
+    <p class="muted">{{ t("apiTokens.intro") }} <a href="/api/docs">{{ t("apiTokens.reference") }}</a></p>
 
     <div v-if="created" class="panel stack settings__section new-token" role="status">
       <h2>{{ t("apiTokens.newToken", { name: created.name }) }}</h2>

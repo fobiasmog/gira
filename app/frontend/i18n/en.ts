@@ -288,6 +288,7 @@ export const en = {
   },
   apiTokens: {
     intro: "A token lets a script or integration use the API as you, in one project. Send it in the Authorization: Bearer header.",
+    reference: "API reference",
     create: "Create a token",
     name: "Name",
     nameHint: "What the token is for, such as “CI”.",

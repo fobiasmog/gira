@@ -1,0 +1,1645 @@
+# The token API (spec api-documentation), shown at /api/docs. Written by hand:
+# run bin/openapi-verify after changing it, a serializer, or an action opened
+# with allow_token_access.
+openapi: 3.1.0
+info:
+  title: Goalner API
+  version: "1"
+  description: |
+    The part of the Goalner API that personal API tokens can use: tasks,
+    comments, labels, milestones, sprints and file downloads in the token's
+    project.
+
+    Create a token in the app under Settings → API tokens, then send it in the
+    `Authorization: Bearer <token>` header. A token reaches one project, and
+    a read-only token may only send GET requests. Requests are limited to 300
+    a minute per token.
+
+    Errors use one JSON envelope: `{ "error": { "code", "message", "fields" } }`.
+
+servers:
+  - url: /
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Profile
+    description: The token's owner.
+  - name: Projects
+    description: The token's project, its board and its members.
+  - name: Tasks
+    description: Tasks, their placement on the board, label and sprint.
+  - name: Subtasks
+    description: Subtasks of a root task, and their completion.
+  - name: Comments
+    description: Markdown comments on tasks, with file attachments.
+  - name: Labels
+    description: The project's labels.
+  - name: Milestones
+    description: Milestones group tasks across sprints.
+  - name: Sprints
+    description: Time-boxed sprints; the board shows the active one.
+  - name: Files
+    description: Downloads of the attachments and avatars linked from other responses.
+
+paths:
+  /api/me:
+    get:
+      operationId: showProfile
+      tags: [Profile]
+      summary: The token owner's profile
+      responses:
+        "200":
+          description: The profile of the user who owns the token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects:
+    get:
+      operationId: listProjects
+      tags: [Projects]
+      summary: List projects
+      description: With a token, only the token's project.
+      responses:
+        "200":
+          description: The token's project, in a list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{id}:
+    get:
+      operationId: showProject
+      tags: [Projects]
+      summary: Show a project
+      parameters:
+        - $ref: "#/components/parameters/ProjectIdAsId"
+      responses:
+        "200":
+          description: The project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/board:
+    get:
+      operationId: showBoard
+      tags: [Projects]
+      summary: The board
+      description: |
+        Everything the board shows in one response: the columns, the root tasks
+        of the active sprint (or the tasks in no sprint when no sprint is
+        active), the members and the labels.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: The board.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Board"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/members:
+    get:
+      operationId: listMembers
+      tags: [Projects]
+      summary: List the project's members
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: The members, by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserCard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/tasks:
+    get:
+      operationId: listTasks
+      tags: [Tasks]
+      summary: List tasks
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: view
+          in: query
+          description: |
+            - `board` (default): root tasks on the board, the active sprint's or, when none is active, those in no sprint, in column order;
+            - `backlog`: open root tasks in no sprint, in column order;
+            - `backlog_done`: done root tasks in no sprint, most recently completed first;
+            - `archived`: archived tasks, newest first.
+          schema:
+            type: string
+            enum: [board, backlog, backlog_done, archived]
+            default: board
+      responses:
+        "200":
+          description: Task cards.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaskCard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    post:
+      operationId: createTask
+      tags: [Tasks]
+      summary: Create a task
+      description: |
+        A task created with a column (`status_id`) joins the active sprint, unless
+        `sprint_id` is given (`null` for no sprint). A task created without a
+        column goes to the first column, in no sprint.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCreate"
+      responses:
+        "201":
+          description: The created task; its creator is the token's owner.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/tasks/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: id
+        in: path
+        required: true
+        description: The task's id, or its key such as `GOAL-12`.
+        schema:
+          type: string
+          pattern: "^([1-9][0-9]*|[A-Z][A-Z0-9]*-[1-9][0-9]*)$"
+    get:
+      operationId: showTask
+      tags: [Tasks]
+      summary: Show a task
+      responses:
+        "200":
+          description: The task.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    patch:
+      operationId: updateTask
+      tags: [Tasks]
+      summary: Update a task
+      description: Changes only the fields given. The API also accepts PUT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskUpdate"
+      responses:
+        "200":
+          description: The updated task.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    delete:
+      operationId: archiveTask
+      tags: [Tasks]
+      summary: Archive a task
+      description: The task leaves the board and every list, and stays readable in the project's archive.
+      responses:
+        "204":
+          description: Archived.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/tasks/{task_id}/placement:
+    put:
+      operationId: placeTask
+      tags: [Tasks]
+      summary: Move a root task to a column and position
+      description: The API also accepts PATCH.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Placement"
+      responses:
+        "200":
+          description: The placed task.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskCard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/tasks/{task_id}/label:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/TaskId"
+    put:
+      operationId: setTaskLabel
+      tags: [Tasks]
+      summary: Set a task's label
+      description: A task has at most one label. The API also accepts PATCH.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label_id]
+              properties:
+                label_id:
+                  type: integer
+                  description: A label of the same project.
+      responses:
+        "200":
+          description: The task.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskCard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    delete:
+      operationId: removeTaskLabel
+      tags: [Tasks]
+      summary: Remove a task's label
+      responses:
+        "200":
+          description: The task.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskCard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/tasks/{task_id}/sprint:
+    put:
+      operationId: setTaskSprint
+      tags: [Tasks]
+      summary: Put a root task into a sprint, or take it out
+      description: The API also accepts PATCH.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sprint_id:
+                  type: [integer, "null"]
+                  description: An open sprint of the same project, or `null` (or nothing) for no sprint.
+      responses:
+        "200":
+          description: The task.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskCard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/tasks/{task_id}/subtasks:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/TaskId"
+    get:
+      operationId: listSubtasks
+      tags: [Subtasks]
+      summary: List a task's subtasks
+      responses:
+        "200":
+          description: The subtasks, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaskCard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    post:
+      operationId: createSubtask
+      tags: [Subtasks]
+      summary: Add a subtask
+      description: The subtask starts in the first column. Subtasks cannot have subtasks of their own.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                  maxLength: 255
+      responses:
+        "201":
+          description: The subtask.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskCard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/tasks/{task_id}/completion:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: task_id
+        in: path
+        required: true
+        description: The subtask's id. A root task is not found.
+        schema:
+          type: integer
+    put:
+      operationId: completeSubtask
+      tags: [Subtasks]
+      summary: Mark a subtask complete
+      description: Moves it to the done column. The API also accepts PATCH.
+      responses:
+        "200":
+          description: The subtask.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskCard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    delete:
+      operationId: reopenSubtask
+      tags: [Subtasks]
+      summary: Mark a subtask not complete
+      description: Moves it back to the first column.
+      responses:
+        "200":
+          description: The subtask.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskCard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/tasks/{task_id}/comments:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/TaskId"
+    get:
+      operationId: listComments
+      tags: [Comments]
+      summary: List a task's comments
+      responses:
+        "200":
+          description: The comments, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    post:
+      operationId: createComment
+      tags: [Comments]
+      summary: Comment on a task
+      description: |
+        The comment's author is the token's owner. Attach up to 10 files of at
+        most 10 MB each (PNG, JPEG, GIF, WebP, PDF, plain text, CSV or ZIP) by
+        sending `multipart/form-data`. Archived tasks cannot be commented on.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentBody"
+          multipart/form-data:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body:
+                  type: string
+                  minLength: 1
+                  maxLength: 10000
+                  description: Markdown.
+                attachments[]:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        "201":
+          description: The comment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/comments/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: A comment by the token's owner, in the token's project.
+        schema:
+          type: integer
+    patch:
+      operationId: updateComment
+      tags: [Comments]
+      summary: Edit your comment
+      description: The API also accepts PUT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentBody"
+      responses:
+        "200":
+          description: The edited comment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    delete:
+      operationId: deleteComment
+      tags: [Comments]
+      summary: Delete your comment
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/labels:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listLabels
+      tags: [Labels]
+      summary: List labels
+      responses:
+        "200":
+          description: The labels, by title.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Label"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    post:
+      operationId: createLabel
+      tags: [Labels]
+      summary: Create a label
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 30
+                  description: Unique in the project, ignoring case.
+      responses:
+        "201":
+          description: The label.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Label"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/milestones:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listMilestones
+      tags: [Milestones]
+      summary: List milestones
+      parameters:
+        - name: view
+          in: query
+          description: "`deleted` lists deleted milestones, which can be recovered; otherwise the current ones."
+          schema:
+            type: string
+            enum: [deleted]
+      responses:
+        "200":
+          description: The milestones, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Milestone"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    post:
+      operationId: createMilestone
+      tags: [Milestones]
+      summary: Create a milestone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+      responses:
+        "201":
+          description: The milestone.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Milestone"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/milestones/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: id
+        in: path
+        required: true
+        description: A milestone that is not deleted.
+        schema:
+          type: integer
+    get:
+      operationId: showMilestone
+      tags: [Milestones]
+      summary: Show a milestone with its tasks
+      responses:
+        "200":
+          description: The milestone and its tasks, by number.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MilestoneDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    delete:
+      operationId: deleteMilestone
+      tags: [Milestones]
+      summary: Delete a milestone
+      description: Its tasks keep the reference, so recovering the milestone restores the grouping.
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/milestones/{milestone_id}/recovery:
+    post:
+      operationId: recoverMilestone
+      tags: [Milestones]
+      summary: Recover a deleted milestone
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: milestone_id
+          in: path
+          required: true
+          description: A deleted milestone.
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: The recovered milestone.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Milestone"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/sprints:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listSprints
+      tags: [Sprints]
+      summary: List sprints
+      parameters:
+        - name: view
+          in: query
+          description: |
+            - `all` (default): sprints that are not archived;
+            - `available`: the active sprint and those that have not started;
+            - `archived`: archived sprints.
+          schema:
+            type: string
+            enum: [all, available, archived]
+            default: all
+      responses:
+        "200":
+          description: The sprints, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Sprint"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    post:
+      operationId: createSprint
+      tags: [Sprints]
+      summary: Create a sprint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, starts_on, ends_on]
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                starts_on:
+                  type: string
+                  format: date
+                ends_on:
+                  type: string
+                  format: date
+                  description: Not before `starts_on`.
+                activate:
+                  type: boolean
+                  description: Make it the active sprint.
+                carry_over:
+                  type: boolean
+                  description: Copy the unfinished tasks of the active sprint into it.
+      responses:
+        "201":
+          description: The sprint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sprint"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/sprints/{sprint_id}/activation:
+    post:
+      operationId: activateSprint
+      tags: [Sprints]
+      summary: Make a sprint the active one
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/SprintId"
+      responses:
+        "200":
+          description: The sprint, now active.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sprint"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/sprints/{sprint_id}/archival:
+    post:
+      operationId: archiveSprint
+      tags: [Sprints]
+      summary: Archive a sprint
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/SprintId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                carry_to_sprint_id:
+                  type: integer
+                  description: Another sprint of the project to copy the unfinished tasks into.
+      responses:
+        "200":
+          description: The archived sprint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sprint"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/sprints/{sprint_id}/tasks:
+    get:
+      operationId: listSprintTasks
+      tags: [Sprints]
+      summary: List a sprint's tasks
+      description: Root tasks that are not archived, done ones included, in column order.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/SprintId"
+      responses:
+        "200":
+          description: The sprint's task cards.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SprintTaskCard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /files/{signed_id}:
+    get:
+      operationId: downloadFile
+      tags: [Files]
+      summary: Download a file
+      description: |
+        An attachment of a comment in the token's project, or the avatar of one
+        of its members. Use the `url` of an attachment or the `avatar_url` of a
+        user as it is.
+      parameters:
+        - $ref: "#/components/parameters/SignedId"
+      responses:
+        "200":
+          description: "The file, as a download (`Content-Disposition: attachment`)."
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/FileUnauthorized"
+        "404":
+          $ref: "#/components/responses/FileNotFound"
+        "429":
+          $ref: "#/components/responses/FileRateLimited"
+
+  /files/{signed_id}/{variant}:
+    get:
+      operationId: downloadFilePreview
+      tags: [Files]
+      summary: Download a file's preview
+      description: A WebP thumbnail of an image or PDF attachment, from its `preview_url`.
+      parameters:
+        - $ref: "#/components/parameters/SignedId"
+        - name: variant
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [preview]
+      responses:
+        "200":
+          description: "The file, as a download (`Content-Disposition: attachment`)."
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/FileUnauthorized"
+        "404":
+          $ref: "#/components/responses/FileNotFound"
+        "429":
+          $ref: "#/components/responses/FileRateLimited"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: A personal API token, starting with `glnr_`.
+
+  parameters:
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      description: The token's project.
+      schema:
+        type: integer
+    ProjectIdAsId:
+      name: id
+      in: path
+      required: true
+      description: The token's project.
+      schema:
+        type: integer
+    TaskId:
+      name: task_id
+      in: path
+      required: true
+      description: The task's id.
+      schema:
+        type: integer
+    SprintId:
+      name: sprint_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    SignedId:
+      name: signed_id
+      in: path
+      required: true
+      description: The file's signed id, as it appears in its URL.
+      schema:
+        type: string
+
+  responses:
+    Unauthorized:
+      description: The token is missing, unknown, expired or revoked.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: invalid_token
+              message: The API token is missing, invalid or expired.
+    InsufficientScope:
+      description: The token is read-only, and this request would change data.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: insufficient_scope
+              message: This API token is read-only.
+    NotFound:
+      description: |
+        The record does not exist, or is outside the token's project. Another
+        project of the token's owner is answered the same way.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: not_found
+              message: Not found.
+    ValidationFailed:
+      description: Some fields are invalid; `fields` names them.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: validation_failed
+              message: Some fields are invalid.
+              fields:
+                title: ["Title can't be blank"]
+    FileUnauthorized:
+      description: The token is missing, unknown, expired or revoked. No body.
+    FileNotFound:
+      description: The file does not exist, or the token may not see it. The body is the application's HTML not-found page.
+      content:
+        text/html:
+          schema:
+            type: string
+    FileRateLimited:
+      description: More than 300 requests in a minute with this token. No body.
+    RateLimited:
+      description: More than 300 requests in a minute with this token. The request was not processed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: rate_limited
+              message: Too many requests. Try again later.
+
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [invalid_token, insufficient_scope, not_found, validation_failed, rate_limited, internal_error]
+            message:
+              type: string
+              description: A human-readable message, in English.
+            fields:
+              type: object
+              description: For `validation_failed`, the messages for each invalid field, keyed by field name.
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+
+    # Open sets of fields that closed schemas below combine with allOf.
+    UserCardFields:
+      type: object
+      required: [id, name, email_address, avatar_url]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email_address:
+          type: string
+          format: email
+        avatar_url:
+          type: [string, "null"]
+          description: A `/files/...` URL; download it with the same token.
+
+    UserCard:
+      description: A user as teammates see them.
+      allOf:
+        - $ref: "#/components/schemas/UserCardFields"
+      unevaluatedProperties: false
+
+    Profile:
+      description: The token owner's own profile.
+      allOf:
+        - $ref: "#/components/schemas/UserCardFields"
+        - type: object
+          required: [lang, contact_links, admin]
+          properties:
+            lang:
+              type: string
+              enum: [en, ru]
+            contact_links:
+              type: object
+              additionalProperties: false
+              properties:
+                fb: { type: string, format: uri }
+                vk: { type: string, format: uri }
+                tg: { type: string, format: uri }
+                ig: { type: string, format: uri }
+                slack: { type: string, format: uri }
+            admin:
+              type: boolean
+      unevaluatedProperties: false
+
+    Project:
+      type: object
+      additionalProperties: false
+      required: [id, title, short_name, owner_id, owned_by_me]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        short_name:
+          type: string
+          description: The prefix of task keys, such as `GOAL` in `GOAL-12`.
+        owner_id:
+          type: integer
+        owned_by_me:
+          type: boolean
+          description: Whether the token's owner owns the project.
+
+    Column:
+      type: object
+      additionalProperties: false
+      required: [id, title, color, position, done]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        color:
+          type: [string, "null"]
+        position:
+          type: integer
+        done:
+          type: boolean
+          description: Tasks in the done column are complete.
+
+    Label:
+      type: object
+      additionalProperties: false
+      required: [id, title]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+
+    SprintSummary:
+      type: object
+      additionalProperties: false
+      required: [id, title, starts_on, ends_on]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        starts_on:
+          type: string
+          format: date
+        ends_on:
+          type: string
+          format: date
+
+    Board:
+      type: object
+      additionalProperties: false
+      required: [project, columns, tasks, members, labels, active_sprint]
+      properties:
+        project:
+          $ref: "#/components/schemas/Project"
+        columns:
+          type: array
+          items:
+            $ref: "#/components/schemas/Column"
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskCard"
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserCard"
+        labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/Label"
+        active_sprint:
+          oneOf:
+            - $ref: "#/components/schemas/SprintSummary"
+            - type: "null"
+
+    TaskCardFields:
+      type: object
+      required: [id, number, key, title, status_id, position, parent_id, sprint_id, milestone_id, label_id, assignee_id,
+        deadline, important, completed_at, archived_at, subtask_count, subtask_done_count, comment_count]
+      properties:
+        id:
+          type: integer
+        number:
+          type: integer
+          description: The task's number in its project.
+        key:
+          type: string
+          description: The project's short name and the number, such as `GOAL-12`.
+        title:
+          type: string
+        status_id:
+          type: integer
+          description: The task's column.
+        position:
+          type: [integer, "null"]
+          description: The position in its column, from 0; `null` for archived tasks.
+        parent_id:
+          type: [integer, "null"]
+          description: For a subtask, its root task.
+        sprint_id:
+          type: [integer, "null"]
+        milestone_id:
+          type: [integer, "null"]
+        label_id:
+          type: [integer, "null"]
+        assignee_id:
+          type: [integer, "null"]
+        deadline:
+          type: [string, "null"]
+          format: date-time
+        important:
+          type: boolean
+        completed_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the task reached the done column.
+        archived_at:
+          type: [string, "null"]
+          format: date-time
+        subtask_count:
+          type: integer
+        subtask_done_count:
+          type: integer
+        comment_count:
+          type: integer
+
+    TaskCard:
+      description: A task as boards and lists show it.
+      allOf:
+        - $ref: "#/components/schemas/TaskCardFields"
+      unevaluatedProperties: false
+
+    TaskDetail:
+      description: A task with its description, people, column, label, sprint, milestone and subtasks.
+      allOf:
+        - $ref: "#/components/schemas/TaskCardFields"
+        - type: object
+          required: [description, origin_task_id, created_at, creator, assignee, status, milestone, label, sprint, subtasks]
+          properties:
+            description:
+              type: string
+              description: Markdown.
+            origin_task_id:
+              type: [integer, "null"]
+              description: For a copy carried over from another sprint, the task it was copied from.
+            created_at:
+              type: string
+              format: date-time
+            creator:
+              oneOf:
+                - $ref: "#/components/schemas/UserCard"
+                - type: "null"
+            assignee:
+              oneOf:
+                - $ref: "#/components/schemas/UserCard"
+                - type: "null"
+            status:
+              type: object
+              additionalProperties: false
+              required: [id, title, done]
+              properties:
+                id: { type: integer }
+                title: { type: string }
+                done: { type: boolean }
+            milestone:
+              oneOf:
+                - $ref: "#/components/schemas/Reference"
+                - type: "null"
+            label:
+              oneOf:
+                - $ref: "#/components/schemas/Label"
+                - type: "null"
+            sprint:
+              oneOf:
+                - $ref: "#/components/schemas/Reference"
+                - type: "null"
+            subtasks:
+              type: array
+              items:
+                $ref: "#/components/schemas/Subtask"
+      unevaluatedProperties: false
+
+    Subtask:
+      type: object
+      additionalProperties: false
+      required: [id, number, key, title, complete]
+      properties:
+        id: { type: integer }
+        number: { type: integer }
+        key: { type: string }
+        title: { type: string }
+        complete:
+          type: boolean
+          description: Whether the subtask is in the done column.
+
+    Reference:
+      type: object
+      additionalProperties: false
+      required: [id, title]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+
+    TaskCreate:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 100000
+          description: Markdown.
+        deadline:
+          type: [string, "null"]
+          format: date-time
+        important:
+          type: boolean
+        assignee_id:
+          type: [integer, "null"]
+          description: A member of the project.
+        milestone_id:
+          type: [integer, "null"]
+        status_id:
+          type: [integer, "null"]
+          description: The column; the first column when omitted.
+        label_id:
+          type: [integer, "null"]
+        sprint_id:
+          type: [integer, "null"]
+          description: An open sprint of the project, or `null` for none.
+
+    TaskUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 100000
+        deadline:
+          type: [string, "null"]
+          format: date-time
+        important:
+          type: boolean
+        assignee_id:
+          type: [integer, "null"]
+        milestone_id:
+          type: [integer, "null"]
+
+    Placement:
+      type: object
+      required: [status_id]
+      properties:
+        status_id:
+          type: integer
+          description: The column to move the task to.
+        position:
+          type: integer
+          minimum: 0
+          default: 0
+          description: The position in the column, from 0; larger values put the task last.
+        sprint_id:
+          type: [integer, "null"]
+          description: Moves the task into this sprint, or out of its sprint with `null`, in the same operation. Omit it to keep the sprint.
+
+    CommentBody:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: Markdown, stored and returned exactly as written.
+
+    Comment:
+      type: object
+      additionalProperties: false
+      required: [id, body, author, created_at, updated_at, attachments]
+      properties:
+        id: { type: integer }
+        body:
+          type: string
+          description: Markdown, exactly as written.
+        author:
+          $ref: "#/components/schemas/UserCard"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Attachment"
+
+    Attachment:
+      type: object
+      additionalProperties: false
+      required: [filename, byte_size, content_type, url, preview_url]
+      properties:
+        filename: { type: string }
+        byte_size: { type: integer }
+        content_type: { type: string }
+        url:
+          type: string
+          description: A `/files/...` URL; download it with the same token.
+        preview_url:
+          type: [string, "null"]
+          description: A smaller preview, for images and PDFs.
+
+    MilestoneFields:
+      type: object
+      required: [id, title, deleted_at, total, done]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        deleted_at:
+          type: [string, "null"]
+          format: date-time
+        total:
+          type: integer
+          description: Tasks in the milestone that are not archived.
+        done:
+          type: integer
+          description: Of those, the tasks in the done column.
+
+    Milestone:
+      allOf:
+        - $ref: "#/components/schemas/MilestoneFields"
+      unevaluatedProperties: false
+
+    MilestoneDetail:
+      allOf:
+        - $ref: "#/components/schemas/MilestoneFields"
+        - type: object
+          required: [tasks]
+          properties:
+            tasks:
+              type: array
+              items:
+                $ref: "#/components/schemas/TaskCard"
+      unevaluatedProperties: false
+
+    Sprint:
+      type: object
+      additionalProperties: false
+      required: [id, title, starts_on, ends_on, active, archived_at, task_counts]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        starts_on:
+          type: string
+          format: date
+        ends_on:
+          type: string
+          format: date
+        active:
+          type: boolean
+        archived_at:
+          type: [string, "null"]
+          format: date-time
+        task_counts:
+          type: object
+          additionalProperties: false
+          required: [by_status, total]
+          properties:
+            by_status:
+              type: object
+              description: Tasks that are not archived, per column id.
+              additionalProperties:
+                type: integer
+            total:
+              type: integer
+
+    SprintTaskCard:
+      description: A task card in a sprint's list.
+      allOf:
+        - $ref: "#/components/schemas/TaskCardFields"
+        - type: object
+          required: [carried_to]
+          properties:
+            carried_to:
+              description: The sprint holding the task's most recent carried-over copy.
+              oneOf:
+                - $ref: "#/components/schemas/Reference"
+                - type: "null"
+      unevaluatedProperties: false

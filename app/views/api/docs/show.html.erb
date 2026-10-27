@@ -1,0 +1,6 @@
+<header class="api-docs-header">
+  <%= link_to t("app_name"), app_path, class: "api-docs-header__home" %>
+  <span class="api-docs-header__title"><%= t("api_docs.title") %></span>
+  <%= link_to t("api_docs.tokens"), app_path(path: "settings/api-tokens") %>
+</header>
+<main id="api-docs" data-document-url="<%= api_openapi_document_path %>"></main>

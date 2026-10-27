@@ -18,7 +18,8 @@ export default defineConfig({
     outDir: "public/vite",
     emptyOutDir: true,
     manifest: true,
-    rolldownOptions: { input: "app/frontend/entrypoints/application.ts" },
+    // The single-page application, and the API documentation page (/api/docs).
+    rolldownOptions: { input: ["app/frontend/entrypoints/application.ts", "app/frontend/entrypoints/api-docs.ts"] },
   },
   server: {
     host: hostname,

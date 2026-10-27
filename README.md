@@ -73,7 +73,13 @@ Endpoints available to tokens, all under `/api`:
 
 Everything else (projects, members, invitations, columns, your account,
 tokens, teammates, statistics, announcements and feedback) answers a token
-with 403. See `config/routes.rb` for the exact paths and parameters.
+with 403.
+
+The full reference, with every parameter, body and response, is at
+**`/api/docs`** (for example http://localhost:3000/api/docs) for signed-in
+users, with "Try it out" for requests authorized by a token you paste in. The
+same OpenAPI 3.1 document, `docs/openapi.yaml`, downloads from
+`/api/openapi.yaml` for Postman, Insomnia or a client generator.
 
 Errors use the API's JSON envelope, `{ "error": { "code", "message" } }`:
 
@@ -93,6 +99,20 @@ curl -X POST http://localhost:3000/api/projects/1/tasks \
   -H "Content-Type: application/json" \
   -d '{"title": "Fix the flaky build"}'
 ```
+
+### Verifying the API document
+
+`docs/openapi.yaml` is written by hand. After changing it, a serializer, or an
+action opened with `allow_token_access`, check it against the API:
+
+```sh
+bin/openapi-verify
+```
+
+It runs the contract tests in `test/openapi/` (they end in `_contract.rb`, so
+`bin/rails test` and CI skip them). It needs no server and no network, takes a
+few seconds, and exits non-zero naming each mismatch, so it also works as a
+git `pre-push` hook.
 
 Для дат всегда юзать ```.current``` ибо он возвращает с учётом ```Time.zone```
 

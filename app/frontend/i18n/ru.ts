@@ -275,6 +275,7 @@ export const ru: Messages = {
   },
   apiTokens: {
     intro: "Токен позволяет скрипту или интеграции работать с API от вашего имени в одном проекте. Передавайте его в заголовке Authorization: Bearer.",
+    reference: "Справочник API",
     create: "Создать токен",
     name: "Название",
     nameHint: "Для чего токен, например «CI».",

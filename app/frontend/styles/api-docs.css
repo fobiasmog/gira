@@ -1,0 +1,35 @@
+/* The API documentation page: Swagger UI's own styles, under the app's header. */
+body {
+  margin: 0;
+  background: var(--color-surface);
+}
+
+.api-docs-header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 12px 20px;
+  background: var(--color-nav-bg);
+  color: var(--color-nav-text);
+  font-family: "Rubik", system-ui, sans-serif;
+}
+
+.api-docs-header__home {
+  color: var(--color-nav-strong);
+  font-weight: 500;
+  font-size: 1.125rem;
+  text-decoration: none;
+}
+
+.api-docs-header__title {
+  flex: 1;
+}
+
+.api-docs-header a {
+  color: var(--color-nav-text);
+}
+
+.api-docs-header a:focus-visible {
+  outline: 2px solid var(--color-nav-strong);
+  outline-offset: 2px;
+}

@@ -1,5 +1,10 @@
 ru:
   app_name: Goalner
+
+  api_docs:
+    title: Справочник API
+    tokens: Ваши API-токены
+
   layout:
     language: Язык
     sign_in: Войти

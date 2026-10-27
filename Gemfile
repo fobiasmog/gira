@@ -64,4 +64,7 @@ group :test do
   # Use system testing [https://guides.rubyonrails.org/testing.html#system-testing]
   gem "capybara"
   gem "selenium-webdriver"
+
+  # Checks API responses against docs/openapi.yaml, for bin/openapi-verify [https://github.com/ahx/openapi_first]
+  gem "openapi_first", "~> 4.2", require: false
 end
