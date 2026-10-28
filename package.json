@@ -19,7 +19,7 @@
     "@tiptap/extensions": "3.31.4",
     "@tiptap/markdown": "3.31.4",
     "@tiptap/pm": "3.31.4",
-    "@tiptap/starter-kit": "3.31.4",
+    "@tiptap/starter-kit": "3.32.0",
     "@tiptap/vue-3": "3.31.4",
     "pinia": "4.0.3",
     "swagger-ui-dist": "5.34.0",
