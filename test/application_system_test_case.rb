@@ -15,6 +15,11 @@ class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
     Capybara.server_host = "0.0.0.0"
     Capybara.server_port = 3001
     Capybara.app_host = "http://#{ENV.fetch("APP_HOST")}:3001"
+
+    # The remote driver uploads any typed text that names an existing path. On
+    # a case-insensitive filesystem a typed word such as "Docs" names the docs/
+    # directory, so only regular files count as uploads.
+    setup { page.driver.browser.file_detector = ->((name, *)) { name.to_s if File.file?(name.to_s) } }
   else
     driven_by :selenium, using: :headless_chrome, screen_size: [ 1400, 1000 ], &capture_console
   end

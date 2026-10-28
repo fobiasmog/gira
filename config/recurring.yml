@@ -13,6 +13,9 @@ production: &production
   purge_idle_sessions:
     class: PurgeIdleSessionsJob
     schedule: every day at 3am
+  purge_expired_api_tokens:
+    class: PurgeExpiredApiTokensJob
+    schedule: every day at 3:15am
   purge_expired_invitations:
     class: PurgeExpiredInvitationsJob
     schedule: every day at 3:30am

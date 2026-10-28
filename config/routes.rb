@@ -29,6 +29,7 @@ Rails.application.routes.draw do
     resource :me, only: %i[show update], controller: "me" do
       resource :password, only: :update, module: :me
       resource :avatar, only: :update, module: :me
+      resources :api_tokens, only: %i[index create destroy], module: :me
     end
 
     resources :teammates, only: :index
@@ -47,7 +48,7 @@ Rails.application.routes.draw do
         resources :invitations, only: %i[index create destroy]
         resources :members, only: %i[index destroy]
         resource :board, only: :show
-        resources :statuses, only: %i[create update destroy]
+        resources :statuses, only: %i[index create update destroy]
         resources :tasks, only: %i[index show create update destroy] do
           scope module: :tasks do
             resource :placement, only: :update
@@ -71,6 +72,10 @@ Rails.application.routes.draw do
         end
       end
     end
+
+    # Documentation of the token API, for signed-in users (spec api-documentation).
+    get "docs", to: "docs#show"
+    get "openapi.yaml", to: "openapi#show", format: false, as: :openapi_document
 
     # Must stay last in the namespace: unknown API paths get the JSON 404 envelope.
     match "*path", to: "base#route_not_found", via: :all

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="<%= I18n.locale %>">
+  <head>
+    <title><%= t("api_docs.title") %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <%= csp_meta_tag %>
+    <%# Development only: the Vite client reads this nonce for the styles it injects. %>
+    <%= tag.meta(property: "csp-nonce", nonce: content_security_policy_nonce) if content_security_policy_nonce %>
+
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" href="/favicon-32x32.png" type="image/png" sizes="32x32">
+
+    <%= vite_tags "api-docs.ts" %>
+  </head>
+
+  <body>
+    <%= yield %>
+  </body>
+</html>

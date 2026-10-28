@@ -1,11 +1,12 @@
 # Projects (spec projects).
 class Api::ProjectsController < Api::BaseController
   include ProjectScoped
+  allow_token_access only: %i[ index show ]
   skip_before_action :set_project, only: %i[ index create ]
   before_action :require_owner!, only: %i[ update destroy ]
 
   def index
-    projects = Current.user.projects.kept.order(:title)
+    projects = Current.projects.order(:title)
     render json: projects.map { |project| ProjectSerializer.new(project, viewer: Current.user) }
   end
 

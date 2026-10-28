@@ -2,6 +2,7 @@
 # recovering restores the grouping.
 class Api::Projects::MilestonesController < Api::BaseController
   include ProjectScoped
+  allow_token_access only: %i[ index show create destroy ]
   before_action :set_milestone, only: %i[ show destroy ]
 
   # ?view=deleted lists deleted milestones, for recovery.

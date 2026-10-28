@@ -2,6 +2,7 @@
 # sprint of the same project (carry_to_sprint_id).
 class Api::Projects::Sprints::ArchivalsController < Api::BaseController
   include ProjectScoped
+  allow_token_access only: :create
 
   def create
     sprint = @project.sprints.kept.find(params[:sprint_id])

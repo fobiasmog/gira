@@ -68,6 +68,7 @@ class AccessibilityTest < ApplicationSystemTestCase
       "#{base}/tasks/#{@task.key}" => "A comment",
       "/app/settings/profile" => "Contacts",
       "/app/settings/security" => "Change password",
+      "/app/settings/api-tokens" => "Bot",
       "/app/nowhere" => "Page not found"
     }
 

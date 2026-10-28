@@ -2,6 +2,7 @@
 # (back to the first column).
 class Api::Projects::Tasks::CompletionsController < Api::BaseController
   include ProjectScoped
+  allow_token_access only: %i[ update destroy ]
   before_action :set_subtask
 
   def update

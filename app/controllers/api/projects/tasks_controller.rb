@@ -1,6 +1,7 @@
 # Tasks (spec tasks; board and backlog listing from spec project-board).
 class Api::Projects::TasksController < Api::BaseController
   include ProjectScoped
+  allow_token_access only: %i[ index show create update destroy ]
   before_action :set_task, only: %i[ show update destroy ]
 
   VIEWS = %w[board backlog backlog_done archived].freeze

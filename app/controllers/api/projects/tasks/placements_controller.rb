@@ -3,6 +3,7 @@
 # its sprint when null, in the same operation (a backlog task put on the board).
 class Api::Projects::Tasks::PlacementsController < Api::BaseController
   include ProjectScoped
+  allow_token_access only: :update
 
   def update
     task = @project.tasks.kept.find(params[:task_id])

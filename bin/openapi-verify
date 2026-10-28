@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Checks docs/openapi.yaml against the API (spec api-documentation, "The
+# document matches the API"): runs the contract suite in test/openapi, which
+# bin/rails test and CI never load. It needs no server and no network, and
+# exits non-zero on any mismatch, so it can run from a git pre-push hook.
+# Extra arguments go to bin/rails test, e.g. bin/openapi-verify -v.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+bin/rails db:test:prepare > /dev/null
+exec bin/rails test test/openapi/*_contract.rb "$@"

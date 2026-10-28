@@ -2,6 +2,7 @@
 # column and cannot have subtasks of its own.
 class Api::Projects::Tasks::SubtasksController < Api::BaseController
   include ProjectScoped
+  allow_token_access only: %i[ index create ]
   before_action :set_parent
 
   def index

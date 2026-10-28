@@ -1,0 +1,47 @@
+# Values are "glnr_" followed by the fixture name, so tests can authenticate
+# with them; real values come from ApiToken.issue. two belongs to goal and side.
+
+two_goal_read_write:
+  user: two
+  project: goal
+  name: CI
+  access: read_write
+  token_digest: <%= ApiToken.digest("glnr_two_goal_read_write") %>
+  last_characters: rite
+  expires_at: <%= 30.days.from_now.to_fs(:db) %>
+
+two_goal_read:
+  user: two
+  project: goal
+  name: Reports
+  access: read
+  token_digest: <%= ApiToken.digest("glnr_two_goal_read") %>
+  last_characters: read
+  expires_at: <%= 30.days.from_now.to_fs(:db) %>
+
+two_side_read_write:
+  user: two
+  project: side
+  name: Side sync
+  access: read_write
+  token_digest: <%= ApiToken.digest("glnr_two_side_read_write") %>
+  last_characters: rite
+  expires_at: <%= 30.days.from_now.to_fs(:db) %>
+
+one_goal_read_write:
+  user: one
+  project: goal
+  name: Bot
+  access: read_write
+  token_digest: <%= ApiToken.digest("glnr_one_goal_read_write") %>
+  last_characters: rite
+  expires_at: <%= 30.days.from_now.to_fs(:db) %>
+
+two_goal_expired:
+  user: two
+  project: goal
+  name: Old
+  access: read_write
+  token_digest: <%= ApiToken.digest("glnr_two_goal_expired") %>
+  last_characters: ired
+  expires_at: <%= 1.day.ago.to_fs(:db) %>

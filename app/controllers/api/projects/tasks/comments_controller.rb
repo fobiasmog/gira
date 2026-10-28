@@ -1,6 +1,7 @@
 # Comments on a task (spec comments). Archived tasks are read-only.
 class Api::Projects::Tasks::CommentsController < Api::BaseController
   include ProjectScoped
+  allow_token_access only: %i[ index create ]
   before_action :set_task
 
   def index

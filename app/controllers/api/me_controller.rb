@@ -1,5 +1,6 @@
 # The signed-in user's own profile (spec user-profile).
 class Api::MeController < Api::BaseController
+  allow_token_access only: :show
   def show
     render json: UserSerializer.new(Current.user).profile
   end
