@@ -13,9 +13,6 @@
 module ApiTokenAuthentication
   extend ActiveSupport::Concern
 
-  # Any header in the Bearer scheme selects token mode, even a malformed one.
-  BEARER_SCHEME = /\ABearer(?:\s|\z)/i
-  BEARER_VALUE = /\ABearer\s+(\S+)\s*\z/i
   REQUESTS_PER_MINUTE = 300
 
   # Included after require_authentication is declared, so the limit runs once
@@ -37,9 +34,10 @@ module ApiTokenAuthentication
 
   private
     # By the scheme, not the header's presence: browsers send Basic credentials
-    # on their own, but never Bearer.
+    # on their own, but never Bearer. A malformed Bearer header is token mode
+    # too, and gets 401.
     def bearer_token_request?
-      request.authorization.to_s.match?(BEARER_SCHEME)
+      request.authorization.to_s.start_with?("Bearer")
     end
 
     def require_authentication
@@ -55,7 +53,7 @@ module ApiTokenAuthentication
     end
 
     def authenticate_by_api_token
-      api_token = ApiToken.find_active_by_value(request.authorization.to_s[BEARER_VALUE, 1])
+      api_token = authenticate_with_http_token { |value| ApiToken.find_active_by_value(value) }
       return render_token_error(:unauthorized, :invalid_token) unless api_token
 
       Current.api_token = api_token

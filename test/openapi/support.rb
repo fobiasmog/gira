@@ -71,7 +71,7 @@ class OpenapiContractTest < ActionDispatch::IntegrationTest
     end
 
     def verify_exchange
-      return unless request.authorization.to_s.match?(ApiTokenAuthentication::BEARER_SCHEME)
+      return unless request.authorization.to_s.start_with?("Bearer")
 
       request.body&.rewind
       rack_request = Rack::Request.new(request.env)

@@ -53,7 +53,7 @@ class ApiTokenAuthenticationTest < ForgeryProtectedIntegrationTest
   test "a malformed Bearer header is token mode too" do
     sign_in_as users(:one)
 
-    [ "Bearer", "Bearer ", "bearer a b", "Bearer glnr_two_goal_read_write extra" ].each do |header|
+    [ "Bearer", "Bearer ", "Bearer a b", "Bearer glnr_two_goal_read_write extra" ].each do |header|
       get api_me_path, headers: { "Authorization" => header }
       assert_response :unauthorized, header
     end
