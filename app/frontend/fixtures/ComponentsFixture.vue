@@ -5,7 +5,7 @@ import AppField from "../components/ui/AppField.vue"
 import AppMenu from "../components/ui/AppMenu.vue"
 import AppTextarea from "../components/ui/AppTextarea.vue"
 import AppToast from "../components/ui/AppToast.vue"
-import AppIcon from "../components/ui/AppIcon.vue"
+import AppIcon, { type IconName } from "../components/ui/AppIcon.vue"
 import ProgressBar from "../components/ProgressBar.vue"
 import { useMediaQuery } from "../composables/useMediaQuery.ts"
 import { useUiStore } from "../stores/ui.ts"
@@ -18,6 +18,10 @@ const sprintName = ref("")
 const picked = ref("nothing")
 const notes = ref("")
 const wide = useMediaQuery("(min-width: 800px)")
+const callIcons: IconName[] = [
+  "call", "call_end", "mic", "mic_off", "videocam", "videocam_off", "open_in_full", "close_fullscreen",
+  "keyboard_arrow_down", "volume_up",
+]
 </script>
 
 <template>
@@ -64,6 +68,10 @@ const wide = useMediaQuery("(min-width: 800px)")
     </AppField>
 
     <p class="row"><AppIcon name="settings" /> Wide: {{ wide ? "yes" : "no" }}</p>
+
+    <ul role="list" class="row row--wrap" aria-label="Call icons">
+      <li v-for="name in callIcons" :key="name" :data-icon="name"><AppIcon :name="name" /></li>
+    </ul>
 
     <section class="panel stack styles" aria-label="Styles">
       <p class="row row--wrap">

@@ -1,6 +1,7 @@
 # Content Security Policy (spec security-baseline, "Content Security Policy").
 # Everything comes from the application's own origin. The only third-party
-# destination is the Sentry ingest host, for the SPA's error reports.
+# destinations are the Sentry ingest host, for the SPA's error reports, and the
+# media server for calls when one is configured.
 # Development additionally allows the Vite dev server, and nothing else. Its
 # origin is also a form-action target there: forms posted to Rails on port 3000
 # may end in a redirect to /app, which SpaController sends to the dev server.
@@ -15,13 +16,23 @@ Rails.application.configure do
   vite_http = [ "http://#{vite_dev_server}" ] if vite_dev_server
   vite_ws = [ "ws://#{vite_dev_server}" ] if vite_dev_server
 
+  # The media server's WebSocket origin and its HTTP equivalent, which the call
+  # client asks after a failed connection (config.x.livekit, set in the
+  # environment files). Read on every request, so tests can switch calls off.
+  media_server = lambda do
+    url = Rails.configuration.x.livekit&.dig(:url) or next []
+    uri = URI(url)
+    origin = "#{uri.host}#{":#{uri.port}" if uri.port != uri.default_port}"
+    [ "#{uri.scheme}://#{origin}", "#{uri.scheme.sub("ws", "http")}://#{origin}" ]
+  end
+
   config.content_security_policy do |policy|
     policy.default_src :self
     policy.script_src :self, *vite_http
     policy.style_src :self, *vite_http
     policy.font_src :self, *vite_http
     policy.img_src :self, :data, :blob, *vite_http
-    policy.connect_src :self, *sentry_ingest, *vite_http, *vite_ws
+    policy.connect_src -> { [ :self, *sentry_ingest, *vite_http, *vite_ws, *media_server.call ] }
     policy.frame_src :self
     policy.form_action :self, *vite_http
     policy.object_src :none

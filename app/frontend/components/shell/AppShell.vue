@@ -10,7 +10,13 @@ import AppToast from "../ui/AppToast.vue"
 import NotFoundPage from "../../pages/NotFoundPage.vue"
 import AnnouncementsPanel from "./AnnouncementsPanel.vue"
 import FeedbackDialog from "./FeedbackDialog.vue"
+import CallAudio from "../call/CallAudio.vue"
+import CallBar from "../call/CallBar.vue"
+import CallOverlay from "../call/CallOverlay.vue"
+import CallPane from "../call/CallPane.vue"
+import CallTab from "../call/CallTab.vue"
 import { useMediaQuery } from "../../composables/useMediaQuery.ts"
+import { useCallStore } from "../../stores/call.ts"
 import { useProjectsStore } from "../../stores/projects.ts"
 import { useUiStore } from "../../stores/ui.ts"
 import { parseId } from "../../router/routes.ts"
@@ -21,6 +27,10 @@ const route = useRoute()
 const projects = useProjectsStore()
 const ui = useUiStore()
 const { loading, notFound, announcement, sidebarCollapsed: collapsed } = storeToRefs(ui)
+// A call stays with the member on every screen (spec team-call): a pane on
+// wide screens, a full-screen overlay on narrow ones, or docked at the bottom.
+const { active: inCall, view: callView } = storeToRefs(useCallStore())
+const callDock = computed(() => (inCall.value && callView.value !== "expanded" ? callView.value : null))
 const wide = useMediaQuery("(min-width: 1024px)")
 const drawerOpen = ref(false)
 const feedbackOpen = ref(false)
@@ -44,7 +54,7 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
 </script>
 
 <template>
-  <div class="shell">
+  <div class="shell" :class="callDock && `shell--dock-${callDock}`">
     <div v-if="loading" class="progress" role="progressbar" :aria-label="t('common.loading')" />
 
     <aside v-if="wide" class="shell__sidebar" :class="{ 'shell__sidebar--collapsed': collapsed }">
@@ -97,6 +107,14 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
       </main>
     </div>
 
+    <template v-if="inCall">
+      <CallPane v-if="wide && callView === 'expanded'" />
+      <CallOverlay v-else-if="callView === 'expanded'" />
+      <CallBar v-else-if="callView === 'bar'" />
+      <CallTab v-else />
+      <CallAudio />
+    </template>
+
     <FeedbackDialog v-model:open="feedbackOpen" />
     <AppToast />
     <div class="visually-hidden" aria-live="polite" aria-atomic="true">{{ announcement }}</div>
@@ -104,18 +122,26 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
 </template>
 
 <style scoped>
+/* Sidebar, content and the call pane. The call bar and tab are fixed at the
+   bottom; --call-dock-height keeps content and the sidebar clear of them. */
 .shell {
+  --call-dock-height: 0px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   min-block-size: 100dvh;
 }
 
+.shell--dock-bar { --call-dock-height: calc(var(--call-bar-height) + env(safe-area-inset-bottom)); }
+.shell--dock-tab { --call-dock-height: calc(var(--call-tab-height) + env(safe-area-inset-bottom)); }
+
 .shell__sidebar {
+  grid-column: 1;
   position: sticky;
   top: 0;
   inline-size: var(--sidebar-width);
   block-size: 100dvh;
   overflow: hidden auto;
+  padding-block-end: var(--call-dock-height);
   background: var(--color-nav-bg);
   transition: inline-size 150ms ease;
 }
@@ -123,6 +149,7 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
 .shell__sidebar--collapsed { inline-size: var(--sidebar-rail-width); }
 
 .shell__main {
+  grid-column: 2;
   display: flex;
   flex-direction: column;
   min-inline-size: 0;
@@ -143,12 +170,14 @@ watch(wide, (isWide) => { if (isWide) drawerOpen.value = false })
   display: flex;
   flex-direction: column;
   min-inline-size: 0;
-  padding: var(--space-5) var(--space-4);
+  padding: var(--space-5) var(--space-4) calc(var(--space-5) + var(--call-dock-height));
 }
+
+.shell > :deep(.call-pane) { grid-column: 3; }
 
 @media (min-width: 1024px) {
   .shell__header { padding-inline: var(--space-6) var(--space-5); }
-  .shell__content { padding: var(--space-5) var(--space-6) var(--space-6); }
+  .shell__content { padding: var(--space-5) var(--space-6) calc(var(--space-6) + var(--call-dock-height)); }
 }
 
 .breadcrumb { min-inline-size: 0; }
