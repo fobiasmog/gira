@@ -19,18 +19,22 @@ module GoalnerMcp
 
     # The credential, or nil when the API rejects the token. Raises
     # ApiClient::Unavailable when the API cannot tell.
+    #
+    # The credential is built before anything is cached, so a failure to build
+    # it never leaves the token remembered as verified.
     def verify(token)
       key = Digest::SHA256.hexdigest(token)
-      return Credential.new(token: token, cache_key: key) if @cache.read(key)
+      credential = Credential.new(token: token, cache_key: key)
+      return credential if @cache.read(key)
 
       case @api.request("GET", "/api/me", token: token).status
       when 200
         @cache.write(key, true)
-        Credential.new(token: token, cache_key: key)
+        credential
       when 429
         # The API limits a token's requests only once it has authenticated
         # it, so the token is valid; tool calls then get rate_limited.
-        Credential.new(token: token, cache_key: key)
+        credential
       when 401
         nil
       else

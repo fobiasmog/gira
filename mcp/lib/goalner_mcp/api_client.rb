@@ -49,10 +49,11 @@ module GoalnerMcp
     end
 
     # Net::HTTP with one keep-alive connection per thread: 2 seconds to
-    # connect, 15 to read, no retries and no proxy.
+    # connect, 15 to read, 15 to write, no retries and no proxy.
     class HttpTransport
       OPEN_TIMEOUT = 2
       READ_TIMEOUT = 15
+      WRITE_TIMEOUT = 15
 
       def initialize(base_url)
         @uri = URI(base_url)
@@ -78,7 +79,7 @@ module GoalnerMcp
           http.use_ssl = @uri.scheme == "https"
           http.open_timeout = OPEN_TIMEOUT
           http.read_timeout = READ_TIMEOUT
-          http.write_timeout = READ_TIMEOUT
+          http.write_timeout = WRITE_TIMEOUT
           http.max_retries = 0
           Thread.current[@key] = http.tap(&:start)
         end
