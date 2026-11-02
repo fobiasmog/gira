@@ -115,6 +115,82 @@ It runs the contract tests in `test/openapi/` (they end in `_contract.rb`, so
 few seconds, and exits non-zero naming each mismatch, so it also works as a
 git `pre-push` hook.
 
+## MCP server
+
+AI assistants such as Claude Code and Cursor can work with Goalner through the
+Model Context Protocol at `https://goalner.com/mcp`. The MCP server offers the
+token API as tools, one per JSON operation of `docs/openapi.yaml` (35 of them;
+file downloads are left out), named by their `operationId`: `listProjects`,
+`showBoard`, `createTask` and so on. Read tools are marked read-only and
+deleting tools destructive, so clients can ask before using them.
+
+It authenticates with a personal API token and acts exactly as that token
+would against `/api`: the same project, access level, endpoints, rate limit
+and attribution. Each tool call is one API request.
+
+Connect Claude Code with a token from **Settings → API tokens**:
+
+```sh
+export GOALNER_TOKEN=glnr_...
+claude mcp add --transport http goalner https://goalner.com/mcp --header "Authorization: Bearer ${GOALNER_TOKEN}"
+```
+
+The shell puts the token itself into the configuration. That is fine in the
+default `local` scope (`~/.claude.json`), but **never commit a token**: with
+`--scope project` the header lands in `.mcp.json`. There, single-quote the
+header (`'Authorization: Bearer ${GOALNER_TOKEN}'`) so the file keeps the
+variable, which Claude Code expands at startup.
+
+Give an assistant a **read-only token** when it only needs to read. Task
+descriptions and comments written by other members reach the assistant too,
+and a read-only token bounds what any instruction hidden in them can do: tools
+that change data then answer with the `insufficient_scope` error.
+
+In development, `bin/dev` starts the MCP server at `http://localhost:3100/mcp`
+next to Rails and Vite:
+
+```sh
+claude mcp add --transport http goalner-dev http://localhost:3100/mcp --header "Authorization: Bearer glnr_..."
+npx @modelcontextprotocol/inspector   # or try it in the MCP Inspector (Streamable HTTP, same header)
+```
+
+### Running it
+
+The MCP server is a separate process from the same image, started by `bin/mcp`
+(the `mcp` role in `config/deploy.yml`). It never boots Rails and has no
+database credentials: it reaches Goalner only through the API, over the
+private network. Its environment:
+
+| Variable | Meaning |
+|---|---|
+| `GOALNER_API_URL` | The web role's private address, never the public URL (development: `http://localhost:3000`). Requests carry `X-Forwarded-Proto: https`, so the web role must see the MCP container as a trusted proxy (private networks are). |
+| `MCP_PUBLIC_URL` | The public origin, `https://goalner.com` (development: `http://localhost:3100`). Requests with another `Host`, or from a browser page on another origin, are refused with 403. |
+| `MCP_PORT` | The port to listen on, 3100 by default. |
+| `SENTRY_DSN` | Optional. Unexpected errors are reported there, without request data, headers or arguments. |
+
+`GOALNER_API_URL` and `MCP_PUBLIC_URL` are required in production. The log has
+one line per request with the method, tool, API status, result and duration,
+and never tokens, arguments or results.
+
+nginx sends `/mcp` to the MCP server and everything else to the web role, as
+before. Keep the original `Host`, turn buffering off, and limit requests per IP
+(random tokens make the MCP server ask the API):
+
+```nginx
+# In the http block.
+limit_req_zone $binary_remote_addr zone=mcp:10m rate=10r/s;
+
+# In the server block of goalner.com.
+location = /mcp {
+    limit_req zone=mcp burst=40 nodelay;
+    proxy_pass http://127.0.0.1:3100;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Request-Id $request_id;
+    proxy_buffering off;
+}
+```
+
 Для дат всегда юзать ```.current``` ибо он возвращает с учётом ```Time.zone```
 
 

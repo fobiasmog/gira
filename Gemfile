@@ -41,6 +41,12 @@ gem "acts_as_list"
 gem "sentry-ruby"
 gem "sentry-rails"
 
+# The MCP server (mcp/, bin/mcp), a separate process. Rails requires only
+# Rails.groups, so it never loads these [https://github.com/modelcontextprotocol/ruby-sdk]
+group :mcp do
+  gem "mcp", "1.8.2"
+end
+
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"

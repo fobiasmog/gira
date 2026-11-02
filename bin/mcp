@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+# Starts the MCP server (spec mcp-server) on MCP_PORT, 3100 by default. It
+# reaches Goalner only through the API at GOALNER_API_URL, and boots no Rails.
+set -e
+cd "$(dirname "$0")/.."
+
+exec bundle exec puma -C mcp/puma.rb mcp/config.ru
