@@ -46,7 +46,10 @@ class McpAuthenticationTest < McpIntegrationTest
   end
 
   test "other schemes, malformed Bearer values and other token shapes are refused without asking the API" do
-    [ "Basic Z2xucjp4", "Bearer", "Bearer ", "Bearer a b", "glnr_two_goal_read", "Bearer not-a-goalner-token" ].each do |header|
+    # The last ones carry the prefix but leave RFC 6750's b64token alphabet.
+    [ "Basic Z2xucjp4", "Bearer", "Bearer ", "Bearer a b", "glnr_two_goal_read", "Bearer not-a-goalner-token",
+      "Bearer\tglnr_two_goal_read", "Bearer glnr_two_goal_read,", "Bearer glnr_two=goal_read", "Bearer \"glnr_two_goal_read\"",
+      "Bearer glnr_two_goal_réad" ].each do |header|
       post "/mcp", JSON.generate(jsonrpc: "2.0", id: 1, method: "tools/list"),
         { "CONTENT_TYPE" => "application/json", "HTTP_ACCEPT" => "application/json",
           "HTTP_MCP_PROTOCOL_VERSION" => "2025-11-25", "HTTP_AUTHORIZATION" => header }
@@ -54,6 +57,16 @@ class McpAuthenticationTest < McpIntegrationTest
       assert_unauthorized last_response, header
     end
     assert_empty api_requests
+  end
+
+  test "the scheme name is case-insensitive, and every b64token character reaches the verifier" do
+    [ "bearer glnr_two_goal_read", "BEARER  glnr_two_goal_read" ].each do |header|
+      assert_not_empty mcp_result("tools/list", token: nil, headers: { "HTTP_AUTHORIZATION" => header })["tools"], header
+    end
+    assert_equal [ "GET /api/me" ], api_requests
+
+    assert_unauthorized mcp_request("tools/list", token: "glnr_AZaz09-._~+/==")
+    assert_equal [ "GET /api/me", "GET /api/me" ], api_requests
   end
 
   test "a valid token lists tools, and is checked with the API once while it is remembered" do
