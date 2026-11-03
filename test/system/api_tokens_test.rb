@@ -86,7 +86,7 @@ class ApiTokensTest < ApplicationSystemTestCase
   test "the password change form warns that it revokes API tokens" do
     visit "/app/settings/security"
 
-    assert_text "Changing your password revokes all your API tokens."
+    assert_text "Changing your password revokes all your API tokens and disconnects all connected apps."
   end
 
   test "the API tokens screen links to the API documentation" do

@@ -131,6 +131,20 @@ img { max-width: 100%; height: auto; }
 
 .loading { padding: 80px 20px; text-align: center; color: var(--muted); }
 
+.button--secondary { background: #fff; color: var(--main-dark); border: 1px solid var(--main-dark); }
+.button--secondary:hover, .button--secondary:focus-visible { background: var(--surface); color: var(--main-dark); }
+
+/* OAuth consent (spec mcp-authorization, "Consent page") */
+.consent h1 { font-size: 22px; overflow-wrap: anywhere; }
+.consent__host { color: var(--main-dark); }
+.consent p { overflow-wrap: anywhere; }
+.consent__warning { margin: 0 0 16px; max-width: none; }
+.consent__access { margin: 0 0 20px; padding: 0; border: 0; }
+.consent__access legend { margin-bottom: 8px; font-weight: 500; }
+.consent__choice { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 10px; cursor: pointer; }
+.consent__choice input { margin-top: 5px; accent-color: var(--main); }
+.consent__deny { margin-top: 12px; }
+
 @media (max-width: 600px) {
   .header__inner { flex-wrap: wrap; }
   .title { font-size: 26px; }

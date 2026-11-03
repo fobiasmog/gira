@@ -4,13 +4,16 @@
 module RequiredSecrets
   class MissingError < StandardError; end
 
-  ENV_KEYS = %w[DATABASE_URL].freeze
+  # MCP_SERVICE_KEY and MCP_RESOURCE_URL: the connection token exchange and
+  # the audience of MCP access tokens (add-mcp-oauth design.md, decision 11).
+  ENV_KEYS = %w[DATABASE_URL MCP_SERVICE_KEY MCP_RESOURCE_URL].freeze
 
   CREDENTIAL_KEYS = [
     %i[smtp address], %i[smtp user_name], %i[smtp password], %i[smtp domain],
     %i[mailer host], %i[mailer from],
     %i[sentry backend_dsn], %i[sentry frontend_dsn],
-    %i[feedback operators_email]
+    %i[feedback operators_email],
+    %i[mcp jwt_private_key]
   ].freeze
 
   def self.missing(env: ENV, credentials: Rails.application.credentials)

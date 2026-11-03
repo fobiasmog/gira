@@ -14,7 +14,8 @@ class McpAuthenticationTest < McpIntegrationTest
     response = mcp_request("tools/list")
 
     assert_unauthorized response
-    assert_equal "Bearer", response.headers["www-authenticate"]
+    assert_equal %(Bearer resource_metadata="#{PUBLIC_URL}/.well-known/oauth-protected-resource/mcp", scope="read write"),
+      response.headers["www-authenticate"]
     assert_empty api_requests
   end
 
@@ -88,7 +89,8 @@ class McpAuthenticationTest < McpIntegrationTest
     seen = nil
     authentication = GoalnerMcp::Authentication.new(
       ->(env) { seen = env["mcp.auth_info"]; [ 200, {}, [] ] },
-      verifiers: [ GoalnerMcp::TokenVerifier.new(GoalnerMcp::ApiClient.new(@api_transport)) ]
+      verifiers: [ GoalnerMcp::TokenVerifier.new(GoalnerMcp::ApiClient.new(@api_transport)) ],
+      challenge: GoalnerMcp::Challenge.new(resource_metadata_url: "#{PUBLIC_URL}/.well-known/oauth-protected-resource/mcp")
     )
 
     authentication.call(Rack::MockRequest.env_for("/mcp", method: "POST", "HTTP_AUTHORIZATION" => "Bearer glnr_two_goal_read"))

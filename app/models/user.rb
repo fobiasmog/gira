@@ -22,8 +22,9 @@ class User < ApplicationRecord
 
   after_create :attach_default_avatar
   # Changing or resetting the password revokes every API token (design.md,
-  # decision 8). Sessions are ended by the controllers, which keep the current one.
-  after_update_commit -> { api_tokens.delete_all }, if: :saved_change_to_password_digest?
+  # decision 8) and ends every MCP connection (add-mcp-oauth design.md,
+  # decision 7). Sessions are ended by the controllers, which keep the current one.
+  after_update_commit -> { api_tokens.delete_all; McpConnection.end_all_for(self) }, if: :saved_change_to_password_digest?
 
   # Single use: confirming changes confirmed_at, and changing the address
   # invalidates links sent to the old one.

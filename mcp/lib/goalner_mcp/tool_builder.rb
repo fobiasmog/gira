@@ -32,6 +32,7 @@ module GoalnerMcp
       def path_parameters = parameters.select { it["in"] == "path" }.map { it["name"] }
       def query_parameters = parameters.select { it["in"] == "query" }.map { it["name"] }
       def body_properties = body_schema ? body_schema.fetch("properties", {}).keys : []
+      def read_only? = method == "GET"
     end
 
     def initialize(api, document: YAML.safe_load_file(DOCUMENT))

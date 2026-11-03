@@ -6,5 +6,8 @@
 Rails.application.config.filter_parameters += [
   :passw, :email, :secret, :token, :_key, :crypt, :salt, :certificate, :otp, :ssn, :cvv, :cvc,
   # Free-text bodies written by users (spec security-baseline, "Privacy-preserving logs").
-  :body, :description, :message
+  :body, :description, :message,
+  # OAuth authorization codes and PKCE verifiers, also in logged redirect
+  # locations; access and refresh tokens are covered by :token (add-mcp-oauth).
+  :code
 ]
