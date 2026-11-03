@@ -33,4 +33,23 @@ class LogFilteringTest < ActionDispatch::IntegrationTest
   ensure
     loggers.each { |owner, logger| owner.logger = logger }
   end
+
+  test "OAuth flow logged: codes, verifiers and tokens are not" do
+    output = StringIO.new
+    loggers = { Rails => Rails.logger, ActionController::Base => ActionController::Base.logger, ActiveRecord::Base => ActiveRecord::Base.logger }
+    loggers.each_key { |owner| owner.logger = ActiveSupport::Logger.new(output) }
+
+    tokens = connect(users(:two), oauth_applications(:cursor))
+    code = Rack::Utils.parse_query(output.string[/Redirected to (\S+)/, 1].to_s.split("?", 2).last)["code"]
+    refreshed = refresh(tokens["refresh_token"], oauth_applications(:cursor))
+
+    log = output.string
+    assert_includes log, "Oauth::TokensController#create"
+    assert_equal "[FILTERED]", code
+    [ @pkce.verifier, tokens["access_token"], tokens["refresh_token"], refreshed["access_token"], refreshed["refresh_token"] ].each do |secret|
+      assert_not_includes log, secret
+    end
+  ensure
+    loggers.each { |owner, logger| owner.logger = logger }
+  end
 end

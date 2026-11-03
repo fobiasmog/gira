@@ -4,6 +4,11 @@
 # http://localhost:3100/mcp.
 set -e
 
+# The MCP server verifies OAuth access tokens with the public key of the key
+# Rails signs them with (add-mcp-oauth).
+MCP_JWT_PUBLIC_KEYS="$(bin/rails runner 'print Oauth::JwtGenerator.public_key_pem')"
+export MCP_JWT_PUBLIC_KEYS
+
 trap 'kill 0' INT TERM EXIT
 npx vite &
 GOALNER_API_URL=http://localhost:3000 bin/mcp &

@@ -172,6 +172,17 @@ export interface NewApiToken extends ApiToken {
   token: string
 }
 
+// An MCP connection: one client, such as claude.ai, reaching all of the
+// user's projects with the access chosen at consent.
+export interface Connection {
+  id: Id
+  client_name: string
+  redirect_host: string | null
+  access: ApiTokenAccess
+  connected_at: Timestamp
+  last_active_at: Timestamp
+}
+
 export interface Announcement {
   id: Id
   body: string

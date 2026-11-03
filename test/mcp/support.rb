@@ -39,7 +39,14 @@ class McpIntegrationTest < ActiveSupport::TestCase
   end
 
   def app
-    @app ||= GoalnerMcp.app(public_url: PUBLIC_URL, api: GoalnerMcp::ApiClient.new(@api_transport))
+    @app ||= build_app
+  end
+
+  # The MCP application as configured in production: the resource, the
+  # issuer and the public key match this Rails application's (Oauth).
+  def build_app(public_url: PUBLIC_URL, **options)
+    GoalnerMcp.app(public_url: public_url, api: GoalnerMcp::ApiClient.new(@api_transport), resource: Oauth.resource,
+      issuer: Oauth.issuer, jwt_public_keys: Oauth::JwtGenerator.public_key_pem, **options)
   end
 
   # Sends one JSON-RPC request the way a stateless 2025-11-25 client does,

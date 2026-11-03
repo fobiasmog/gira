@@ -9,18 +9,31 @@ servers:
   web:
     hosts:
       - 192.168.0.1
+    # MCP_SERVICE_KEY and MCP_RESOURCE_URL: the connection token exchange the
+    # mcp role calls, and the audience of MCP access tokens (add-mcp-oauth
+    # design.md, decision 11).
     env:
+      clear:
+        MCP_RESOURCE_URL: https://goalner.com/mcp
       secret:
         - RAILS_MASTER_KEY
+        - MCP_SERVICE_KEY
     # Use a persistent storage volume for local Active Storage files.
     # Recommended to change this to a mounted volume path that is backed up off server.
     options:
       volume:
         - "goalner_storage:/rails/storage"
   # The MCP server (bin/mcp; add-mcp-server design.md, decision 10). nginx on
-  # the host sends /mcp to the published port. It reaches the API through
-  # kamal-proxy on the private kamal network, and receives neither database
-  # configuration, RAILS_MASTER_KEY nor the storage volume.
+  # the host sends /mcp and the protected resource metadata to the published
+  # port. It reaches the API through kamal-proxy on the private kamal network,
+  # and receives neither database configuration, RAILS_MASTER_KEY nor the
+  # storage volume.
+  #
+  # OAuth (add-mcp-oauth design.md, decisions 9 and 11): the public keys that
+  # verify access tokens (the public half of the credentials'
+  # mcp.jwt_private_key; several while rotating), the issuer and the
+  # resource. The service key and Redis for the connection token cache are
+  # secrets of this role and, for the key, the web role only.
   mcp:
     hosts:
       - 192.168.0.1
@@ -33,6 +46,15 @@ servers:
       clear:
         GOALNER_API_URL: http://kamal-proxy
         MCP_PUBLIC_URL: https://goalner.com
+        MCP_ISSUER: https://goalner.com
+        MCP_RESOURCE_URL: https://goalner.com/mcp
+        MCP_JWT_PUBLIC_KEYS: |
+          -----BEGIN PUBLIC KEY-----
+          Replace with the public key of the production mcp.jwt_private_key.
+          -----END PUBLIC KEY-----
+      secret:
+        - MCP_SERVICE_KEY
+        - REDIS_URL
   # job:
   #   hosts:
   #     - 192.168.0.1
@@ -118,6 +140,22 @@ builder:
 #   user: app
 
 # Use accessory services (secrets come from .kamal/secrets).
+accessories:
+  # The MCP server's connection token cache (add-mcp-oauth design.md,
+  # decisions 9 and 11): Valkey with a password, on the private kamal network
+  # only (no published port), reached by the mcp role as goalner-redis. A
+  # cache: nothing is persisted, and the oldest entries go first when full.
+  redis:
+    image: valkey/valkey:8
+    host: 192.168.0.1
+    cmd: >-
+      sh -c 'exec valkey-server --requirepass "$VALKEY_PASSWORD" --save "" --appendonly no
+      --maxmemory 64mb --maxmemory-policy allkeys-lru'
+    env:
+      secret:
+        - VALKEY_PASSWORD
+
+# Other accessory examples:
 # accessories:
 #   db:
 #     image: mysql:8.0

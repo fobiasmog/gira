@@ -33,8 +33,9 @@ module GoalnerMcp
     # Unavailable for anything but a 2xx or 4xx answer. A redirect means a
     # misconfiguration, such as a public GOALNER_API_URL or a lost
     # X-Forwarded-Proto, and is logged as an error.
-    def request(method, path, token:, body: nil)
-      headers = HEADERS.merge("Authorization" => "Bearer #{token}")
+    def request(method, path, token: nil, headers: {}, body: nil)
+      headers = HEADERS.merge(headers)
+      headers["Authorization"] = "Bearer #{token}" if token
       headers["Content-Type"] = "application/json" if body
 
       begin

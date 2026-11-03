@@ -35,5 +35,6 @@ export const routes: RouteRecordRaw[] = [
   { path: "/settings/profile", name: "settings-profile", component: () => import("../pages/ProfileSettingsPage.vue") },
   { path: "/settings/security", name: "settings-security", component: () => import("../pages/SecuritySettingsPage.vue") },
   { path: "/settings/api-tokens", name: "settings-api-tokens", component: () => import("../pages/ApiTokensSettingsPage.vue") },
+  { path: "/settings/connected-apps", name: "settings-connected-apps", component: () => import("../pages/ConnectedAppsSettingsPage.vue") },
   { path: "/:pathMatch(.*)*", name: "not-found", component: () => import("../pages/NotFoundPage.vue") },
 ]

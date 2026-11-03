@@ -85,4 +85,48 @@ class SettingsTest < ApplicationSystemTestCase
     assert_text "Password changed. Other sessions were signed out."
     assert @user.reload.authenticate("a brand new passphrase")
   end
+
+  # Spec web-client, "Connected apps screen" and "Password change warning".
+
+  test "list connections: the client, the host claude.ai, read-write, and when it connected and was last active" do
+    Oauth::AccessToken.create!(application: oauth_applications(:claude_ai), resource_owner_id: @user.id, scopes: "read write",
+      expires_in: 3600, use_refresh_token: true)
+
+    visit "/app/settings/connected-apps"
+
+    within(".connections") do
+      assert_text "Claude"
+      assert_text "Redirects to claude.ai · Read and write"
+      assert_text(/Connected .+ · last active .+/)
+    end
+    assert_selector "nav a[aria-current=page]", text: "Connected apps"
+  end
+
+  test "disconnect, after confirming" do
+    access_token = Oauth::AccessToken.create!(application: oauth_applications(:claude_ai), resource_owner_id: @user.id, scopes: "read",
+      expires_in: 3600, use_refresh_token: true)
+    visit "/app/settings/connected-apps"
+
+    click_button "Disconnect Claude"
+    within("dialog") { click_button "Disconnect" }
+
+    assert_text "“Claude” disconnected"
+    assert_no_selector ".connections"
+    assert access_token.reload.revoked?
+  end
+
+  test "no connections: how to connect an MCP client, instead of an empty list" do
+    visit "/app/settings/connected-apps"
+
+    assert_text "You have not connected any apps."
+    assert_text "add Goalner's MCP address, #{Capybara.current_session.server.base_url}/mcp, as a connector"
+    assert_link "How to connect an MCP client", href: "/docs/mcp"
+    assert_no_selector ".connections"
+  end
+
+  test "password change warning: tokens are revoked and connected apps disconnected" do
+    visit "/app/settings/security"
+
+    assert_text "Changing your password revokes all your API tokens and disconnects all connected apps."
+  end
 end

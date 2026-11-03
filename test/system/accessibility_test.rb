@@ -69,6 +69,7 @@ class AccessibilityTest < ApplicationSystemTestCase
       "/app/settings/profile" => "Contacts",
       "/app/settings/security" => "Change password",
       "/app/settings/api-tokens" => "Bot",
+      "/app/settings/connected-apps" => "You have not connected any apps.",
       "/app/nowhere" => "Page not found"
     }
 
@@ -79,6 +80,17 @@ class AccessibilityTest < ApplicationSystemTestCase
     end
 
     assert_empty problems
+  end
+
+  test "the OAuth consent page names its controls and labels its fields" do
+    client = oauth_applications(:claude_code)
+    sign_in @user.email_address, "correct horse battery"
+    visit "/oauth/authorize?" + { response_type: "code", client_id: client.uid, redirect_uri: "http://localhost:4000/callback",
+      scope: "read write", state: "s", code_challenge: "x" * 43, code_challenge_method: "S256" }.to_query
+
+    assert_selector "h1", text: "localhost wants to access your Goalner account"
+    assert_empty evaluate_script(PROBLEMS.gsub("#app", "main"))
+    assert_empty unfocusable_indicators(12), "the consent page has focusable elements without a visible focus indicator"
   end
 
   test "the narrow-screen menu dialog and the feedback dialog are named" do

@@ -1,0 +1,59 @@
+<%# Consent (spec mcp-authorization, "Consent page"; add-mcp-oauth design.md,
+    decision 6). The redirect host leads: the client's name is whatever its
+    registration says. Both forms carry the original request, and approving
+    also the chosen access, which the controller narrows to the requested
+    scopes. %>
+<% client = @pre_auth.client
+   redirect_host = URI(@pre_auth.redirect_uri).host
+   document_host = URI(client.uid).host if client.application.cimd?
+   request_fields = { client_id: client.uid, redirect_uri: @pre_auth.redirect_uri, state: @pre_auth.state,
+                      response_type: @pre_auth.response_type, response_mode: @pre_auth.response_mode,
+                      scope: @pre_auth.scope, code_challenge: @pre_auth.code_challenge,
+                      code_challenge_method: @pre_auth.code_challenge_method, resource: params[:resource] }.compact_blank %>
+<% content_for :title, t(".title") %>
+
+<section class="card consent" aria-labelledby="consent-heading">
+  <h1 id="consent-heading"><%= t(".heading_html", host: tag.strong(redirect_host, class: "consent__host")) %></h1>
+
+  <p><%= t(".client_name_html", name: tag.strong(client.name)) %></p>
+  <% if document_host %>
+    <p class="field__hint"><%= t(".document_host_html", host: tag.strong(document_host)) %></p>
+  <% end %>
+
+  <% if client.application.loopback_only? %>
+    <p class="flash flash--alert consent__warning" role="alert"><%= t(".loopback_warning") %></p>
+  <% end %>
+
+  <p><%= t(".all_projects") %></p>
+
+  <%= form_with url: oauth_authorization_path, method: :post, class: "consent__form" do |form| %>
+    <% request_fields.each do |name, value| %>
+      <%= hidden_field_tag name, value, id: nil %>
+    <% end %>
+
+    <fieldset class="consent__access">
+      <legend><%= t(".access") %></legend>
+      <label class="consent__choice">
+        <%= form.radio_button :access, "read", checked: true %>
+        <span><strong><%= t(".read") %></strong><br><span class="field__hint"><%= t(".read_hint") %></span></span>
+      </label>
+      <% if @pre_auth.scopes.exists?("write") %>
+        <label class="consent__choice">
+          <%= form.radio_button :access, "read_write" %>
+          <span><strong><%= t(".read_write") %></strong><br><span class="field__hint"><%= t(".read_write_hint") %></span></span>
+        </label>
+      <% end %>
+    </fieldset>
+
+    <%= form.button t(".approve"), class: "button", name: nil %>
+  <% end %>
+
+  <%= form_with url: oauth_authorization_path, method: :delete, class: "consent__deny" do |form| %>
+    <% request_fields.each do |name, value| %>
+      <%= hidden_field_tag name, value, id: nil %>
+    <% end %>
+    <%= form.button t(".deny"), class: "button button--secondary", name: nil %>
+  <% end %>
+
+  <p class="field__hint"><%= t(".disconnect_hint") %></p>
+</section>

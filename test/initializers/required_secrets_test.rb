@@ -7,17 +7,27 @@ class RequiredSecretsTest < ActiveSupport::TestCase
     smtp: { address: "smtp.example.com", user_name: "user", password: "secret", domain: "example.com" },
     mailer: { host: "app.example.com", from: "no-reply@example.com" },
     sentry: { backend_dsn: "https://k@o0.ingest.sentry.io/0", frontend_dsn: "https://k@o0.ingest.sentry.io/1" },
-    feedback: { operators_email: "operators@example.com" }
+    feedback: { operators_email: "operators@example.com" },
+    mcp: { jwt_private_key: "-----BEGIN EC PRIVATE KEY-----" }
   }.freeze
 
+  COMPLETE_ENV = { "DATABASE_URL" => "postgres://db/app", "MCP_SERVICE_KEY" => "key", "MCP_RESOURCE_URL" => "https://goalner.com/mcp" }.freeze
+
   test "nothing is missing when every secret is configured" do
-    assert_empty RequiredSecrets.missing(env: { "DATABASE_URL" => "postgres://db/app" }, credentials: COMPLETE_CREDENTIALS)
+    assert_empty RequiredSecrets.missing(env: COMPLETE_ENV, credentials: COMPLETE_CREDENTIALS)
   end
 
   test "names each missing secret" do
     credentials = COMPLETE_CREDENTIALS.merge(smtp: COMPLETE_CREDENTIALS[:smtp].except(:password))
 
-    assert_equal %w[DATABASE_URL smtp.password], RequiredSecrets.missing(env: {}, credentials: credentials)
+    assert_equal %w[DATABASE_URL MCP_SERVICE_KEY MCP_RESOURCE_URL smtp.password], RequiredSecrets.missing(env: {}, credentials: credentials)
+  end
+
+  test "names each MCP secret when it is missing" do
+    %w[MCP_SERVICE_KEY MCP_RESOURCE_URL].each do |key|
+      assert_equal [ key ], RequiredSecrets.missing(env: COMPLETE_ENV.except(key), credentials: COMPLETE_CREDENTIALS)
+    end
+    assert_equal [ "mcp.jwt_private_key" ], RequiredSecrets.missing(env: COMPLETE_ENV, credentials: COMPLETE_CREDENTIALS.except(:mcp))
   end
 
   test "production refuses to boot without DATABASE_URL" do
