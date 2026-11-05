@@ -21,7 +21,6 @@ require_relative "goalner_mcp/credential"
 require_relative "goalner_mcp/token_verifier"
 require_relative "goalner_mcp/connection_tokens"
 require_relative "goalner_mcp/scoped_server"
-require_relative "goalner_mcp/challenge"
 require_relative "goalner_mcp/protected_resource"
 require_relative "goalner_mcp/jwt_verifier"
 require_relative "goalner_mcp/authentication"
@@ -154,8 +153,7 @@ module GoalnerMcp
         connection_tokens = ConnectionTokens.new(api, service_key: service_key, cache: connection_token_cache)
         verifiers << JwtVerifier.new(metadata: protected_resource.metadata, public_keys: jwt_public_keys, connection_tokens: connection_tokens)
       end
-      challenge = Challenge.new(resource_metadata_url: protected_resource.url(public_url))
-      authenticated = Authentication.new(transport, verifiers: verifiers, challenge: challenge)
+      authenticated = Authentication.new(transport, verifiers: verifiers, resource_metadata_url: protected_resource.url(public_url))
       post_only = ->(env) { env["REQUEST_METHOD"] == "POST" ? authenticated.call(env) : [ 405, { "allow" => "POST" }, [] ] }
 
       tool_names = tools.map(&:name_value)

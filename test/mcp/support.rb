@@ -70,6 +70,14 @@ class McpIntegrationTest < ActiveSupport::TestCase
     @api_transport.requests
   end
 
+  # The parameters of a response's Bearer challenge, in whatever order the
+  # header lists them.
+  def challenge_parameters(response)
+    header = response.headers["www-authenticate"].to_s
+    assert_match(/\ABearer\b/, header)
+    header.delete_prefix("Bearer").scan(/(\w+)="((?:[^"\\]|\\.)*)"/).to_h
+  end
+
   # The token requests carry unless a test names one.
   def default_token
     nil

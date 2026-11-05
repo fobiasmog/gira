@@ -25,6 +25,17 @@ class Oauth::RegistrationsControllerTest < ActionDispatch::IntegrationTest
     assert_not application.confidential?
   end
 
+  # Harden-mcp-oauth design.md, decision 5.
+  test "name from a long host: its first 100 characters" do
+    host = "#{"a" * 60}.#{"b" * 60}.example" # 130 characters
+
+    register redirect_uris: [ "https://#{host}/callback" ]
+
+    assert_response :created
+    assert_equal host.first(100), response.parsed_body["client_name"]
+    assert_equal host.first(100), Oauth::Application.find_by!(uid: response.parsed_body["client_id"]).name
+  end
+
   test "plain HTTP redirect" do
     assert_no_difference -> { Oauth::Application.count } do
       register client_name: "Cursor", redirect_uris: [ "http://example.com/callback" ]
@@ -32,6 +43,19 @@ class Oauth::RegistrationsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :bad_request
     assert_equal "invalid_redirect_uri", response.parsed_body["error"]
+  end
+
+  # Spec mcp-authorization, "Registration with an IPv6 loopback URI";
+  # harden-mcp-oauth design.md, decision 7.
+  test "registration with an IPv6 loopback URI" do
+    [ "http://[::1]:8080/callback", "http://[::1]/callback", "https://[2001:db8::1]/callback" ].each do |uri|
+      assert_no_difference -> { Oauth::Application.count } do
+        register client_name: "Inspector", redirect_uris: [ "http://127.0.0.1/callback", uri ]
+      end
+
+      assert_response :bad_request, uri
+      assert_equal "invalid_redirect_uri", response.parsed_body["error"]
+    end
   end
 
   test "other refused redirect URIs and names" do

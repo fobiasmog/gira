@@ -14,7 +14,8 @@ module GoalnerMcp
   # - A read-only connection calling a tool that is not read-only gets
   #   insufficient_scope without an API request (add-mcp-oauth design.md,
   #   decision 9). A connection whose exchange is refused is answered like an
-  #   API 401, and an exchange over its limit gets rate_limited.
+  #   API 401, and an exchange over its limit gets rate_limited. The exchange
+  #   already ran in Authentication; its answer is reused (Credential).
   class ToolCall
     def initialize(api, operation)
       @api = api
@@ -46,7 +47,7 @@ module GoalnerMcp
 
     private
       def upstream_token(credential)
-        UpstreamCredential.for(credential)
+        credential.upstream_token
       rescue ConnectionTokens::Refused
         credential.reject!
         raise Unauthorized

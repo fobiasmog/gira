@@ -26,6 +26,7 @@ class Oauth::ClientMetadataDocumentTest < ActiveSupport::TestCase
   end
 
   setup do
+    Rails.cache.clear # the fetch counters
     @original = Oauth::ClientMetadataDocument.resolver, Oauth::ClientMetadataDocument.transport, Oauth::ClientMetadataDocument.timeout
     @resolved = []
     stub_resolver PUBLIC_IP
@@ -49,13 +50,14 @@ class Oauth::ClientMetadataDocumentTest < ActiveSupport::TestCase
     respond_with body: JSON.generate(document)
   end
 
-  def respond_with(status: 200, content_type: "application/json", body:)
-    @transport = FakeTransport.new(Oauth::ClientMetadataDocument::Response.new(status: status, content_type: content_type, body: body))
+  def respond_with(status: 200, content_type: "application/json", body:, content_encoding: nil)
+    @transport = FakeTransport.new(Oauth::ClientMetadataDocument::Response.new(status: status, content_type: content_type, body: body,
+      content_encoding: content_encoding))
     Oauth::ClientMetadataDocument.transport = @transport
   end
 
-  def resolve(url = URL, redirect_uri: "http://localhost:51234/callback")
-    Oauth::ClientMetadataDocument.resolve(url, redirect_uri: redirect_uri)
+  def resolve(url = URL, redirect_uri: "http://localhost:51234/callback", user: users(:two))
+    Oauth::ClientMetadataDocument.resolve(url, redirect_uri: redirect_uri, user: user)
   end
 
   def assert_refused(url = URL, **options)
@@ -99,10 +101,12 @@ class Oauth::ClientMetadataDocumentTest < ActiveSupport::TestCase
     [ "10.0.0.5", "127.0.0.1", "169.254.169.254", "192.168.1.1", "172.16.0.1", "100.64.0.1", "0.0.0.0", "224.0.0.1",
       "255.255.255.255", "::1", "fd00::1", "fe80::1", "::ffff:10.0.0.5", "::ffff:160.79.104.10", "64:ff9b::a00:5",
       "2002:a00:5::1", "ff02::1", "::" ].each do |address|
+      Rails.cache.clear # each attempt is a first fetch, under no limit
       stub_resolver address
 
       assert_refused
     end
+    assert_equal 18, @resolved.size
     assert_empty @transport.requests
   end
 
@@ -193,10 +197,30 @@ class Oauth::ClientMetadataDocumentTest < ActiveSupport::TestCase
   test "other statuses, content types and bodies are refused" do
     [ { status: 404, body: "{}" }, { content_type: "text/html", body: JSON.generate(client_id: URL) },
       { body: "not json" }, { body: "[]" } ].each do |response|
+      Rails.cache.clear # each attempt is a first fetch, under no limit
       respond_with(**response)
 
       assert_refused
+      assert_equal 1, @transport.requests.size, response.inspect
     end
+  end
+
+  # Spec mcp-authorization, "Compressed document"; harden-mcp-oauth
+  # design.md, decision 6.
+  test "a compressed document is refused" do
+    document = JSON.generate(client_id: URL, redirect_uris: [ "http://localhost/callback" ])
+
+    [ [ "gzip", ActiveSupport::Gzip.compress(document) ], [ "deflate", Zlib::Deflate.deflate(document) ], [ "br", document ],
+      [ "gzip", document ] ].each do |encoding, body|
+      Rails.cache.clear # each attempt is a first fetch, under no limit
+      respond_with body: body, content_encoding: encoding
+
+      assert_refused
+    end
+
+    Rails.cache.clear
+    respond_with body: document, content_encoding: "identity"
+    assert resolve
   end
 
   test "a transport failure is refused" do
@@ -213,16 +237,87 @@ class Oauth::ClientMetadataDocumentTest < ActiveSupport::TestCase
       base.merge(redirect_uris: [ "javascript:alert(1)" ]), base.merge(redirect_uris: [ "urn:ietf:wg:oauth:2.0:oob" ]),
       base.merge(token_endpoint_auth_method: "client_secret_basic"), base.merge(client_name: "x" * 101),
       base.merge(client_name: 42) ].each do |document|
+      Rails.cache.clear # each attempt is a first fetch, under no limit
       stub_document document
 
       assert_refused
+      assert_equal 1, @transport.requests.size, document.inspect
     end
+  end
+
+  # Spec mcp-authorization, "Client metadata document fetches";
+  # harden-mcp-oauth design.md, decision 6.
+  test "unreachable document: two resolves within a minute try the host once" do
+    Oauth::ClientMetadataDocument.transport = FakeTransport.new(-> { raise Errno::ETIMEDOUT })
+
+    2.times { assert_refused }
+
+    assert_equal 1, Oauth::ClientMetadataDocument.transport.requests.size
+    travel 61.seconds
+    assert_refused
+    assert_equal 2, Oauth::ClientMetadataDocument.transport.requests.size
+  end
+
+  test "many documents: the 11th URL a user needs within an hour is not fetched" do
+    urls = Array.new(11) { "https://client#{it}.example/metadata" }
+    Oauth::ClientMetadataDocument.transport = FakeTransport.new(-> { raise Errno::ECONNREFUSED })
+
+    urls.each { |url| assert_refused url }
+
+    assert_equal urls.first(10), Oauth::ClientMetadataDocument.transport.requests.map(&:first)
+    assert_equal urls.first(10).map { URI(it).host }, @resolved, "the 11th is not even resolved"
+
+    stub_document({ client_id: URL, redirect_uris: [ "http://localhost/callback" ] })
+    assert resolve(user: users(:one)), "another user's fetches are counted apart"
+  end
+
+  test "a stored copy older than 24 hours whose host fails is fetched at most once a minute" do
+    resolve
+    travel 25.hours
+    Oauth::ClientMetadataDocument.transport = FakeTransport.new(-> { raise Errno::ECONNREFUSED })
+
+    3.times { assert_raises(Oauth::ClientMetadataDocument::Error) { resolve } }
+
+    assert_equal 1, Oauth::ClientMetadataDocument.transport.requests.size
+  end
+
+  test "a copy fetched within the minute is reused without touching the counters" do
+    resolve
+    11.times { resolve(redirect_uri: "https://evil.example/cb") }
+
+    assert_equal 1, @transport.requests.size
+    assert_equal 1, Rails.cache.read("oauth/cimd/user/#{users(:two).id}", raw: true).to_i
+  end
+
+  # Spec mcp-authorization, "Document with an IPv6 loopback URI";
+  # harden-mcp-oauth design.md, decision 7.
+  test "IPv6 loopback redirect URIs are left out; a document with nothing else is refused" do
+    stub_document({ client_id: URL, redirect_uris: [ "http://127.0.0.1/callback", "http://[::1]/callback", "http://[::1]:8080/callback" ] })
+    assert_equal [ "http://127.0.0.1/callback" ], resolve(redirect_uri: nil).redirect_uris
+
+    Rails.cache.clear
+    travel 2.minutes
+    stub_document({ client_id: URL, redirect_uris: [ "http://[::1]/callback" ] })
+    assert_refused redirect_uri: "http://[::1]:8080/callback"
+
+    Rails.cache.clear
+    stub_document({ client_id: URL, redirect_uris: [ "http://127.0.0.1/callback", "https://[2001:db8::1]/callback" ] })
+    assert_refused redirect_uri: "https://[2001:db8::1]/callback"
   end
 
   test "the client name falls back to the URL's host" do
     stub_document({ client_id: URL, redirect_uris: [ "https://claude.ai/api/mcp/auth_callback" ], token_endpoint_auth_method: "none" })
 
     assert_equal "claude.ai", resolve(redirect_uri: nil).name
+  end
+
+  # Harden-mcp-oauth design.md, decision 5.
+  test "the host as the client name is cut to 100 characters" do
+    host = "#{"a" * 60}.#{"b" * 60}.example" # 130 characters
+    url = "https://#{host}/metadata"
+    stub_document({ client_id: url, redirect_uris: [ "https://#{host}/callback" ] })
+
+    assert_equal host.first(100), resolve(url, redirect_uri: nil).name
   end
 
   test "URL rules" do
@@ -238,6 +333,10 @@ end
 # to the given address with the original name in Host, reads at most 5 KB,
 # and does not follow redirects.
 class Oauth::ClientMetadataDocument::HttpTransportTest < ActiveSupport::TestCase
+  setup do
+    @original = Oauth::ClientMetadataDocument.resolver, Oauth::ClientMetadataDocument.transport
+  end
+
   def serve(response)
     server = TCPServer.new("127.0.0.1", 0)
     @request = Queue.new
@@ -281,6 +380,32 @@ class Oauth::ClientMetadataDocument::HttpTransportTest < ActiveSupport::TestCase
     serve("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n#{body}") do |uri|
       assert_raises(Oauth::ClientMetadataDocument::HttpTransport::TooLarge) { get(uri) }
     end
+  end
+
+  # Harden-mcp-oauth design.md, decision 6.
+  test "asks for an uncompressed document, and refuses a gzip-encoded one without inflating it" do
+    document = JSON.generate(client_id: "https://client.example/metadata.json", redirect_uris: [ "https://client.example/cb" ])
+    gzipped = ActiveSupport::Gzip.compress(document)
+    head = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Encoding: gzip\r\n" \
+      "Content-Length: #{gzipped.bytesize}\r\nConnection: close\r\n\r\n"
+
+    serve(head.b + gzipped) do |uri|
+      response = nil
+      transport = Oauth::ClientMetadataDocument::HttpTransport.new
+      Oauth::ClientMetadataDocument.resolver = ->(_host) { [ "160.79.104.10" ] }
+      Oauth::ClientMetadataDocument.transport = Object.new.tap do |stand_in|
+        stand_in.define_singleton_method(:get) { |*, **| response = transport.get(uri, address: "127.0.0.1", timeout: 1) }
+      end
+
+      assert_raises(Oauth::ClientMetadataDocument::Error) do
+        Oauth::ClientMetadataDocument.resolve("https://client.example/metadata.json", user: users(:two))
+      end
+      assert_includes @request.pop, "Accept-Encoding: identity\r\n"
+      assert_equal gzipped.b, response.body.b
+      assert_equal "gzip", response.content_encoding
+    end
+  ensure
+    Oauth::ClientMetadataDocument.resolver, Oauth::ClientMetadataDocument.transport = @original
   end
 
   test "a declared length over 5 KB is refused before reading" do

@@ -6,9 +6,10 @@ module GoalnerMcp
   # the SDK's verifier and the public keys in MCP_JWT_PUBLIC_KEYS, matched by
   # their RFC 7638 thumbprint, so keys can rotate.
   #
-  # Verification alone never authorizes a tool call: the exchange for a
-  # connection token checks the token against Goalner's database
-  # (UpstreamCredential).
+  # Verification alone never authorizes a request: Authentication then
+  # confirms the token with Goalner, whose exchange for a connection token
+  # checks it against the database (UpstreamCredential; harden-mcp-oauth
+  # design.md, decision 1).
   class JwtVerifier
     ALGORITHM = "ES256"
     LEEWAY = 30

@@ -210,18 +210,27 @@ Goalner is an OAuth 2.1 authorization server (Doorkeeper), and the MCP server
 a resource server:
 
 1. A request to `/mcp` without a token gets 401 with
-   `WWW-Authenticate: Bearer resource_metadata="https://goalner.com/.well-known/oauth-protected-resource/mcp", scope="read write"`.
+   `WWW-Authenticate: Bearer scope="read write", resource_metadata="https://goalner.com/.well-known/oauth-protected-resource/mcp"`.
 2. The client reads that metadata, then `https://goalner.com/.well-known/oauth-authorization-server`.
 3. It identifies itself with a client ID metadata document (an HTTPS URL that
    Goalner fetches, as Claude does) or registers at `/oauth/register`.
+   Redirect URIs use HTTPS, or HTTP on `localhost` or an IPv4 loopback
+   address such as `127.0.0.1`, on any port. IPv6 loopback addresses such as
+   `[::1]` are not supported: the consent page's Content Security Policy
+   cannot name them, so the browser would block the redirect. Registration
+   refuses them, and a metadata document's are ignored.
 4. It sends you to `/oauth/authorize` with an S256 PKCE challenge; you
    approve, and it exchanges the code at `/oauth/token`.
 5. Access tokens are JWTs signed with ES256, valid for an hour, for
-   `https://goalner.com/mcp` only: `/api` refuses them. Refresh tokens rotate.
-6. For each tool call, the MCP server exchanges the access token for a
-   short-lived connection token at `/internal/mcp_tokens`, with its service
-   key, and calls `/api` with that. It caches connection tokens in Redis,
-   encrypted with a key derived from the access token.
+   `https://goalner.com/mcp` only: `/api` refuses them. Refresh tokens
+   rotate: the one a refresh replaced stops working once the new access token
+   reaches the MCP server, with any request, or the new refresh token is used.
+6. The first time the MCP server sees an access token, whatever the request,
+   it exchanges it for a short-lived connection token at
+   `/internal/mcp_tokens`, with its service key. Tool calls then call `/api`
+   with that. It caches connection tokens in Redis, encrypted with a key
+   derived from the access token. If the exchange cannot be reached, or
+   refuses the service key, the client gets 503 and keeps its tokens.
 
 ### Running it
 
@@ -235,7 +244,7 @@ private network. Its environment:
 | `GOALNER_API_URL` | The web role's private address, never the public URL (development: `http://localhost:3000`). Requests carry `X-Forwarded-Proto: https`, so the web role must see the MCP container as a trusted proxy (private networks are). |
 | `MCP_PUBLIC_URL` | The public origin, `https://goalner.com` (development: `http://localhost:3100`). Requests with another `Host`, or from a browser page on another origin, are refused with 403. |
 | `MCP_RESOURCE_URL` | The MCP endpoint, `https://goalner.com/mcp`: the audience of access tokens (development: `http://localhost:3100/mcp`). |
-| `MCP_ISSUER` | Goalner's origin, `https://goalner.com`, as its authorization server metadata names it (development: `http://localhost:3000`). |
+| `MCP_ISSUER` | Goalner's origin, `https://goalner.com`, as its authorization server metadata names it (development: `http://localhost:3000`). The web role reads it too, as the issuer of the tokens it signs. |
 | `MCP_JWT_PUBLIC_KEYS` | The PEM public key of the web role's `mcp.jwt_private_key`; several keys, one after another, while rotating. |
 | `MCP_SERVICE_KEY` | Secret. The key for the connection token exchange, the same as the web role's. |
 | `REDIS_URL` | Secret. The connection token cache, the Valkey accessory: `redis://:<password>@goalner-redis:6379/0`. Without it outside production, an in-memory cache is used. |
@@ -243,9 +252,12 @@ private network. Its environment:
 | `SENTRY_DSN` | Optional. Unexpected errors are reported there, without request data, headers or arguments. |
 
 All but `MCP_PORT` and `SENTRY_DSN` are required in production: the process
-refuses to start without them. The web role needs `MCP_SERVICE_KEY` and
-`MCP_RESOURCE_URL` in its environment and `mcp.jwt_private_key` in its
-credentials (`config/credentials.example.yml`). The log has one line per
+refuses to start without them. The web role needs `MCP_SERVICE_KEY`,
+`MCP_RESOURCE_URL` and `MCP_ISSUER` in its environment, and refuses to boot
+without them, and `mcp.jwt_private_key` in its credentials
+(`config/credentials.example.yml`). `config/deploy.yml` defines `MCP_ISSUER`
+and `MCP_RESOURCE_URL` once, in the top-level `env`, so both roles read the
+same values. The log has one line per
 request with the method, tool, API status, result and duration, and never
 tokens, arguments or results.
 
@@ -302,8 +314,13 @@ The signing key:
 3. After an hour, when every token signed by the old key has expired, remove
    the old public key and deploy the mcp role.
 
-The service key: set a new `MCP_SERVICE_KEY` and redeploy both roles. Tool
-calls of connections fail until both run with the same key.
+No client has to refresh or sign in again: the exchange recognizes Goalner's
+own tokens by their stored digest, whichever key signed them.
+
+The service key: set a new `MCP_SERVICE_KEY` and redeploy both roles. Until
+both run with the same key, requests with an access token the MCP server has
+not exchanged yet get 503 "Goalner is unavailable". Clients keep their tokens
+and stay signed in; personal tokens are not affected.
 
 Для дат всегда юзать ```.current``` ибо он возвращает с учётом ```Time.zone```
 

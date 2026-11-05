@@ -5,7 +5,7 @@ require "open3"
 # metadata and the challenge (spec mcp-server, "Authentication" and
 # "Protected resource metadata"; add-mcp-oauth design.md, decisions 2, 9 and 11).
 class McpOauthAuthenticationTest < McpIntegrationTest
-  CHALLENGE = 'Bearer resource_metadata="https://goalner.com/.well-known/oauth-protected-resource/mcp", scope="read write"'
+  CHALLENGE = { "resource_metadata" => "https://goalner.com/.well-known/oauth-protected-resource/mcp", "scope" => "read write" }.freeze
 
   def signing_key
     OpenSSL::PKey::EC.new(Rails.application.credentials.dig(:mcp, :jwt_private_key))
@@ -19,11 +19,25 @@ class McpOauthAuthenticationTest < McpIntegrationTest
     JWT.encode(payload, signing_key, "ES256", kid: JWT::JWK.new(signing_key, kid_generator: JWT::JWK::Thumbprint).kid)
   end
 
-  test "connection access token: tools are listed, without an API request" do
+  # The verifier alone: through the application, a token is also confirmed
+  # with Goalner, which knows none of the JWTs made up here.
+  def jwt_verifier(public_keys = Oauth::JwtGenerator.public_key_pem)
+    GoalnerMcp::JwtVerifier.new(metadata: GoalnerMcp::ProtectedResource.new(resource: Oauth.resource, issuer: Oauth.issuer).metadata,
+      public_keys: public_keys, connection_tokens: Object.new)
+  end
+
+  test "connection access token: tools are listed, once Goalner confirmed it" do
     _api_token, _access_token, access_token = create_connection_token(users(:two))
 
     assert_not_empty mcp_result("tools/list", token: access_token)["tools"]
-    assert_empty api_requests
+    assert_equal [ "POST /internal/mcp_tokens" ], api_requests
+  end
+
+  test "a signed JWT Goalner never issued: 401 with error=invalid_token" do
+    response = mcp_request("tools/list", token: jwt)
+
+    assert_equal 401, response.status
+    assert_includes response.headers["www-authenticate"], 'error="invalid_token"'
   end
 
   test "expired access token: 401 with error=invalid_token" do
@@ -34,8 +48,9 @@ class McpOauthAuthenticationTest < McpIntegrationTest
     assert_not_includes response.body, "tools"
   end
 
-  test "an access token expired less than 30 seconds ago is still accepted" do
-    assert_equal 200, mcp_request("tools/list", token: jwt(exp: 20.seconds.ago.to_i)).status
+  test "an access token expired less than 30 seconds ago still verifies" do
+    assert jwt_verifier.verify(jwt(exp: 20.seconds.ago.to_i))
+    assert_nil jwt_verifier.verify(jwt(exp: 31.seconds.ago.to_i))
   end
 
   test "token for another audience: 401" do
@@ -75,7 +90,7 @@ class McpOauthAuthenticationTest < McpIntegrationTest
       { "CONTENT_TYPE" => "application/json", "HTTP_ACCEPT" => "application/json, text/event-stream", "HTTP_MCP_PROTOCOL_VERSION" => "2025-11-25" }
 
     assert_equal 401, last_response.status
-    assert_equal CHALLENGE, last_response.headers["www-authenticate"]
+    assert_equal CHALLENGE, challenge_parameters(last_response)
   end
 
   test "a refused token's challenge also names the error" do
@@ -84,17 +99,18 @@ class McpOauthAuthenticationTest < McpIntegrationTest
       { "CONTENT_TYPE" => "application/json", "HTTP_ACCEPT" => "application/json", "HTTP_MCP_PROTOCOL_VERSION" => "2025-11-25",
         "HTTP_AUTHORIZATION" => "Bearer #{jwt(aud: "https://other.example/mcp")}" }
 
-    assert_equal CHALLENGE.sub("Bearer ", 'Bearer error="invalid_token", '), last_response.headers["www-authenticate"]
+    assert_equal CHALLENGE.merge("error" => "invalid_token"), challenge_parameters(last_response)
   end
 
   test "several public keys: a token signed by any of them verifies" do
     rotated = OpenSSL::PKey::EC.generate("prime256v1")
-    @app = build_app(jwt_public_keys: rotated.public_to_pem + Oauth::JwtGenerator.public_key_pem)
+    verifier = jwt_verifier(rotated.public_to_pem + Oauth::JwtGenerator.public_key_pem)
     rotated_token = JWT.encode(JWT.decode(jwt, nil, false).first, rotated, "ES256",
       kid: JWT::JWK.new(rotated, kid_generator: JWT::JWK::Thumbprint).kid)
 
-    assert_equal 200, mcp_request("tools/list", token: jwt).status
-    assert_equal 200, mcp_request("tools/list", token: rotated_token).status
+    assert verifier.verify(jwt)
+    assert verifier.verify(rotated_token)
+    assert_nil jwt_verifier.verify(rotated_token)
   end
 
   # The MCP process refuses to start in production without its OAuth and

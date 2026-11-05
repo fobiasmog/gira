@@ -4,8 +4,10 @@ module GoalnerMcp
   # with a connection's access token sends the API a connection token
   # instead, which Goalner issues in exchange for the access token and the
   # service key (POST /internal/mcp_tokens). Goalner checks the access token
-  # against its database there, so a JWT that merely verifies can list tools
-  # but never call one.
+  # against its database there, and its first exchange completes refresh
+  # rotation. Authentication exchanges before answering any request made
+  # with a new access token, so a JWT that merely verifies can neither list
+  # tools nor call one (harden-mcp-oauth design.md, decision 1).
   #
   # Each connection token is cached until 30 seconds before it expires, under
   # the SHA-256 of the access token, encrypted with AES-256-GCM under a key
@@ -20,8 +22,11 @@ module GoalnerMcp
     EXPIRY_MARGIN = 30
     EXCHANGE_PATH = "/internal/mcp_tokens"
 
-    # The exchange refused the access token: the connection ended. The
-    # client gets 401, which makes it refresh or sign in again.
+    # The exchange refused the access token (invalid_token): the connection
+    # ended. The client gets 401, which makes it refresh or sign in again.
+    # Any other 401, such as a wrong service key, is the MCP server's own
+    # fault and raises ApiClient::Unavailable, so clients keep their tokens
+    # (harden-mcp-oauth design.md, decision 3).
     class Refused < StandardError; end
 
     # The access token was exchanged 60 times within the hour.
@@ -63,7 +68,11 @@ module GoalnerMcp
         when 201
           body = JSON.parse(response.body)
           [ body.fetch("token"), Time.iso8601(body.fetch("expires_at")).to_i ]
-        when 401 then raise Refused
+        when 401
+          raise Refused if error_code(response.body) == "invalid_token"
+
+          GoalnerMcp.logger.error("Connection token exchange refused the MCP server's credentials; check MCP_SERVICE_KEY")
+          raise ApiClient::Unavailable, "the exchange refused the MCP server's credentials"
         when 429 then raise RateLimited
         else
           GoalnerMcp.logger.error("Connection token exchange answered #{response.status}")
@@ -72,6 +81,13 @@ module GoalnerMcp
       rescue JSON::ParserError, KeyError, ArgumentError
         GoalnerMcp.logger.error("Connection token exchange answered without a token")
         raise ApiClient::Unavailable, "the exchange answered without a token"
+      end
+
+      def error_code(body)
+        parsed = JSON.parse(body.to_s)
+        parsed["error"] if parsed.is_a?(Hash)
+      rescue JSON::ParserError
+        nil
       end
 
       def encryption_key(access_token)

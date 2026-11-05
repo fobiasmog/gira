@@ -4,9 +4,10 @@
 module RequiredSecrets
   class MissingError < StandardError; end
 
-  # MCP_SERVICE_KEY and MCP_RESOURCE_URL: the connection token exchange and
-  # the audience of MCP access tokens (add-mcp-oauth design.md, decision 11).
-  ENV_KEYS = %w[DATABASE_URL MCP_SERVICE_KEY MCP_RESOURCE_URL].freeze
+  # MCP_SERVICE_KEY, MCP_RESOURCE_URL and MCP_ISSUER: the connection token
+  # exchange, and the audience and issuer of MCP access tokens (add-mcp-oauth
+  # design.md, decision 11; harden-mcp-oauth design.md, decision 9).
+  ENV_KEYS = %w[DATABASE_URL MCP_SERVICE_KEY MCP_RESOURCE_URL MCP_ISSUER].freeze
 
   CREDENTIAL_KEYS = [
     %i[smtp address], %i[smtp user_name], %i[smtp password], %i[smtp domain],

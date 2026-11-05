@@ -27,13 +27,14 @@ module Oauth::JwtGenerator
       JWT.encode(payload, private_key, ALGORITHM, kid: jwk.kid)
     end
 
-    # The verified claims of a token this application issued for the current
-    # resource, or nil. Expiry is left to the token's database row.
-    def decode(token)
-      claims, _header = JWT.decode(token.to_s, private_key, true,
-        algorithm: ALGORITHM, iss: Oauth.issuer, verify_iss: true, aud: Oauth.resource, verify_aud: true,
-        verify_expiration: false)
-      claims
+    # The claims of token when they name this issuer and the current
+    # resource, or nil. The signature is not verified: callers first find the
+    # token's row by its digest, which already proves Goalner issued this
+    # exact token, and the key that signed it may have been replaced since
+    # (harden-mcp-oauth design.md, decision 4). Expiry is left to the row.
+    def claims(token)
+      claims, _header = JWT.decode(token.to_s, nil, false)
+      claims if claims.is_a?(Hash) && claims["iss"] == Oauth.issuer && claims["aud"] == Oauth.resource
     rescue JWT::DecodeError
       nil
     end

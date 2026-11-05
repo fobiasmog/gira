@@ -9,14 +9,20 @@
 #    address must be public (no private, loopback, link-local, multicast,
 #    reserved, or IPv4-mapped ones). The request goes to that address with the
 #    original name for SNI and Host, so a second DNS answer cannot redirect
-#    it. 3 seconds in total, 5 KB at most, application/json only, and
+#    it. 3 seconds in total, 5 KB at most, application/json only,
+#    uncompressed only (harden-mcp-oauth design.md, decision 6), and
 #    redirects are not followed.
 # 3. The document: its client_id is the URL, its redirect_uris are HTTPS or
-#    HTTP loopback URIs, it asks for no client secret, and its client_name
-#    has at most 100 characters (the URL's host when absent).
+#    HTTP loopback URIs, apart from IPv6 loopback ones, which are left out
+#    (harden-mcp-oauth design.md, decision 7), it asks for no client secret, and its client_name
+#    has at most 100 characters (the URL's host, cut to 100, when absent).
 # 4. It is stored as a public application ("cimd", uid = URL) and reused for
 #    24 hours. A redirect URI the stored copy does not list triggers a
-#    refetch, at most once a minute per URL.
+#    refetch.
+# 5. Fetches are counted in Rails.cache before they start, whether they then
+#    succeed or fail (harden-mcp-oauth design.md, decision 6): at most 10 an
+#    hour on behalf of one user, then at most one a minute per URL. An
+#    attempt the URL's limit refuses still counts toward the user's.
 #
 # Every failure raises Error; the authorization request then gets an error
 # page and no redirect, since nothing about the client can be trusted yet.
@@ -28,6 +34,8 @@ class Oauth::ClientMetadataDocument
   MAX_NAME_LENGTH = 100
   REUSE_FOR = 24.hours
   REFETCH_INTERVAL = 1.minute
+  FETCHES_PER_USER = 10
+  FETCH_WINDOW_PER_USER = 1.hour
 
   # Ranges no document may be fetched from, besides those IPAddr already
   # names private, loopback or link-local.
@@ -37,10 +45,14 @@ class Oauth::ClientMetadataDocument
     ::/128 64:ff9b::/96 64:ff9b:1::/48 100::/64 2001::/23 2001:db8::/32 2002::/16 fc00::/7 ff00::/8
   ].map { |range| IPAddr.new(range) }.freeze
 
-  Response = Data.define(:status, :content_type, :body)
+  Response = Data.define(:status, :content_type, :body, :content_encoding) do
+    def initialize(status:, content_type:, body:, content_encoding: nil) = super
+  end
 
   # GET over HTTPS to an address chosen beforehand, reading at most
-  # max_bytes. Redirects are answered, not followed.
+  # max_bytes. Redirects are answered, not followed. It asks for an
+  # uncompressed body, which also stops Net::HTTP from inflating one, so a
+  # compressed answer arrives as it was sent, and is refused.
   class HttpTransport
     class TooLarge < StandardError; end
 
@@ -52,7 +64,8 @@ class Oauth::ClientMetadataDocument
       http.max_retries = 0
 
       http.start do
-        request = Net::HTTP::Get.new(uri.request_uri, "Accept" => "application/json", "User-Agent" => "Goalner")
+        request = Net::HTTP::Get.new(uri.request_uri, "Accept" => "application/json", "Accept-Encoding" => "identity",
+          "User-Agent" => "Goalner")
         http.request(request) do |response|
           raise TooLarge if response.content_length.to_i > max_bytes
 
@@ -61,7 +74,8 @@ class Oauth::ClientMetadataDocument
             body << chunk
             raise TooLarge if body.bytesize > max_bytes
           end
-          return Response.new(status: response.code.to_i, content_type: response.content_type, body: body)
+          return Response.new(status: response.code.to_i, content_type: response.content_type, body: body,
+            content_encoding: response["Content-Encoding"])
         end
       end
     end
@@ -83,10 +97,11 @@ class Oauth::ClientMetadataDocument
     value.is_a?(String) && value.start_with?("https://")
   end
 
-  # The stored application for the document at url, fetched when it is not
-  # stored, older than 24 hours, or does not list redirect_uri.
-  def self.resolve(url, redirect_uri: nil)
-    new(url).resolve(redirect_uri)
+  # The stored application for the document at url, fetched on behalf of
+  # user when it is not stored, older than 24 hours, or does not list
+  # redirect_uri.
+  def self.resolve(url, redirect_uri: nil, user:)
+    new(url).resolve(redirect_uri, user: user)
   end
 
   def initialize(url)
@@ -94,10 +109,11 @@ class Oauth::ClientMetadataDocument
     @uri = parse_url(url)
   end
 
-  def resolve(redirect_uri)
+  def resolve(redirect_uri, user:)
     application = Oauth::Application.cimd.find_by(uid: @url)
     return application if application && reusable?(application, redirect_uri)
 
+    count_fetch(user)
     store(application || Oauth::Application.new(uid: @url, registration: :cimd), fetch)
   end
 
@@ -119,17 +135,27 @@ class Oauth::ClientMetadataDocument
       redirect_uri.blank? || Doorkeeper::OAuth::Helpers::URIChecker.valid_for_authorization?(redirect_uri, application.redirect_uri)
     end
 
+    def count_fetch(user)
+      if Rails.cache.increment("oauth/cimd/user/#{user.id}", 1, expires_in: FETCH_WINDOW_PER_USER) > FETCHES_PER_USER
+        raise Error, "too many client metadata documents fetched for one user"
+      end
+      if Rails.cache.increment("oauth/cimd/url/#{Digest::SHA256.hexdigest(@url)}", 1, expires_in: REFETCH_INTERVAL) > 1
+        raise Error, "client metadata document fetched less than a minute ago"
+      end
+    end
+
     def fetch
       response = Timeout.timeout(timeout, Error, "client metadata document timed out") do
         transport.get(@uri, address: public_address, timeout: timeout)
       end
       raise Error, "client metadata document answered #{response.status}" unless response.status == 200
       raise Error, "client metadata document is not JSON" unless response.content_type == "application/json"
+      raise Error, "client metadata document is compressed" unless response.content_encoding.to_s.strip.downcase.in?([ "", "identity" ])
       raise Error, "client metadata document is too large" if response.body.bytesize > MAX_BYTES
 
       JSON.parse(response.body)
     rescue JSON::ParserError, HttpTransport::TooLarge, Timeout::Error, SystemCallError, IOError, SocketError,
-           OpenSSL::SSL::SSLError, Net::HTTPBadResponse, Net::ProtocolError, Resolv::ResolvError => error
+           OpenSSL::SSL::SSLError, Net::HTTPBadResponse, Net::ProtocolError, Resolv::ResolvError, Zlib::Error => error
       raise Error, "client metadata document refused: #{error.class}"
     end
 
@@ -168,13 +194,21 @@ class Oauth::ClientMetadataDocument
 
     def redirect_uris(document)
       uris = document["redirect_uris"]
+      uris = uris.reject { |uri| ipv6_loopback?(uri) } if uris.is_a?(Array)
       valid = uris.is_a?(Array) && uris.any? && uris.all? { |uri| Oauth.allowed_redirect_uri?(uri) }
       valid ? uris : raise(Error, "redirect_uris refused")
     end
 
+    def ipv6_loopback?(value)
+      host = URI.parse(value).host if value.is_a?(String)
+      Oauth.ipv6_literal?(host) && Oauth.loopback_host?(host)
+    rescue URI::InvalidURIError
+      false
+    end
+
     def client_name(document)
       name = document["client_name"]
-      return @uri.host if name.nil? || (name.is_a?(String) && name.strip.empty?)
+      return @uri.host.first(MAX_NAME_LENGTH) if name.nil? || (name.is_a?(String) && name.strip.empty?)
       raise Error, "client_name refused" unless name.is_a?(String) && name.strip.length <= MAX_NAME_LENGTH
 
       name.strip

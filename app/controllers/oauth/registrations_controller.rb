@@ -39,12 +39,15 @@ class Oauth::RegistrationsController < ActionController::API
   end
 
   private
-    # The given name, or the first redirect URI's host; nil when too long.
+    # The given name, or the first 100 characters of the first redirect
+    # URI's host (harden-mcp-oauth design.md, decision 5); nil when the given
+    # name is too long.
     def client_name(redirect_uris)
+      max_length = Oauth::ClientMetadataDocument::MAX_NAME_LENGTH
       name = params[:client_name]
-      return URI(redirect_uris.first).host if name.blank?
+      return URI(redirect_uris.first).host.first(max_length) if name.blank?
 
-      name.strip if name.is_a?(String) && name.strip.length <= Oauth::ClientMetadataDocument::MAX_NAME_LENGTH
+      name.strip if name.is_a?(String) && name.strip.length <= max_length
     end
 
     def render_error(status, code, description)

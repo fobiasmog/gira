@@ -40,11 +40,12 @@ class Oauth::AuthorizationsController < Doorkeeper::AuthorizationsController
   private
     # A client id that is an HTTPS URL names its metadata document, which is
     # stored as the client before Doorkeeper looks it up (design.md, decision
-    # 4). A refused document gets the error page, never a redirect.
+    # 4), fetched on behalf of the signed-in user, whose fetches are limited.
+    # A refused document gets the error page, never a redirect.
     def resolve_client_metadata_document
       return unless Oauth::ClientMetadataDocument.client_id?(params[:client_id])
 
-      Oauth::ClientMetadataDocument.resolve(params[:client_id], redirect_uri: params[:redirect_uri].presence&.to_s)
+      Oauth::ClientMetadataDocument.resolve(params[:client_id], redirect_uri: params[:redirect_uri].presence&.to_s, user: Current.user)
     rescue Oauth::ClientMetadataDocument::Error => error
       logger.info "Client ID metadata document refused: #{error.message}"
       render :error, locals: { error_response: Doorkeeper::OAuth::ErrorResponse.new(name: :invalid_client) }, status: :bad_request

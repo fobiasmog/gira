@@ -48,6 +48,7 @@ class PurgeMcpConnectionsJobTest < ActionDispatch::IntegrationTest
   test "only the unused connection of a user ends" do
     old = connect(users(:two), @claude)
     travel 80.days
+    oauth_applications(:claude_code).update!(metadata_fetched_at: Time.current) # refetched, without the network
     recent = connect(users(:two), oauth_applications(:claude_code))
     travel 11.days
 
@@ -71,6 +72,54 @@ class PurgeMcpConnectionsJobTest < ActionDispatch::IntegrationTest
 
     assert_not Oauth::Application.exists?(unused.id)
     assert Oauth::Application.exists?(used.id)
+  end
+
+  # Spec mcp-authorization, "Authorized client kept"; harden-mcp-oauth
+  # design.md, decision 8. The job runs daily: once the rows are gone, the
+  # next run would have taken the client for one never authorized.
+  test "authorized client kept: after a disconnect and 60 days, the same client id gets the consent page" do
+    client = oauth_applications(:cursor)
+    connect(users(:two), client)
+    McpConnection.find(users(:two), client.id).disconnect!
+    travel 31.days
+    purge
+    travel 29.days
+    purge
+
+    assert_empty Oauth::AccessToken.where(application: client)
+    sign_in_as users(:two)
+    get oauth_authorization_path(authorization_params(client))
+    assert_response :success
+    assert_select "h1", /wants to access your Goalner account/
+  end
+
+  test "an unredeemed code is deleted after 30 days, and its client counts as authorized" do
+    client = Oauth::Application.create!(name: "Approved once", redirect_uri: "https://approved.example/cb", registration: :dcr)
+    sign_in_as users(:two)
+    approve(authorization_params(client))
+    assert_in_delta Time.current, client.reload.first_authorized_at, 1
+
+    travel 29.days
+    purge
+    assert_equal 1, Oauth::AccessGrant.where(application: client).count
+
+    travel 2.days
+    purge
+    assert_empty Oauth::AccessGrant.where(application: client)
+    travel 1.day
+    purge
+    assert Oauth::Application.exists?(client.id)
+  end
+
+  test "the first authorization is kept when later ones come" do
+    client = oauth_applications(:cursor)
+    sign_in_as users(:two)
+    approve(authorization_params(client))
+    first = client.reload.first_authorized_at
+    travel 1.day
+    approve(authorization_params(client))
+
+    assert_equal first, client.reload.first_authorized_at
   end
 
   test "a registered client whose codes were purged keeps its live connection" do

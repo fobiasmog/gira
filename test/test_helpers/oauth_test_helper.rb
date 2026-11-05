@@ -2,7 +2,18 @@
 # integration tests: PKCE pairs, authorization requests, consent and the
 # token endpoint, and decoding the issued JWTs with the public key.
 module OauthTestHelper
+  extend ActiveSupport::Concern
+
   Pkce = Data.define(:verifier, :challenge)
+
+  # Fixtures are loaded once per test process, so the fetch time they give
+  # the CIMD clients can be minutes old when a test begins, and a request
+  # with an unlisted redirect URI would then refetch the document. Every test
+  # starts with them just fetched instead (harden-mcp-oauth design.md,
+  # decision 10); the test's transaction rolls it back.
+  included do
+    setup { Oauth::Application.cimd.update_all(metadata_fetched_at: Time.current) }
+  end
 
   def new_pkce
     verifier = SecureRandom.urlsafe_base64(48)

@@ -9,12 +9,10 @@ servers:
   web:
     hosts:
       - 192.168.0.1
-    # MCP_SERVICE_KEY and MCP_RESOURCE_URL: the connection token exchange the
-    # mcp role calls, and the audience of MCP access tokens (add-mcp-oauth
-    # design.md, decision 11).
+    # MCP_SERVICE_KEY: the key of the connection token exchange the mcp role
+    # calls (add-mcp-oauth design.md, decision 11). MCP_ISSUER and
+    # MCP_RESOURCE_URL come from the top-level env.
     env:
-      clear:
-        MCP_RESOURCE_URL: https://goalner.com/mcp
       secret:
         - RAILS_MASTER_KEY
         - MCP_SERVICE_KEY
@@ -31,9 +29,10 @@ servers:
   #
   # OAuth (add-mcp-oauth design.md, decisions 9 and 11): the public keys that
   # verify access tokens (the public half of the credentials'
-  # mcp.jwt_private_key; several while rotating), the issuer and the
-  # resource. The service key and Redis for the connection token cache are
-  # secrets of this role and, for the key, the web role only.
+  # mcp.jwt_private_key; several while rotating). The issuer and the
+  # resource come from the top-level env. The service key and Redis for the
+  # connection token cache are secrets of this role and, for the key, the
+  # web role only.
   mcp:
     hosts:
       - 192.168.0.1
@@ -46,8 +45,6 @@ servers:
       clear:
         GOALNER_API_URL: http://kamal-proxy
         MCP_PUBLIC_URL: https://goalner.com
-        MCP_ISSUER: https://goalner.com
-        MCP_RESOURCE_URL: https://goalner.com/mcp
         MCP_JWT_PUBLIC_KEYS: |
           -----BEGIN PUBLIC KEY-----
           Replace with the public key of the production mcp.jwt_private_key.
@@ -88,6 +85,12 @@ registry:
 # receives it.
 env:
   clear:
+    # The issuer and the audience of MCP access tokens. Both roles read this
+    # one definition, so the web role signs what the mcp role checks
+    # (harden-mcp-oauth design.md, decision 9).
+    MCP_ISSUER: https://goalner.com
+    MCP_RESOURCE_URL: https://goalner.com/mcp
+
     # Run the Solid Queue Supervisor inside the web server's Puma process to do jobs.
     # When you start using multiple servers, you should split out job processing to a dedicated machine.
     SOLID_QUEUE_IN_PUMA: true

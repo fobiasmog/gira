@@ -10,7 +10,9 @@ module GoalnerMcp
   #   the properties of the JSON request body, with $ref, allOf and nullable
   #   oneOf inlined so the schema is self-contained. A name that is both a
   #   parameter and a body property fails the build.
-  # - Hints: by HTTP method.
+  # - Hints: by HTTP method, except read_only_hint, which is the operation's
+  #   read_only?, the predicate ToolCall also applies to read-only
+  #   connections (harden-mcp-oauth design.md, decision 11).
   class ToolBuilder
     DOCUMENT = File.expand_path("../../../docs/openapi.yaml", __dir__)
     METHODS = %w[ get post put patch delete ].freeze
@@ -18,11 +20,11 @@ module GoalnerMcp
     # nil leaves a hint unset. MCP takes a tool that is not read-only as
     # destructive unless told otherwise, so false is explicit.
     HINTS = {
-      "GET" => { read_only_hint: true, destructive_hint: nil, idempotent_hint: nil },
-      "POST" => { read_only_hint: false, destructive_hint: false, idempotent_hint: false },
-      "PATCH" => { read_only_hint: false, destructive_hint: false, idempotent_hint: false },
-      "PUT" => { read_only_hint: false, destructive_hint: false, idempotent_hint: true },
-      "DELETE" => { read_only_hint: false, destructive_hint: true, idempotent_hint: true }
+      "GET" => { destructive_hint: nil, idempotent_hint: nil },
+      "POST" => { destructive_hint: false, idempotent_hint: false },
+      "PATCH" => { destructive_hint: false, idempotent_hint: false },
+      "PUT" => { destructive_hint: false, idempotent_hint: true },
+      "DELETE" => { destructive_hint: true, idempotent_hint: true }
     }.freeze
 
     class Error < StandardError; end
@@ -89,7 +91,7 @@ module GoalnerMcp
           title: operation.summary,
           description: [ operation.summary, operation.description&.strip, "#{operation.method} #{operation.path}" ].compact.join("\n\n"),
           input_schema: input_schema(operation),
-          annotations: HINTS.fetch(operation.method).merge(open_world_hint: false)
+          annotations: HINTS.fetch(operation.method).merge(read_only_hint: operation.read_only?, open_world_hint: false)
         ) do |server_context:, **arguments|
           call.call(arguments, server_context.auth_info)
         end

@@ -19,6 +19,18 @@ class Internal::McpTokensControllerTest < ActionDispatch::IntegrationTest
     { "Authorization" => "Bearer #{value}" }
   end
 
+  # Signs new access tokens with key while the block runs, as after rotation.
+  def with_signing_key(key)
+    generator = Oauth::JwtGenerator
+    original = generator.instance_variable_get(:@private_key), generator.instance_variable_get(:@jwk)
+    generator.instance_variable_set(:@private_key, key)
+    generator.instance_variable_set(:@jwk, nil)
+    yield
+  ensure
+    generator.instance_variable_set(:@private_key, original[0])
+    generator.instance_variable_set(:@jwk, original[1])
+  end
+
   test "exchange: a connection token that expires no later than the access token and acts as Alice in all of her projects" do
     tokens = connect(users(:two), @client, access: "read_write")
     access_expiry = Time.zone.at(decode_access_token(tokens["access_token"]).first["exp"])
@@ -112,6 +124,40 @@ class Internal::McpTokensControllerTest < ActionDispatch::IntegrationTest
     Rails.configuration.x.oauth.resource = "https://other.example/mcp"
 
     exchange tokens["access_token"]
+    assert_response :unauthorized
+  ensure
+    Rails.configuration.x.oauth.resource = original
+  end
+
+  # Spec mcp-authorization, "Name from a long host"; harden-mcp-oauth
+  # design.md, decision 5.
+  test "a client whose stored name has 130 characters: the connection token takes the first 100" do
+    client = Oauth::Application.create!(name: "x" * 130, redirect_uri: "https://long.example/cb", registration: :dcr)
+    tokens = connect(users(:two), client)
+
+    exchange tokens["access_token"]
+
+    assert_response :created
+    assert_equal "x" * 100, ApiToken.of_connections.sole.name
+  end
+
+  # Spec api-tokens, "Previous signing key"; harden-mcp-oauth design.md,
+  # decision 4.
+  test "previous signing key: a live access token the replaced key signed is exchanged" do
+    tokens = connect(users(:two), @client)
+
+    with_signing_key(OpenSSL::PKey::EC.generate("prime256v1")) { exchange tokens["access_token"] }
+
+    assert_response :created
+  end
+
+  test "a live token row whose JWT names another audience: 401" do
+    original = Rails.configuration.x.oauth.resource
+    Rails.configuration.x.oauth.resource = "https://other.example/mcp"
+    _api_token, _access_token, jwt = create_connection_token(users(:two), application: @client)
+    Rails.configuration.x.oauth.resource = original
+
+    exchange jwt
     assert_response :unauthorized
   ensure
     Rails.configuration.x.oauth.resource = original
