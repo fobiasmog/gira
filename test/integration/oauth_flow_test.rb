@@ -56,8 +56,45 @@ class OauthFlowTest < ActionDispatch::IntegrationTest
     forged = JWT.encode(decode_access_token(token).first.merge("sub" => users(:one).id.to_s), other_key, "ES256")
 
     assert_raises(JWT::VerificationError) { decode_access_token(forged) }
-    assert_nil Oauth::JwtGenerator.decode(forged)
-    assert_equal users(:two).id.to_s, Oauth::JwtGenerator.decode(token)["sub"]
+    assert_equal users(:two).id.to_s, decode_access_token(token).first["sub"]
+  end
+
+  # Spec mcp-authorization, "Refresh tokens"; harden-mcp-oauth design.md,
+  # decision 1.
+  test "old refresh token after the next refresh: invalid_grant" do
+    first = connect(users(:two), @client)
+    second = refresh(first["refresh_token"], @client)
+    third = refresh(second["refresh_token"], @client)
+    assert third["access_token"], third.inspect
+
+    assert_equal "invalid_grant", refresh(first["refresh_token"], @client)["error"]
+    assert refresh(third["refresh_token"], @client)["access_token"]
+  end
+
+  test "an unknown refresh token or code gets invalid_grant" do
+    assert_equal "invalid_grant", refresh("unknown", @client)["error"]
+
+    post oauth_token_path, params: { grant_type: "authorization_code", code: "unknown", code_verifier: new_pkce.verifier,
+                                     client_id: @client.uid, redirect_uri: @client.redirect_uris.first }
+    assert_equal "invalid_grant", response.parsed_body["error"]
+  end
+
+  # Design.md, decision 2: redeeming takes the user's row lock first.
+  test "redeeming a code or a refresh token locks the user's row" do
+    sign_in_as users(:two)
+    code = approve(authorization_params(@client))
+    locks = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+      locks << payload[:sql] if payload[:sql].match?(/FROM "users".*FOR UPDATE/m)
+    end
+
+    tokens = exchange_code(code, @client)
+    refresh(tokens["refresh_token"], @client)
+    refresh("unknown", @client)
+
+    assert_equal 2, locks.size
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber)
   end
 
   test "client administration, authorized applications and token info are not routed" do

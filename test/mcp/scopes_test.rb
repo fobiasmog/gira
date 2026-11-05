@@ -24,7 +24,7 @@ class McpScopesTest < McpIntegrationTest
     assert_equal GoalnerMcp::ToolBuilder.new(nil).operations.select(&:read_only?).map(&:id).sort, names.sort
   end
 
-  test "read-only connection calls a write tool: insufficient_scope, and no API request" do
+  test "read-only connection calls a write tool: insufficient_scope, and no API request beyond confirming the token" do
     token = access_token("read")
 
     assert_no_difference -> { Task.count } do
@@ -33,13 +33,36 @@ class McpScopesTest < McpIntegrationTest
       assert result["isError"]
       assert_match(/\Ainsufficient_scope: /, result.dig("content", 0, "text"))
     end
-    assert_empty api_requests
+    assert_equal [ "POST /internal/mcp_tokens" ], api_requests
   end
 
   test "a read-only connection still calls read tools" do
     result = mcp_result("tools/call", { name: "listProjects", arguments: {} }, token: access_token("read"))
 
     assert_not result["isError"]
+  end
+
+  # Harden-mcp-oauth design.md, decision 11: the tools listed to read-only
+  # connections, and those they may call, follow Operation#read_only?.
+  test "the read-only hint and the tools a read-only connection may call come from one predicate" do
+    builder = GoalnerMcp::ToolBuilder.new(nil)
+    tools = builder.tools.index_by(&:name_value)
+    read_only = Struct.new(:api_status) do
+      def read_only_connection? = true
+      def upstream_token = "glnr_stand_in"
+    end.new
+    api = Object.new
+    api.define_singleton_method(:request) { |*, **| GoalnerMcp::ApiClient::Response.new(status: 204, body: "") }
+
+    callable = builder.operations.reject do |operation|
+      GoalnerMcp::ToolCall.new(api, operation).call(operation.path_parameters.to_h { [ it.to_sym, "1" ] }, read_only).error?
+    end
+
+    builder.operations.each do |operation|
+      assert_equal operation.read_only?, tools.fetch(operation.id).annotations_value.read_only_hint, operation.id
+    end
+    assert_equal builder.operations.select(&:read_only?).map(&:id), callable.map(&:id)
+    assert_equal tools.values.select { it.annotations_value.read_only_hint }.map(&:name_value), callable.map(&:id)
   end
 
   test "read-write connections and personal tokens list every tool" do

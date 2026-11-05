@@ -33,6 +33,22 @@ module GoalnerMcp
       connection? && !scope?("write")
     end
 
+    # The bearer value tool calls send the API (UpstreamCredential), worked
+    # out once per request: Authentication asks before the transport sees
+    # the request, and ToolCall reuses the answer. A rate-limited exchange is
+    # remembered too, and raised again to each caller (harden-mcp-oauth
+    # design.md, decision 1).
+    def upstream_token
+      @upstream_token ||= begin
+        UpstreamCredential.for(self)
+      rescue ConnectionTokens::RateLimited => error
+        error
+      end
+      raise @upstream_token if @upstream_token.is_a?(Exception)
+
+      @upstream_token
+    end
+
     def reject!
       @rejected = true
     end

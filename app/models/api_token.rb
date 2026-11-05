@@ -14,6 +14,7 @@ class ApiToken < ApplicationRecord
   MAX_LIFETIME_DAYS = 365
   MAX_ACTIVE_PER_USER = 20
   TOUCH_INTERVAL = 1.hour
+  MAX_NAME_LENGTH = 100
 
   belongs_to :user
   belongs_to :project, optional: true
@@ -29,7 +30,7 @@ class ApiToken < ApplicationRecord
   # Days from creation to expiry; required when a personal token is created.
   attribute :expires_in_days, :integer
 
-  validates :name, presence: true, length: { maximum: 100 }
+  validates :name, presence: true, length: { maximum: MAX_NAME_LENGTH }
   validates :project, presence: true, if: :personal?
   validates :expires_in_days, numericality: { only_integer: true, in: 1..MAX_LIFETIME_DAYS }, on: :create, if: :personal?
 
@@ -52,10 +53,11 @@ class ApiToken < ApplicationRecord
   end
 
   # A connection token for a connection's access token: named after the
-  # client, with the connection's access, expiring with the access token (to
-  # the second, as the JWT's exp claim does).
+  # client (cut to the 100 characters a name may have, so no stored client
+  # name can make the exchange fail), with the connection's access, expiring
+  # with the access token (to the second, as the JWT's exp claim does).
   def self.issue_for_connection!(access_token)
-    issue(user_id: access_token.resource_owner_id, oauth_access_token: access_token, name: access_token.application.name,
+    issue(user_id: access_token.resource_owner_id, oauth_access_token: access_token, name: access_token.application.name.first(MAX_NAME_LENGTH),
       access: access_token.includes_scope?("write") ? :read_write : :read, expires_at: access_token.expires_at.floor).tap(&:save!)
   end
 

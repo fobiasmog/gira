@@ -6,8 +6,14 @@
 #
 # 1. The service key (X-Goalner-Service-Key) must equal MCP_SERVICE_KEY.
 # 2. The access token must be live, issued by Goalner for the MCP resource.
+#    Its row, found by digest, proves Goalner issued it, so its signature is
+#    not checked again, and rotating the signing key forces no refresh
+#    (harden-mcp-oauth design.md, decision 4).
 # 3. Its first use completes refresh rotation: the refresh token it replaced
-#    stops working (spec mcp-authorization, "Old refresh token").
+#    stops working (spec mcp-authorization, "Old refresh token"). The MCP
+#    server exchanges a new access token on the first request it sees with
+#    it, whatever the request, tool lists included (harden-mcp-oauth
+#    design.md, decision 1).
 # 4. 60 exchanges an hour per access token.
 # 5. A connection token is issued, valid no longer than the access token.
 #
@@ -37,7 +43,7 @@ class Internal::McpTokensController < ActionController::API
     def find_access_token
       value = params[:access_token]
       @access_token = Oauth::AccessToken.by_token(value) if value.is_a?(String) && value.present?
-      unless @access_token&.accessible? && Oauth::JwtGenerator.decode(value)
+      unless @access_token&.accessible? && Oauth::JwtGenerator.claims(value)
         return render json: { error: "invalid_token" }, status: :unauthorized
       end
 

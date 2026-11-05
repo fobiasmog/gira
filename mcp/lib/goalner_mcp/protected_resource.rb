@@ -7,6 +7,7 @@ module GoalnerMcp
   # resource, and at the bare well-known path for clients that probe the root.
   class ProtectedResource
     ROOT_PATH = MCP::Server::OAuth::ProtectedResourceMetadata::WELL_KNOWN_PATH_PREFIX
+    SCOPES = %w[read write].freeze
 
     attr_reader :metadata
 
@@ -14,7 +15,7 @@ module GoalnerMcp
       @metadata = MCP::Server::OAuth::ProtectedResourceMetadata.new(
         resource: resource,
         authorization_servers: [ issuer ],
-        scopes_supported: Challenge::SCOPE.split,
+        scopes_supported: SCOPES,
         bearer_methods_supported: [ "header" ]
       )
     end

@@ -134,3 +134,62 @@ class OauthAuthorizationRequestTest < ActionDispatch::IntegrationTest
       "Doorkeeper #{Doorkeeper::VERSION::STRING} matches localhost ports: remove DoorkeeperLocalhostPorts"
   end
 end
+
+# Spec mcp-authorization, "Document with an IPv6 loopback URI";
+# harden-mcp-oauth design.md, decision 7.
+class OauthAuthorizationRequestIpv6LoopbackTest < ActionDispatch::IntegrationTest
+  URL = "https://inspector.example/oauth/metadata"
+
+  setup do
+    @original = Oauth::ClientMetadataDocument.resolver, Oauth::ClientMetadataDocument.transport
+    document = JSON.generate(client_id: URL, client_name: "Inspector", redirect_uris: [ "http://127.0.0.1/callback", "http://[::1]/callback" ])
+    Oauth::ClientMetadataDocument.resolver = ->(_host) { [ "160.79.104.10" ] }
+    Oauth::ClientMetadataDocument.transport = Object.new.tap do |transport|
+      transport.define_singleton_method(:get) do |*, **|
+        Oauth::ClientMetadataDocument::Response.new(status: 200, content_type: "application/json", body: document)
+      end
+    end
+    sign_in_as users(:two)
+  end
+
+  teardown do
+    Oauth::ClientMetadataDocument.resolver, Oauth::ClientMetadataDocument.transport = @original
+  end
+
+  def authorize(redirect_uri)
+    get oauth_authorization_path(response_type: "code", client_id: URL, redirect_uri: redirect_uri, scope: "read",
+      state: "s", code_challenge: new_pkce.challenge, code_challenge_method: "S256")
+  end
+
+  test "consent for the IPv4 loopback URI, and the error page for the IPv6 one" do
+    authorize "http://127.0.0.1:8080/callback"
+    assert_response :success
+    assert_select "h1", /wants to access your Goalner account/
+
+    authorize "http://[::1]:8080/callback"
+    assert_response :bad_request
+    assert_select "code", "invalid_redirect_uri"
+    assert_nil response.location
+    assert_equal [ "http://127.0.0.1/callback" ], Oauth::Application.find_by!(uid: URL).redirect_uris
+  end
+end
+
+# A test that begins 2 minutes after the fixtures were loaded: the travel runs
+# before every other setup, OauthTestHelper's included. The stored documents
+# still count as just fetched, so an unlisted redirect URI gets the error
+# page without a fetch, which would raise (harden-mcp-oauth design.md,
+# decision 10).
+class OauthAuthorizationRequestLongAfterFixturesTest < ActionDispatch::IntegrationTest
+  setup(prepend: true) { travel 2.minutes }
+  setup { sign_in_as users(:two) }
+
+  test "an unlisted redirect URI is refused from the stored document" do
+    claude_code = oauth_applications(:claude_code)
+
+    get oauth_authorization_path(authorization_params(claude_code, redirect_uri: "http://localhost:51234/other"))
+
+    assert_response :bad_request
+    assert_select "code", "invalid_redirect_uri"
+    assert_in_delta Time.current, claude_code.reload.metadata_fetched_at, 1
+  end
+end

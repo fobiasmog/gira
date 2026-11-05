@@ -56,10 +56,26 @@ class Api::Me::ConnectionsControllerTest < ActionDispatch::IntegrationTest
       connections.map { it.values_at("client_name", "access") }.sort
   end
 
+  # Harden-mcp-oauth design.md, decision 11.
+  test "listing reads token rows without building access token records" do
+    tokens = connect(users(:two), @claude)
+    3.times { tokens = refresh(tokens["refresh_token"], @claude).tap { exchange(it["access_token"]) } }
+    built = []
+    subscriber = ActiveSupport::Notifications.subscribe("instantiation.active_record") { |*, payload| built << payload[:class_name] }
+
+    assert_equal [ "Claude" ], connections.map { it["client_name"] }
+    delete api_me_connection_path(@claude.id)
+    assert_response :no_content
+
+    assert_not_includes built, "Oauth::AccessToken"
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber)
+  end
+
   test "a connection made again after disconnecting starts anew" do
     connect(users(:two), @claude)
     McpConnection.find(users(:two), @claude.id).disconnect!
-    travel 1.day
+    travel 1.hour
     connect(users(:two), @claude)
 
     assert_in_delta Time.current, Time.zone.parse(connections.sole["connected_at"]), 2

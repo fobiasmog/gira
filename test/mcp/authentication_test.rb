@@ -14,15 +14,29 @@ class McpAuthenticationTest < McpIntegrationTest
     response = mcp_request("tools/list")
 
     assert_unauthorized response
-    assert_equal %(Bearer resource_metadata="#{PUBLIC_URL}/.well-known/oauth-protected-resource/mcp", scope="read write"),
-      response.headers["www-authenticate"]
+    assert_equal({ "resource_metadata" => "#{PUBLIC_URL}/.well-known/oauth-protected-resource/mcp", "scope" => "read write" },
+      challenge_parameters(response))
     assert_empty api_requests
   end
 
   test "revoked token" do
     api_tokens(:two_goal_read_write).destroy! # User Two's token "CI"
 
-    assert_unauthorized mcp_request("tools/list", token: "glnr_two_goal_read_write")
+    response = mcp_request("tools/list", token: "glnr_two_goal_read_write")
+    assert_unauthorized response
+    assert_equal({ "error" => "invalid_token", "resource_metadata" => "#{PUBLIC_URL}/.well-known/oauth-protected-resource/mcp",
+                   "scope" => "read write" }, challenge_parameters(response))
+  end
+
+  test "error=invalid_token only once a token was refused" do
+    [ "Basic Z2xucjp4", nil ].each do |header|
+      post "/mcp", JSON.generate(jsonrpc: "2.0", id: 1, method: "tools/list"),
+        { "CONTENT_TYPE" => "application/json", "HTTP_ACCEPT" => "application/json", "HTTP_MCP_PROTOCOL_VERSION" => "2025-11-25",
+          "HTTP_AUTHORIZATION" => header }.compact
+
+      assert_not challenge_parameters(last_response).key?("error"), header.inspect
+    end
+    assert_equal "invalid_token", challenge_parameters(mcp_request("tools/list", token: "glnr_unknown"))["error"]
   end
 
   test "expired and unknown tokens" do
@@ -90,7 +104,7 @@ class McpAuthenticationTest < McpIntegrationTest
     authentication = GoalnerMcp::Authentication.new(
       ->(env) { seen = env["mcp.auth_info"]; [ 200, {}, [] ] },
       verifiers: [ GoalnerMcp::TokenVerifier.new(GoalnerMcp::ApiClient.new(@api_transport)) ],
-      challenge: GoalnerMcp::Challenge.new(resource_metadata_url: "#{PUBLIC_URL}/.well-known/oauth-protected-resource/mcp")
+      resource_metadata_url: "#{PUBLIC_URL}/.well-known/oauth-protected-resource/mcp"
     )
 
     authentication.call(Rack::MockRequest.env_for("/mcp", method: "POST", "HTTP_AUTHORIZATION" => "Bearer glnr_two_goal_read"))
