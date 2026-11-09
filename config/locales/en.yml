@@ -102,6 +102,38 @@ en:
       title: Invitation not available
       text: This invitation link is invalid, has expired or was already used. Ask a project member to invite you again.
 
+  # Error descriptions sent to MCP clients, in English only, next to
+  # Doorkeeper's own (Oauth::AuthorizationsController, Oauth::TokensController).
+  doorkeeper:
+    errors:
+      messages:
+        invalid_target: The requested resource is not served by this authorization server.
+        invalid_request:
+          invalid_code_challenge_method: The code_challenge_method must be S256.
+
+  oauth:
+    authorizations:
+      new:
+        title: Connect an app
+        heading_html: "%{host} wants to access your Goalner account"
+        client_name_html: The app calls itself %{name}.
+        document_host_html: Its details are published by %{host}.
+        loopback_warning: Access will go only to an app running on this device. Approve only if you started this connection yourself.
+        all_projects: It will reach all of your projects, including the ones you join later, and act as you in them.
+        access: Access
+        read: Read only
+        read_hint: See projects, tasks, comments and members.
+        read_write: Read and write
+        read_write_hint: Also create and change tasks, comments, sprints and milestones.
+        approve: Approve
+        deny: Deny
+        disconnect_hint: You can disconnect it at any time in Settings → Connected apps. Changing your password disconnects every app.
+      error:
+        title: This app can't connect
+        text: The connection request is invalid, so it can't continue. Go back to the app and try connecting again.
+        code_html: "Error: %{code}"
+        open_app: Open Goalner
+
   invitation_mailer:
     invite:
       subject: "You're invited to %{project} on Goalner"

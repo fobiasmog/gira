@@ -1,0 +1,235 @@
+# Client ID metadata documents (spec mcp-authorization, "Client ID metadata
+# documents"; add-mcp-oauth design.md, decision 4). A client id that is an
+# HTTPS URL names the JSON document at that URL, which says who the client is
+# and where it may redirect. Claude's apps and Claude Code use them.
+#
+# 1. The URL: https, no userinfo or fragment, a path other than "/", at most
+#    255 characters.
+# 2. The fetch, built against SSRF: the host is resolved once, and every
+#    address must be public (no private, loopback, link-local, multicast,
+#    reserved, or IPv4-mapped ones). The request goes to that address with the
+#    original name for SNI and Host, so a second DNS answer cannot redirect
+#    it. 3 seconds in total, 5 KB at most, application/json only,
+#    uncompressed only (harden-mcp-oauth design.md, decision 6), and
+#    redirects are not followed.
+# 3. The document: its client_id is the URL, its redirect_uris are HTTPS or
+#    HTTP loopback URIs, apart from IPv6 loopback ones, which are left out
+#    (harden-mcp-oauth design.md, decision 7), it asks for no client secret, and its client_name
+#    has at most 100 characters (the URL's host, cut to 100, when absent).
+# 4. It is stored as a public application ("cimd", uid = URL) and reused for
+#    24 hours. A redirect URI the stored copy does not list triggers a
+#    refetch.
+# 5. Fetches are counted in Rails.cache before they start, whether they then
+#    succeed or fail (harden-mcp-oauth design.md, decision 6): at most 10 an
+#    hour on behalf of one user, then at most one a minute per URL. An
+#    attempt the URL's limit refuses still counts toward the user's.
+#
+# Every failure raises Error; the authorization request then gets an error
+# page and no redirect, since nothing about the client can be trusted yet.
+class Oauth::ClientMetadataDocument
+  class Error < StandardError; end
+
+  MAX_URL_LENGTH = 255
+  MAX_BYTES = 5 * 1024
+  REUSE_FOR = 24.hours
+  REFETCH_INTERVAL = 1.minute
+  FETCHES_PER_USER = 10
+  FETCH_WINDOW_PER_USER = 1.hour
+
+  # Ranges no document may be fetched from (IANA's special-purpose address
+  # registries, RFC 6890), besides those #public? already refuses through
+  # IPAddr: private (10/8, 172.16/12, 192.168/16, fc00::/7), loopback (127/8,
+  # ::1), link-local (169.254/16, where cloud metadata services answer, and
+  # fe80::/10), and IPv4-mapped or -compatible IPv6 addresses.
+  BLOCKED_RANGES = [
+    "0.0.0.0/8",       # "this network": on Linux, 0.0.0.0 reaches the local host
+    "100.64.0.0/10",   # carrier-grade NAT (RFC 6598): inside a provider, such as Alibaba Cloud's metadata at 100.100.100.200
+    "192.0.0.0/24",    # IETF protocol assignments: NAT64 discovery, DS-Lite, Oracle Cloud's legacy metadata at 192.0.0.192
+    "192.0.2.0/24",    # documentation, TEST-NET-1 (RFC 5737)
+    "198.18.0.0/15",   # network benchmarking (RFC 2544)
+    "198.51.100.0/24", # documentation, TEST-NET-2 (RFC 5737)
+    "203.0.113.0/24",  # documentation, TEST-NET-3 (RFC 5737)
+    "224.0.0.0/4",     # multicast
+    "240.0.0.0/4",     # reserved, and the 255.255.255.255 broadcast
+    "::/128",          # unspecified, IPv6's 0.0.0.0
+    "64:ff9b::/96",    # NAT64 (RFC 6052): embeds an IPv4 address, so 64:ff9b::a9fe:a9fe is 169.254.169.254
+    "64:ff9b:1::/48",  # local-use NAT64 (RFC 8215), the same
+    "100::/64",        # discard-only (RFC 6666)
+    "2001::/23",       # IETF protocol assignments, with Teredo (2001::/32), which embeds an IPv4 address
+    "2001:db8::/32",   # documentation (RFC 3849)
+    "2002::/16",       # 6to4 (RFC 3056): embeds an IPv4 address, so 2002:a9fe:a9fe:: reaches 169.254.169.254
+    "3fff::/20",       # documentation (RFC 9637)
+    "fc00::/7",        # unique local (RFC 4193), already private to IPAddr; kept to be explicit
+    "fec0::/10",       # site-local: deprecated (RFC 3879), but some networks still route it internally
+    "ff00::/8"         # multicast
+  ].map { |range| IPAddr.new(range) }.freeze
+
+  Response = Data.define(:status, :content_type, :body, :content_encoding) do
+    def initialize(status:, content_type:, body:, content_encoding: nil) = super
+  end
+
+  # GET over HTTPS to an address chosen beforehand, reading at most
+  # max_bytes. Redirects are answered, not followed. It asks for an
+  # uncompressed body, which also stops Net::HTTP from inflating one, so a
+  # compressed answer arrives as it was sent, and is refused.
+  class HttpTransport
+    class TooLarge < StandardError; end
+
+    def get(uri, address:, timeout:, max_bytes: MAX_BYTES)
+      http = Net::HTTP.new(uri.host, uri.port, nil)
+      http.ipaddr = address
+      http.use_ssl = uri.scheme == "https"
+      http.open_timeout = http.ssl_timeout = http.read_timeout = http.write_timeout = timeout
+      http.max_retries = 0
+
+      http.start do
+        request = Net::HTTP::Get.new(uri.request_uri, "Accept" => "application/json", "Accept-Encoding" => "identity",
+          "User-Agent" => "Goalner")
+        http.request(request) do |response|
+          raise TooLarge if response.content_length.to_i > max_bytes
+
+          body = +""
+          response.read_body do |chunk|
+            body << chunk
+            raise TooLarge if body.bytesize > max_bytes
+          end
+          return Response.new(status: response.code.to_i, content_type: response.content_type, body: body,
+            content_encoding: response["Content-Encoding"])
+        end
+      end
+    end
+  end
+
+  # Each address the name resolves to, from the hosts file and DNS.
+  RESOLVER = lambda do |host|
+    dns = Resolv::DNS.new.tap { |resolver| resolver.timeouts = 1 }
+    Resolv.new([ Resolv::Hosts.new, dns ]).getaddresses(host)
+  ensure
+    dns&.close
+  end
+
+  cattr_accessor :resolver, default: RESOLVER
+  cattr_accessor :transport, default: HttpTransport.new
+  cattr_accessor :timeout, default: 3
+
+  def self.client_id?(value)
+    value.is_a?(String) && value.start_with?("https://")
+  end
+
+  # The stored application for the document at url, fetched on behalf of
+  # user when it is not stored, older than 24 hours, or does not list
+  # redirect_uri.
+  def self.resolve(url, redirect_uri: nil, user:)
+    new(url).resolve(redirect_uri, user: user)
+  end
+
+  def initialize(url)
+    @url = url
+    @uri = parse_url(url)
+  end
+
+  def resolve(redirect_uri, user:)
+    application = Oauth::Application.cimd.find_by(uid: @url)
+    return application if application && reusable?(application, redirect_uri)
+
+    count_fetch(user)
+    store(application || Oauth::Application.new(uid: @url, registration: :cimd), fetch)
+  end
+
+  private
+    def parse_url(url)
+      uri = URI.parse(url)
+      valid = url.length <= MAX_URL_LENGTH && uri.is_a?(URI::HTTPS) && uri.host.present? &&
+        uri.userinfo.nil? && uri.fragment.nil? && uri.path.present? && uri.path != "/"
+      valid ? uri : raise(Error, "client id URL refused")
+    rescue URI::InvalidURIError
+      raise Error, "client id URL refused"
+    end
+
+    def reusable?(application, redirect_uri)
+      fetched_at = application.metadata_fetched_at
+      return false if fetched_at.nil? || fetched_at < REUSE_FOR.ago
+      return true if fetched_at > REFETCH_INTERVAL.ago
+
+      redirect_uri.blank? || Doorkeeper::OAuth::Helpers::URIChecker.valid_for_authorization?(redirect_uri, application.redirect_uri)
+    end
+
+    def count_fetch(user)
+      if Rails.cache.increment("oauth/cimd/user/#{user.id}", 1, expires_in: FETCH_WINDOW_PER_USER) > FETCHES_PER_USER
+        raise Error, "too many client metadata documents fetched for one user"
+      end
+      if Rails.cache.increment("oauth/cimd/url/#{Digest::SHA256.hexdigest(@url)}", 1, expires_in: REFETCH_INTERVAL) > 1
+        raise Error, "client metadata document fetched less than a minute ago"
+      end
+    end
+
+    def fetch
+      response = Timeout.timeout(timeout, Error, "client metadata document timed out") do
+        transport.get(@uri, address: public_address, timeout: timeout)
+      end
+      raise Error, "client metadata document answered #{response.status}" unless response.status == 200
+      raise Error, "client metadata document is not JSON" unless response.content_type == "application/json"
+      raise Error, "client metadata document is compressed" unless response.content_encoding.to_s.strip.downcase.in?([ "", "identity" ])
+      raise Error, "client metadata document is too large" if response.body.bytesize > MAX_BYTES
+
+      JSON.parse(response.body)
+    rescue JSON::ParserError, HttpTransport::TooLarge, Timeout::Error, SystemCallError, IOError, SocketError,
+           OpenSSL::SSL::SSLError, Net::HTTPBadResponse, Net::ProtocolError, Resolv::ResolvError, Zlib::Error => error
+      raise Error, "client metadata document refused: #{error.class}"
+    end
+
+    def public_address
+      addresses = resolver.call(@uri.host)
+      raise Error, "client id host does not resolve" if addresses.empty?
+      raise Error, "client id host resolves to a non-public address" unless addresses.all? { |address| public?(address) }
+
+      addresses.first
+    end
+
+    def public?(address)
+      ip = IPAddr.new(address.to_s)
+      !(ip.ipv4_mapped? || ip.ipv4_compat? || ip.private? || ip.loopback? || ip.link_local? ||
+        BLOCKED_RANGES.any? { |range| range.family == ip.family && range.include?(ip) })
+    rescue IPAddr::Error
+      false
+    end
+
+    def store(application, document)
+      application.update!(document_attributes(document).merge(confidential: false, metadata_fetched_at: Time.current))
+      application
+    rescue ActiveRecord::RecordInvalid
+      raise Error, "client metadata document refused"
+    rescue ActiveRecord::RecordNotUnique
+      Oauth::Application.cimd.find_by!(uid: @url)
+    end
+
+    def document_attributes(document)
+      raise Error, "client metadata document is not an object" unless document.is_a?(Hash)
+      raise Error, "client_id does not match its URL" unless document["client_id"] == @url
+      raise Error, "client asks for a client secret" unless document.fetch("token_endpoint_auth_method", "none") == "none"
+
+      { name: client_name(document), redirect_uri: redirect_uris(document).join(" ") }
+    end
+
+    def redirect_uris(document)
+      uris = document["redirect_uris"]
+      uris = uris.reject { |uri| ipv6_loopback?(uri) } if uris.is_a?(Array)
+      valid = uris.is_a?(Array) && uris.any? && uris.all? { |uri| Oauth.allowed_redirect_uri?(uri) }
+      valid ? uris : raise(Error, "redirect_uris refused")
+    end
+
+    def ipv6_loopback?(value)
+      host = URI.parse(value).host if value.is_a?(String)
+      Oauth.ipv6_literal?(host) && Oauth.loopback_host?(host)
+    rescue URI::InvalidURIError
+      false
+    end
+
+    def client_name(document)
+      name = document["client_name"]
+      return @uri.host.first(Oauth::MAX_NAME_LENGTH) if name.nil? || (name.is_a?(String) && name.strip.empty?)
+      raise Error, "client_name refused" unless name.is_a?(String) && name.strip.length <= Oauth::MAX_NAME_LENGTH
+
+      name.strip
+    end
+end

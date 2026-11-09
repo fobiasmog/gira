@@ -19,6 +19,10 @@ require_relative "goalner_mcp/api_client"
 require_relative "goalner_mcp/lru_cache"
 require_relative "goalner_mcp/credential"
 require_relative "goalner_mcp/token_verifier"
+require_relative "goalner_mcp/connection_tokens"
+require_relative "goalner_mcp/scoped_server"
+require_relative "goalner_mcp/protected_resource"
+require_relative "goalner_mcp/jwt_verifier"
 require_relative "goalner_mcp/authentication"
 require_relative "goalner_mcp/tool_call"
 require_relative "goalner_mcp/tool_builder"
@@ -94,6 +98,12 @@ module GoalnerMcp
       Sentry.capture_exception(exception) if Sentry.initialized?
     end
 
+    CONNECTION_TOKEN_CACHE_SIZE = 10_000
+
+    def connection_token_cache(redis_url)
+      redis_url ? RedisCache.new(redis_url) : LruCache.new(max_size: CONNECTION_TOKEN_CACHE_SIZE, ttl: 3600)
+    end
+
     # A setting from the environment. Development and test fall back to
     # bin/dev's addresses; production refuses to start without it.
     def setting(name, fallback)
@@ -106,13 +116,25 @@ module GoalnerMcp
     # is authenticated and reaches the transport: in stateless mode the
     # transport answers a DELETE with 200, where the spec ("MCP endpoint")
     # wants 405 for anything else.
+    #
+    # The protected resource metadata is served from the origin's well-known
+    # paths, and MCP connections' access tokens are verified with the public
+    # keys, when given, and exchanged for connection tokens with the service
+    # key, cached in Redis or, without REDIS_URL outside production, in memory
+    # (add-mcp-oauth design.md, decisions 9 and 11). Production refuses to
+    # start without any of these settings.
     def app(
       public_url: setting("MCP_PUBLIC_URL", "http://localhost:3100"),
       api: ApiClient.new(ApiClient::HttpTransport.new(setting("GOALNER_API_URL", "http://localhost:3000"))),
-      tools: ToolBuilder.new(api).tools
+      tools: ToolBuilder.new(api).tools,
+      resource: setting("MCP_RESOURCE_URL", "http://localhost:3100/mcp"),
+      issuer: setting("MCP_ISSUER", "http://localhost:3000"),
+      jwt_public_keys: setting("MCP_JWT_PUBLIC_KEYS", nil),
+      service_key: setting("MCP_SERVICE_KEY", "development-mcp-service-key"),
+      connection_token_cache: connection_token_cache(setting("REDIS_URL", nil))
     )
       reporter = ->(exception, _context) { report(exception) unless EXPECTED_ERRORS.any? { exception.is_a?(it) } }
-      server = MCP::Server.new(name: "goalner", title: "Goalner", version: VERSION, instructions: INSTRUCTIONS, tools: tools,
+      server = ScopedServer.new(name: "goalner", title: "Goalner", version: VERSION, instructions: INSTRUCTIONS, tools: tools,
         configuration: MCP::Configuration.new(exception_reporter: reporter))
       origin = URI(public_url)
       port = ":#{origin.port}" unless origin.port == origin.default_port
@@ -125,12 +147,19 @@ module GoalnerMcp
         allowed_origins: [ "#{origin.scheme}://#{origin.host}#{port}" ] + (production? ? [] : INSPECTOR_ORIGINS)
       )
 
-      authenticated = Authentication.new(transport, verifiers: [ TokenVerifier.new(api) ])
+      protected_resource = ProtectedResource.new(resource: resource, issuer: issuer)
+      verifiers = [ TokenVerifier.new(api) ]
+      if jwt_public_keys
+        connection_tokens = ConnectionTokens.new(api, service_key: service_key, cache: connection_token_cache)
+        verifiers << JwtVerifier.new(metadata: protected_resource.metadata, public_keys: jwt_public_keys, connection_tokens: connection_tokens)
+      end
+      authenticated = Authentication.new(transport, verifiers: verifiers, resource_metadata_url: protected_resource.url(public_url))
       post_only = ->(env) { env["REQUEST_METHOD"] == "POST" ? authenticated.call(env) : [ 405, { "allow" => "POST" }, [] ] }
 
       tool_names = tools.map(&:name_value)
 
       Rack::Builder.app do
+        use ProtectedResource::Middleware, protected_resource.metadata
         map("/mcp") do
           use RequestLog, tool_names: tool_names
           run post_only

@@ -61,7 +61,7 @@ class McpLoggingTest < McpIntegrationTest
     failing = MCP::Tool.define(name: "failing", input_schema: { type: "object", properties: { title: { type: "string" } } }) do |server_context:, **|
       raise "Tool failed"
     end
-    @app = GoalnerMcp.app(public_url: PUBLIC_URL, api: GoalnerMcp::ApiClient.new(@api_transport), tools: [ failing ])
+    @app = build_app(tools: [ failing ])
 
     mcp_request("tools/call", { name: "failing", arguments: { title: "Quarterly plan" } }, token: "glnr_two_goal_read")
 

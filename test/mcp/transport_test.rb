@@ -35,7 +35,7 @@ class McpTransportTest < McpIntegrationTest
   end
 
   test "consecutive requests on different instances" do
-    other_instance = GoalnerMcp.app(public_url: PUBLIC_URL, api: GoalnerMcp::ApiClient.new(@api_transport))
+    other_instance = build_app
 
     assert_not_empty mcp_result("tools/list")["tools"]
     @app = other_instance

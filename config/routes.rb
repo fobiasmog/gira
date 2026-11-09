@@ -10,6 +10,23 @@ Rails.application.routes.draw do
     resource :acceptance, only: :create, module: :invitations
   end
 
+  # OAuth for MCP clients (spec mcp-authorization): authorize and consent,
+  # token and revoke. No client administration and no token introspection.
+  use_doorkeeper do
+    skip_controllers :applications, :authorized_applications, :token_info
+    controllers authorizations: "oauth/authorizations", tokens: "oauth/tokens"
+  end
+  get ".well-known/oauth-authorization-server", to: "oauth/metadata#show", as: :oauth_authorization_server_metadata
+  post "oauth/register", to: "oauth/registrations#create", as: :oauth_registration
+
+  # How to connect MCP clients: a redirect to the README.
+  get "docs/mcp", to: "mcp_guides#show", as: :mcp_guide
+
+  # For the MCP server only, behind its service key; nginx refuses /internal/.
+  namespace :internal do
+    resource :mcp_token_exchange, only: :create
+  end
+
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
   # Can be used by load balancers and uptime monitors to verify that the app is live.
   get "up" => "rails/health#show", as: :rails_health_check
@@ -30,6 +47,7 @@ Rails.application.routes.draw do
       resource :password, only: :update, module: :me
       resource :avatar, only: :update, module: :me
       resources :api_tokens, only: %i[index create destroy], module: :me
+      resources :connections, only: %i[index destroy], module: :me
     end
 
     resources :teammates, only: :index

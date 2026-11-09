@@ -1,0 +1,27 @@
+# MCP clients (spec mcp-authorization). The CIMD ones were fetched just now,
+# so authorization requests use the stored copy without a network request.
+#
+# The ERB timestamp below is evaluated once, when the fixtures are loaded.
+# OauthTestHelper's setup renews it at the start of every test, so a test
+# that begins minutes later still finds the documents just fetched.
+
+claude_ai:
+  name: Claude
+  uid: https://claude.ai/oauth/mcp-oauth-client-metadata
+  redirect_uri: https://claude.ai/api/mcp/auth_callback
+  registration: cimd
+  metadata_fetched_at: <%= Time.current.to_fs(:db) %>
+
+claude_code:
+  name: Claude Code
+  uid: https://claude.ai/oauth/claude-code-client-metadata
+  redirect_uri: "http://localhost/callback http://127.0.0.1/callback"
+  registration: cimd
+  metadata_fetched_at: <%= Time.current.to_fs(:db) %>
+
+# Registered dynamically, with an HTTPS redirect URI and a loopback one.
+cursor:
+  name: Cursor
+  uid: cursor-client-id
+  redirect_uri: "https://cursor.example/oauth/callback http://127.0.0.1/callback"
+  registration: dcr

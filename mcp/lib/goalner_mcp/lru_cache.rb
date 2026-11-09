@@ -1,6 +1,6 @@
 module GoalnerMcp
   # A thread-safe cache of at most max_size entries that each expire ttl
-  # seconds after being written. Reading an entry makes it the most recently
+  # seconds after being written, or after their own ttl. Reading an entry makes it the most recently
   # used; writing past max_size drops the least recently used.
   class LruCache
     def initialize(max_size:, ttl:, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
@@ -21,10 +21,10 @@ module GoalnerMcp
       end
     end
 
-    def write(key, value)
+    def write(key, value, ttl: @ttl)
       @mutex.synchronize do
         @entries.delete(key)
-        @entries[key] = [ value, @clock.call + @ttl ]
+        @entries[key] = [ value, @clock.call + ttl ]
         @entries.shift while @entries.size > @max_size
       end
       value

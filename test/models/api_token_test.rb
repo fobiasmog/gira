@@ -83,4 +83,46 @@ class ApiTokenTest < ActiveSupport::TestCase
       assert_operator token.reload.last_used_at, :>, first_use
     end
   end
+
+  test "the database requires exactly one of a project and an access token" do
+    _connection_token, access_token = create_connection_token(users(:two))
+    token = issue.tap(&:save!)
+
+    assert_raises(ActiveRecord::StatementInvalid) { token.update_column(:oauth_access_token_id, access_token.id) }
+    assert_raises(ActiveRecord::StatementInvalid) { ApiToken.where(id: token.id).update_all(project_id: nil) }
+  end
+
+  test "a connection token: named after the client, with the connection's access, expiring with its access token" do
+    connection_token, access_token = create_connection_token(users(:two), scopes: "read")
+
+    assert connection_token.connection?
+    assert_nil connection_token.project
+    assert_equal [ "Claude", "read", users(:two) ], [ connection_token.name, connection_token.access, connection_token.user ]
+    assert_in_delta access_token.expires_at, connection_token.expires_at, 1
+    assert_equal "read_write", create_connection_token(users(:two)).first.access
+    assert_match(/\Aglnr_/, connection_token.value)
+  end
+
+  test "personal and connection scopes" do
+    connection_token, = create_connection_token(users(:two))
+
+    assert_includes ApiToken.of_connections, connection_token
+    assert_not_includes ApiToken.personal, connection_token
+    assert_includes ApiToken.personal, api_tokens(:two_goal_read)
+  end
+
+  test "a user's tokens are personal ones, and of_connections replaces personal with the user's connection tokens" do
+    connection_token, = create_connection_token(users(:two))
+    create_connection_token(users(:one))
+
+    assert_not_includes users(:two).api_tokens, connection_token
+    assert_includes users(:two).api_tokens, api_tokens(:two_goal_read)
+    assert_equal [ connection_token ], users(:two).api_tokens.of_connections.to_a
+    assert_equal [ connection_token ], ApiToken.personal.of_connections.where(user: users(:two)).to_a
+  end
+
+  test "a personal token still needs a project and an expiry" do
+    assert_not issue(project: nil).valid?
+    assert_not issue(expires_in_days: nil).valid?
+  end
 end

@@ -41,10 +41,22 @@ gem "acts_as_list"
 gem "sentry-ruby"
 gem "sentry-rails"
 
+# OAuth 2.1 authorization server for MCP clients (add-mcp-oauth design.md,
+# decision 1). Pinned: the hand-written CIMD, metadata, resource check and
+# localhost patch are written against this release [https://github.com/doorkeeper-gem/doorkeeper]
+gem "doorkeeper", "5.9.9"
+
+# Signs MCP access tokens in the application, and verifies them in the MCP
+# server (decisions 2 and 9) [https://github.com/jwt/ruby-jwt]
+gem "jwt", "~> 3.3", groups: %i[default mcp]
+
 # The MCP server (mcp/, bin/mcp), a separate process. Rails requires only
 # Rails.groups, so it never loads these [https://github.com/modelcontextprotocol/ruby-sdk]
 group :mcp do
   gem "mcp", "1.8.2"
+
+  # The encrypted connection token cache (add-mcp-oauth design.md, decision 9)
+  gem "redis", "~> 5.4"
 end
 
 group :development, :test do

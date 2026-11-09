@@ -1,6 +1,8 @@
 # Personal API tokens (spec api-tokens, "Create a personal API token" and
 # "List and revoke tokens"). Not opened to tokens: only a signed-in session
-# manages them. Another user's token is a 404.
+# manages them. Another user's token is a 404, and so is a connection token,
+# which ends with its connection instead: User#api_tokens holds personal
+# tokens only.
 class Api::Me::ApiTokensController < Api::BaseController
   include PasswordReentry
   rate_limit_per_user to: 10, within: 1.hour, only: :create, scope: "api_tokens"

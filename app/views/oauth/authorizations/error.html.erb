@@ -1,0 +1,13 @@
+<%# An authorization request that cannot go back to its client: an unknown
+    client, a redirect URI it did not register, or a client ID metadata
+    document that was refused (spec mcp-authorization). %>
+<% content_for :title, t(".title") %>
+
+<section class="card">
+  <h1><%= t(".title") %></h1>
+  <p><%= t(".text") %></p>
+  <p class="field__hint"><%= t(".code_html", code: tag.code(error_response.name)) %></p>
+  <ul class="card__links">
+    <li><%= link_to t(".open_app"), app_path %></li>
+  </ul>
+</section>

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_25_090000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_04_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -60,7 +60,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_25_090000) do
 
   create_table "api_tokens", force: :cascade do |t|
     t.bigint "user_id", null: false
-    t.bigint "project_id", null: false
+    t.bigint "project_id"
     t.string "name", null: false
     t.string "access", null: false
     t.string "token_digest", null: false
@@ -69,10 +69,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_25_090000) do
     t.datetime "last_used_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "oauth_access_token_id"
     t.index ["expires_at"], name: "index_api_tokens_on_expires_at"
+    t.index ["oauth_access_token_id"], name: "index_api_tokens_on_oauth_access_token_id"
     t.index ["project_id"], name: "index_api_tokens_on_project_id"
     t.index ["token_digest"], name: "index_api_tokens_on_token_digest", unique: true
     t.index ["user_id"], name: "index_api_tokens_on_user_id"
+    t.check_constraint "(project_id IS NULL) <> (oauth_access_token_id IS NULL)", name: "api_tokens_project_or_connection"
   end
 
   create_table "comments", force: :cascade do |t|
@@ -125,6 +128,54 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_25_090000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["project_id"], name: "index_milestones_on_project_id"
+  end
+
+  create_table "oauth_access_grants", force: :cascade do |t|
+    t.bigint "resource_owner_id", null: false
+    t.bigint "application_id", null: false
+    t.string "token", null: false
+    t.integer "expires_in", null: false
+    t.text "redirect_uri", null: false
+    t.string "scopes", default: "", null: false
+    t.string "code_challenge"
+    t.string "code_challenge_method"
+    t.datetime "created_at", null: false
+    t.datetime "revoked_at"
+    t.index ["application_id"], name: "index_oauth_access_grants_on_application_id"
+    t.index ["resource_owner_id"], name: "index_oauth_access_grants_on_resource_owner_id"
+    t.index ["token"], name: "index_oauth_access_grants_on_token", unique: true
+  end
+
+  create_table "oauth_access_tokens", force: :cascade do |t|
+    t.bigint "resource_owner_id", null: false
+    t.bigint "application_id", null: false
+    t.string "token", null: false
+    t.string "refresh_token"
+    t.integer "expires_in"
+    t.string "scopes"
+    t.datetime "created_at", null: false
+    t.datetime "revoked_at"
+    t.string "previous_refresh_token", default: "", null: false
+    t.index ["application_id"], name: "index_oauth_access_tokens_on_application_id"
+    t.index ["refresh_token"], name: "index_oauth_access_tokens_on_refresh_token", unique: true
+    t.index ["resource_owner_id"], name: "index_oauth_access_tokens_on_resource_owner_id"
+    t.index ["token"], name: "index_oauth_access_tokens_on_token", unique: true
+  end
+
+  create_table "oauth_applications", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "uid", null: false
+    t.string "secret"
+    t.text "redirect_uri", null: false
+    t.string "scopes", default: "", null: false
+    t.boolean "confidential", default: false, null: false
+    t.string "registration", null: false
+    t.datetime "metadata_fetched_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "first_authorized_at"
+    t.index ["uid"], name: "index_oauth_applications_on_uid", unique: true
+    t.check_constraint "registration::text = ANY (ARRAY['cimd'::character varying, 'dcr'::character varying]::text[])", name: "oauth_applications_registration"
   end
 
   create_table "projects", force: :cascade do |t|
@@ -382,6 +433,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_25_090000) do
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "announcement_dismissals", "announcements"
   add_foreign_key "announcement_dismissals", "users"
+  add_foreign_key "api_tokens", "oauth_access_tokens", on_delete: :cascade
   add_foreign_key "api_tokens", "projects"
   add_foreign_key "api_tokens", "users"
   add_foreign_key "comments", "tasks"
@@ -392,6 +444,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_25_090000) do
   add_foreign_key "memberships", "projects"
   add_foreign_key "memberships", "users"
   add_foreign_key "milestones", "projects"
+  add_foreign_key "oauth_access_grants", "oauth_applications", column: "application_id", on_delete: :cascade
+  add_foreign_key "oauth_access_grants", "users", column: "resource_owner_id", on_delete: :cascade
+  add_foreign_key "oauth_access_tokens", "oauth_applications", column: "application_id", on_delete: :cascade
+  add_foreign_key "oauth_access_tokens", "users", column: "resource_owner_id", on_delete: :cascade
   add_foreign_key "projects", "users", column: "owner_id"
   add_foreign_key "sessions", "users"
   add_foreign_key "solid_queue_batch_executions", "solid_queue_batches", column: "batch_id", on_delete: :cascade

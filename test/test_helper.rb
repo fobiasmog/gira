@@ -2,6 +2,13 @@ ENV["RAILS_ENV"] ||= "test"
 require_relative "../config/environment"
 require "rails/test_help"
 require_relative "test_helpers/session_test_helper"
+require_relative "test_helpers/oauth_test_helper"
+
+# No test reaches the network for a client ID metadata document
+# (harden-mcp-oauth design.md, decision 10): the default resolver and
+# transport raise. Tests that fetch documents put stubs of their own in place.
+Oauth::ClientMetadataDocument.resolver = ->(_host) { raise "network access in tests" }
+Oauth::ClientMetadataDocument.transport = Class.new { def get(*, **) = raise("network access in tests") }.new
 
 module ActiveSupport
   class TestCase
@@ -13,5 +20,13 @@ module ActiveSupport
 
     # Rate limit counters live in the cache.
     setup { Rails.cache.clear }
+
+    # A URL on Goalner's public origin (config.x.domain), in tests and in
+    # class bodies.
+    def self.goalner_url(path = "")
+      "https://#{Rails.configuration.x.domain}#{path}"
+    end
+
+    delegate :goalner_url, to: :class
   end
 end

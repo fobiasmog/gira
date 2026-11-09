@@ -86,7 +86,7 @@ Not included:
 - **Main application:**
   - Doorkeeper 5.9 (config, migrations, a controller subclass for authorize and token);
   - the CIMD fetcher, DCR, AS metadata, the JWT generator and the consent view;
-  - `Internal::McpTokensController`;
+  - `Internal::McpTokenExchangesController`;
   - `ApiToken` (`project_id` optional, `oauth_access_token_id`) and `Current#projects`;
   - the `User` password hook;
   - `Api::Me::ConnectionsController` and a purge job.

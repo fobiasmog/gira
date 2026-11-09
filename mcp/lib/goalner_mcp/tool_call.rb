@@ -11,14 +11,24 @@ module GoalnerMcp
   #   credential is marked rejected, and Authentication answers 401. Other
   #   errors: the envelope's code, message and field messages, as a tool error.
   #   An unreachable or failing API: a generic tool error.
+  # - A read-only connection calling a tool that is not read-only gets
+  #   insufficient_scope without an API request (add-mcp-oauth design.md,
+  #   decision 9). A connection whose exchange is refused is answered like an
+  #   API 401, and an exchange over its limit gets rate_limited. The exchange
+  #   already ran in Authentication; its answer is reused (Credential).
   class ToolCall
     def initialize(api, operation)
       @api = api
       @operation = operation
     end
 
+    INSUFFICIENT_SCOPE = "insufficient_scope: This connection is read-only."
+    RATE_LIMITED = "rate_limited: Too many requests. Try again later."
+
     def call(arguments, credential)
-      response = @api.request(@operation.method, path(arguments), token: UpstreamCredential.for(credential), body: body(arguments))
+      return error(INSUFFICIENT_SCOPE) if credential.read_only_connection? && !@operation.read_only?
+
+      response = @api.request(@operation.method, path(arguments), token: upstream_token(credential), body: body(arguments))
       credential.api_status = response.status
 
       case response.status
@@ -31,9 +41,18 @@ module GoalnerMcp
       end
     rescue ApiClient::Unavailable
       error(ApiClient::UNAVAILABLE_MESSAGE)
+    rescue ConnectionTokens::RateLimited
+      error(RATE_LIMITED)
     end
 
     private
+      def upstream_token(credential)
+        credential.upstream_token
+      rescue ConnectionTokens::Refused
+        credential.reject!
+        raise Unauthorized
+      end
+
       def path(arguments)
         path = @operation.path.gsub(/\{(\w+)\}/) { URI.encode_uri_component(arguments.fetch($1.to_sym).to_s) }
         query = @operation.query_parameters.filter_map { |name| [ name, arguments[name.to_sym] ] if arguments.key?(name.to_sym) }
