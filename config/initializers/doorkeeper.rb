@@ -23,11 +23,11 @@ Rails.application.configure do
   # reads, which config/deploy.yml gives both roles (harden-mcp-oauth
   # design.md, decision 9). Production requires both (RequiredSecrets).
   config.x.oauth.issuer = ENV.fetch("MCP_ISSUER") do
-    { "test" => "https://goalner.com", "development" => "http://localhost:3000" }[Rails.env]
+    { "test" => "https://#{config.x.domain}", "development" => "http://localhost:3000" }[Rails.env]
   end
 
   config.x.oauth.resource = ENV.fetch("MCP_RESOURCE_URL") do
-    { "test" => "https://goalner.com/mcp", "development" => "http://localhost:3100/mcp" }[Rails.env]
+    { "test" => "https://#{config.x.domain}/mcp", "development" => "http://localhost:3100/mcp" }[Rails.env]
   end
 
   # The MCP server's key for the connection token exchange

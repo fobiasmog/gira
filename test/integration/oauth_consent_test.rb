@@ -184,11 +184,11 @@ class OauthConsentTest < ActionDispatch::IntegrationTest
 
   # Access tokens
 
-  test "code exchange: an access token for https://goalner.com/mcp that expires in 1 hour, and a refresh token" do
+  test "code exchange: an access token for the MCP resource that expires in 1 hour, and a refresh token" do
     tokens = connect(users(:two), @claude)
 
     claims = decode_access_token(tokens["access_token"]).first
-    assert_equal "https://goalner.com/mcp", claims["aud"]
+    assert_equal goalner_url("/mcp"), claims["aud"]
     assert_equal 1.hour.to_i, claims["exp"] - claims["iat"]
     assert_equal 3600, tokens["expires_in"]
     assert tokens["refresh_token"].present?

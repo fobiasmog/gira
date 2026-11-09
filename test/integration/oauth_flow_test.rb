@@ -22,9 +22,9 @@ class OauthFlowTest < ActionDispatch::IntegrationTest
     claims, header = decode_access_token(tokens["access_token"])
     assert_equal "ES256", header["alg"]
     assert header["kid"].present?
-    assert_equal "https://goalner.com", claims["iss"]
+    assert_equal goalner_url, claims["iss"]
     assert_equal users(:two).id.to_s, claims["sub"]
-    assert_equal "https://goalner.com/mcp", claims["aud"]
+    assert_equal goalner_url("/mcp"), claims["aud"]
     assert_equal @client.uid, claims["client_id"]
     assert_equal "read write", claims["scope"]
     assert_equal 3600, claims["exp"] - claims["iat"]

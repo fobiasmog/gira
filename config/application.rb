@@ -39,6 +39,11 @@ module Goalner
     config.i18n.available_locales = %i[en ru]
     config.i18n.default_locale = :en
 
+    # The public domain Goalner is served from. Test and development defaults
+    # of the OAuth issuer and resource derive from it; production sets them
+    # with MCP_ISSUER and MCP_RESOURCE_URL (config/deploy.yml).
+    config.x.domain = "goalner.com"
+
     # How to connect MCP clients: the README's MCP section (McpGuidesController).
     config.x.mcp.guide_url = "https://github.com/fobiasmog/gira#mcp-server"
 

@@ -8,11 +8,11 @@ class Oauth::MetadataControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     metadata = response.parsed_body
-    assert_equal "https://goalner.com", metadata["issuer"]
-    assert_equal "https://goalner.com/oauth/authorize", metadata["authorization_endpoint"]
-    assert_equal "https://goalner.com/oauth/token", metadata["token_endpoint"]
-    assert_equal "https://goalner.com/oauth/register", metadata["registration_endpoint"]
-    assert_equal "https://goalner.com/oauth/revoke", metadata["revocation_endpoint"]
+    assert_equal goalner_url, metadata["issuer"]
+    assert_equal goalner_url("/oauth/authorize"), metadata["authorization_endpoint"]
+    assert_equal goalner_url("/oauth/token"), metadata["token_endpoint"]
+    assert_equal goalner_url("/oauth/register"), metadata["registration_endpoint"]
+    assert_equal goalner_url("/oauth/revoke"), metadata["revocation_endpoint"]
     assert_equal [ "S256" ], metadata["code_challenge_methods_supported"]
     assert_includes metadata["token_endpoint_auth_methods_supported"], "none"
     assert_equal true, metadata["client_id_metadata_document_supported"]

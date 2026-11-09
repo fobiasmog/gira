@@ -13,7 +13,7 @@ class OauthClientMetadataDocumentsPausedTest < ActionDispatch::IntegrationTest
     get "/.well-known/oauth-authorization-server"
 
     assert_equal false, response.parsed_body["client_id_metadata_document_supported"]
-    assert_equal "https://goalner.com/oauth/register", response.parsed_body["registration_endpoint"]
+    assert_equal goalner_url("/oauth/register"), response.parsed_body["registration_endpoint"]
   end
 
   test "a new document URL gets the error page, without a fetch" do

@@ -5,7 +5,7 @@ require "open3"
 # metadata and the challenge (spec mcp-server, "Authentication" and
 # "Protected resource metadata"; add-mcp-oauth design.md, decisions 2, 9 and 11).
 class McpOauthAuthenticationTest < McpIntegrationTest
-  CHALLENGE = { "resource_metadata" => "https://goalner.com/.well-known/oauth-protected-resource/mcp", "scope" => "read write" }.freeze
+  CHALLENGE = { "resource_metadata" => goalner_url("/.well-known/oauth-protected-resource/mcp"), "scope" => "read write" }.freeze
 
   def signing_key
     OpenSSL::PKey::EC.new(Rails.application.credentials.dig(:mcp, :jwt_private_key))
@@ -14,7 +14,7 @@ class McpOauthAuthenticationTest < McpIntegrationTest
   # A JWT with Goalner's key and kid, and the claims given over valid ones.
   def jwt(**claims)
     now = Time.current.to_i
-    payload = { iss: "https://goalner.com", sub: users(:two).id.to_s, aud: "https://goalner.com/mcp", client_id: "client",
+    payload = { iss: goalner_url, sub: users(:two).id.to_s, aud: goalner_url("/mcp"), client_id: "client",
                 scope: "read write", iat: now, exp: now + 3600, jti: SecureRandom.uuid }.merge(claims).compact
     JWT.encode(payload, signing_key, "ES256", kid: JWT::JWK.new(signing_key, kid_generator: JWT::JWK::Thumbprint).kid)
   end
@@ -62,7 +62,7 @@ class McpOauthAuthenticationTest < McpIntegrationTest
 
   test "another issuer, another key, no signature, or no expiry: 401" do
     other_key = OpenSSL::PKey::EC.generate("prime256v1")
-    unsigned = [ { alg: "none" }, { sub: "2", aud: "https://goalner.com/mcp", iss: "https://goalner.com", exp: 1.hour.from_now.to_i } ]
+    unsigned = [ { alg: "none" }, { sub: "2", aud: goalner_url("/mcp"), iss: goalner_url, exp: 1.hour.from_now.to_i } ]
       .map { Base64.urlsafe_encode64(JSON.generate(it), padding: false) }.join(".") + "."
 
     [ jwt(iss: "https://evil.example"), JWT.encode(JWT.decode(jwt, nil, false).first, other_key, "ES256"), unsigned,
@@ -77,16 +77,16 @@ class McpOauthAuthenticationTest < McpIntegrationTest
 
       assert_equal 200, last_response.status, path
       metadata = JSON.parse(last_response.body)
-      assert_equal "https://goalner.com/mcp", metadata["resource"]
-      assert_equal [ "https://goalner.com" ], metadata["authorization_servers"]
+      assert_equal goalner_url("/mcp"), metadata["resource"]
+      assert_equal [ goalner_url ], metadata["authorization_servers"]
       assert_equal %w[read write], metadata["scopes_supported"]
       assert_equal [ "header" ], metadata["bearer_methods_supported"]
     end
   end
 
   test "challenge: a request without a token gets 401 pointing to the metadata" do
-    @app = build_app(public_url: "https://goalner.com")
-    post "https://goalner.com/mcp", JSON.generate(jsonrpc: "2.0", id: 1, method: "tools/list"),
+    @app = build_app(public_url: goalner_url)
+    post goalner_url("/mcp"), JSON.generate(jsonrpc: "2.0", id: 1, method: "tools/list"),
       { "CONTENT_TYPE" => "application/json", "HTTP_ACCEPT" => "application/json, text/event-stream", "HTTP_MCP_PROTOCOL_VERSION" => "2025-11-25" }
 
     assert_equal 401, last_response.status
@@ -94,8 +94,8 @@ class McpOauthAuthenticationTest < McpIntegrationTest
   end
 
   test "a refused token's challenge also names the error" do
-    @app = build_app(public_url: "https://goalner.com")
-    post "https://goalner.com/mcp", JSON.generate(jsonrpc: "2.0", id: 1, method: "tools/list"),
+    @app = build_app(public_url: goalner_url)
+    post goalner_url("/mcp"), JSON.generate(jsonrpc: "2.0", id: 1, method: "tools/list"),
       { "CONTENT_TYPE" => "application/json", "HTTP_ACCEPT" => "application/json", "HTTP_MCP_PROTOCOL_VERSION" => "2025-11-25",
         "HTTP_AUTHORIZATION" => "Bearer #{jwt(aud: "https://other.example/mcp")}" }
 
@@ -116,8 +116,8 @@ class McpOauthAuthenticationTest < McpIntegrationTest
   # The MCP process refuses to start in production without its OAuth and
   # exchange settings (design.md, decision 11), naming the missing one.
   test "production refuses to start without each setting" do
-    complete = { "RACK_ENV" => "production", "GOALNER_API_URL" => "http://web:3000", "MCP_PUBLIC_URL" => "https://goalner.com",
-                 "MCP_RESOURCE_URL" => "https://goalner.com/mcp", "MCP_ISSUER" => "https://goalner.com",
+    complete = { "RACK_ENV" => "production", "GOALNER_API_URL" => "http://web:3000", "MCP_PUBLIC_URL" => goalner_url,
+                 "MCP_RESOURCE_URL" => goalner_url("/mcp"), "MCP_ISSUER" => goalner_url,
                  "MCP_JWT_PUBLIC_KEYS" => Oauth::JwtGenerator.public_key_pem, "MCP_SERVICE_KEY" => "key", "REDIS_URL" => "redis://cache:6379/0",
                  "DATABASE_URL" => nil, "RAILS_MASTER_KEY" => nil, "RAILS_ENV" => nil }
     script = 'require "bundler/setup"; require "rack"; Rack::Builder.parse_file("mcp/config.ru"); puts "started"'

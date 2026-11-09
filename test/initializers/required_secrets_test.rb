@@ -11,8 +11,8 @@ class RequiredSecretsTest < ActiveSupport::TestCase
     mcp: { jwt_private_key: "-----BEGIN EC PRIVATE KEY-----" }
   }.freeze
 
-  COMPLETE_ENV = { "DATABASE_URL" => "postgres://db/app", "MCP_SERVICE_KEY" => "key", "MCP_RESOURCE_URL" => "https://goalner.com/mcp",
-                   "MCP_ISSUER" => "https://goalner.com" }.freeze
+  COMPLETE_ENV = { "DATABASE_URL" => "postgres://db/app", "MCP_SERVICE_KEY" => "key", "MCP_RESOURCE_URL" => goalner_url("/mcp"),
+                   "MCP_ISSUER" => goalner_url }.freeze
 
   test "nothing is missing when every secret is configured" do
     assert_empty RequiredSecrets.missing(env: COMPLETE_ENV, credentials: COMPLETE_CREDENTIALS)

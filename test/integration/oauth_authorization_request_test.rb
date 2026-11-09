@@ -83,7 +83,7 @@ class OauthAuthorizationRequestTest < ActionDispatch::IntegrationTest
   test "no resource, or Goalner's, is accepted" do
     get oauth_authorization_path(authorization_params(@client).except(:resource))
     assert_response :success
-    get oauth_authorization_path(authorization_params(@client, resource: "https://goalner.com/mcp"))
+    get oauth_authorization_path(authorization_params(@client, resource: goalner_url("/mcp")))
     assert_response :success
   end
 

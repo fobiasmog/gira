@@ -20,5 +20,13 @@ module ActiveSupport
 
     # Rate limit counters live in the cache.
     setup { Rails.cache.clear }
+
+    # A URL on Goalner's public origin (config.x.domain), in tests and in
+    # class bodies.
+    def self.goalner_url(path = "")
+      "https://#{Rails.configuration.x.domain}#{path}"
+    end
+
+    delegate :goalner_url, to: :class
   end
 end
