@@ -1,14 +1,15 @@
 # Personal API tokens (spec api-tokens, "Create a personal API token" and
 # "List and revoke tokens"). Not opened to tokens: only a signed-in session
 # manages them. Another user's token is a 404, and so is a connection token,
-# which ends with its connection instead.
+# which ends with its connection instead: User#api_tokens holds personal
+# tokens only.
 class Api::Me::ApiTokensController < Api::BaseController
   include PasswordReentry
   rate_limit_per_user to: 10, within: 1.hour, only: :create, scope: "api_tokens"
   before_action :require_reentered_password, only: :create
 
   def index
-    api_tokens = Current.user.api_tokens.personal.active.includes(:project).order(created_at: :desc, id: :desc)
+    api_tokens = Current.user.api_tokens.active.includes(:project).order(created_at: :desc, id: :desc)
     render json: api_tokens.map { |api_token| ApiTokenSerializer.new(api_token) }
   end
 
@@ -18,7 +19,7 @@ class Api::Me::ApiTokensController < Api::BaseController
   def create
     project = Current.user.projects.kept.find_by(id: params[:project_id])
     return render_field_error(:project_id, :invalid) unless project
-    if Current.user.api_tokens.personal.active.count >= ApiToken::MAX_ACTIVE_PER_USER
+    if Current.user.api_tokens.active.count >= ApiToken::MAX_ACTIVE_PER_USER
       return render_field_error(:base, :too_many, count: ApiToken::MAX_ACTIVE_PER_USER)
     end
 
@@ -31,7 +32,7 @@ class Api::Me::ApiTokensController < Api::BaseController
   end
 
   def destroy
-    Current.user.api_tokens.personal.find(params[:id]).destroy!
+    Current.user.api_tokens.find(params[:id]).destroy!
     head :no_content
   end
 

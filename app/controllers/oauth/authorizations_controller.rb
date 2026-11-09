@@ -41,9 +41,12 @@ class Oauth::AuthorizationsController < Doorkeeper::AuthorizationsController
     # A client id that is an HTTPS URL names its metadata document, which is
     # stored as the client before Doorkeeper looks it up (design.md, decision
     # 4), fetched on behalf of the signed-in user, whose fetches are limited.
-    # A refused document gets the error page, never a redirect.
+    # A refused document gets the error page, never a redirect. While
+    # documents are paused, every such client id is refused, a stored one too
+    # (harden-mcp-oauth design.md, decision 12).
     def resolve_client_metadata_document
       return unless Oauth::ClientMetadataDocument.client_id?(params[:client_id])
+      raise Oauth::ClientMetadataDocument::Error, "client ID metadata documents are paused" unless Oauth.client_metadata_documents?
 
       Oauth::ClientMetadataDocument.resolve(params[:client_id], redirect_uri: params[:redirect_uri].presence&.to_s, user: Current.user)
     rescue Oauth::ClientMetadataDocument::Error => error

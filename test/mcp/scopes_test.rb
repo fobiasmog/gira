@@ -33,7 +33,7 @@ class McpScopesTest < McpIntegrationTest
       assert result["isError"]
       assert_match(/\Ainsufficient_scope: /, result.dig("content", 0, "text"))
     end
-    assert_equal [ "POST /internal/mcp_tokens" ], api_requests
+    assert_equal [ "POST /internal/mcp_token_exchange" ], api_requests
   end
 
   test "a read-only connection still calls read tools" do

@@ -27,6 +27,13 @@ The others leave unbounded outbound fetches, a disconnect that a refresh can und
   - The MCP server builds its 401 challenges with the SDK's `Challenge`.
   - Read-only tools are decided by one predicate.
 
+A second review of PR #29 asked to stop fetching URLs that clients name:
+- **CIMD is paused.** The metadata no longer offers client ID metadata documents, so clients register dynamically, and a client id that is a URL gets the error page. The code and its tests stay, behind `config.x.oauth.client_metadata_documents`.
+- **Smaller changes:**
+  - the exchange moves to `POST /internal/mcp_token_exchange`;
+  - `User#api_tokens` holds personal tokens, and `of_connections` replaces that condition;
+  - one name limit serves client names and token names.
+
 Not included:
 - an MCP server that accepts several service keys at once. Rotating the service key still means a short outage for connections, now reported as 503 rather than as a dead token;
 - refusing a revoked connection's tool list while its connection token is still cached (see design.md, "Risks / Trade-offs");
@@ -43,7 +50,8 @@ None.
 `mcp-authorization` is introduced by `add-mcp-oauth` and is not yet in `openspec/specs/`. These deltas apply to it once that change is archived.
 
 - `mcp-authorization`:
-  - **Client ID metadata documents:** fetch limits per URL and per user, compressed documents refused, IPv6 loopback entries ignored.
+  - **Client ID metadata documents:** paused. Also, for when they return: fetch limits per URL and per user, compressed documents refused, IPv6 loopback entries ignored.
+  - **Authorization server metadata:** `client_id_metadata_document_supported` is false.
   - **Dynamic client registration:**
     - IPv6 loopback redirect URIs are refused;
     - a host used as the name is cut to 100 characters;
@@ -59,7 +67,7 @@ None.
 ## Impact
 
 - **Main application:**
-  - `Internal::McpTokensController` and `Oauth::TokensController`;
+  - `Internal::McpTokenExchangesController` and `Oauth::TokensController`;
   - `Oauth::JwtGenerator`, `Oauth::ClientMetadataDocument` and `Oauth::RegistrationsController`;
   - `Oauth.allowed_redirect_uri?`, `ApiToken.issue_for_connection!` and `McpConnection`;
   - `PurgeMcpConnectionsJob` and `config/initializers/doorkeeper.rb`;

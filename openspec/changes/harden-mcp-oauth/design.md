@@ -6,12 +6,12 @@
 - **Refresh rotation today.** Doorkeeper 5.9.9 picks revoke-on-use because `oauth_access_tokens` has a `previous_refresh_token` column:
   - a refresh does not revoke the old row; it records the old refresh token on the new row;
   - Doorkeeper revokes the old row only when the new access token is used through its own `Doorkeeper::OAuth::Token.authenticate`, which Goalner never calls;
-  - Goalner calls `revoke_previous_refresh_token!` itself, in `Internal::McpTokensController`. The MCP server reaches that only on `tools/call`, through `ToolCall#upstream_token`.
+  - Goalner calls `revoke_previous_refresh_token!` itself, in `Internal::McpTokenExchangesController`. The MCP server reaches that only on `tools/call`, through `ToolCall#upstream_token`.
 
   On this path, Doorkeeper's refresh takes no lock (`RefreshTokenRequest#before_successful_response`).
 - **Ending connections today.** `McpConnection.revoke` deletes connection tokens and runs `UPDATE … SET revoked_at` on the user's tokens and grants. Its callers are disconnect, `end_all_for` (from `User`'s `after_update_commit` on the password) and `PurgeMcpConnectionsJob#end_unused_connections`. Under Postgres READ COMMITTED, that `UPDATE` does not see a token row that another transaction inserts after the statement began.
 - **The exchange today:**
-  - a 401 from `/internal/mcp_tokens` means either `invalid_service_key` or `invalid_token`, and `ConnectionTokens#exchange` treats both as `Refused`;
+  - a 401 from `/internal/mcp_token_exchange` means either `invalid_service_key` or `invalid_token`, and `ConnectionTokens#exchange` treats both as `Refused`;
   - it also calls `Oauth::JwtGenerator.decode`, which verifies the signature with the current private key only.
 - **CIMD fetches today.** `Oauth::ClientMetadataDocument#resolve` fetches whenever no stored copy is reusable. Nothing records a failed or refused fetch. `Net::HTTP` asks for gzip by default and inflates transparently.
 - **Caches.** `Rails.cache` is Solid Cache in production and `:memory_store` in development and test.
@@ -83,7 +83,7 @@ Alternative: *Rails answers 403 for a bad service key.* Rejected. It changes a s
 
 ### 4. The exchange checks claims, not the signature
 
-`Internal::McpTokensController` already requires `Oauth::AccessToken.by_token(value)` to find a live row. Because the database stores only digests, that lookup proves Goalner issued this exact token. The extra signature check only breaks key rotation.
+`Internal::McpTokenExchangesController` already requires `Oauth::AccessToken.by_token(value)` to find a live row. Because the database stores only digests, that lookup proves Goalner issued this exact token. The extra signature check only breaks key rotation.
 
 `Oauth::JwtGenerator.decode` is replaced with `Oauth::JwtGenerator.claims(token)`. It decodes without verifying the signature (`JWT.decode(token, nil, false)`) and returns the claims only when `iss` equals `Oauth.issuer` and `aud` equals `Oauth.resource`. The `oauth_flow_test` assertions that use `decode` move to the public-key helper `decode_access_token`.
 
@@ -153,6 +153,24 @@ Alternative: *keep the mailer host and compare the two at boot.* Rejected. The w
 - **Connections list.** `McpConnection.for` plucks `application_id`, `created_at`, `revoked_at` and `scopes` instead of instantiating every row. `McpConnection.find` queries only the requested application.
 - **Challenges.** `GoalnerMcp::Challenge` is removed. `Authentication` takes `resource_metadata_url:` and calls `MCP::Server::OAuth::Challenge.missing_token_response` and `.invalid_token_response` with `scope: "read write"`. The SDK puts `scope` before `resource_metadata` and quotes the values, which is why the spec scenario "Challenge" no longer fixes the order.
 - **Read-only tools.** `ToolBuilder` sets `read_only_hint` from `Operation#read_only?` instead of from `HINTS`. `ScopedServer` (through the annotation) and `ToolCall` (directly) then rely on one predicate.
+- **The exchange's route.** `POST /internal/mcp_token_exchange` (`Internal::McpTokenExchangesController#create`) replaces `POST /internal/mcp_tokens`. It is a singular resource named after what happens, like `activation` and `archival`. The MCP server's `ConnectionTokens::EXCHANGE_PATH` follows. Both roles ship from one image, and the exchange has not shipped yet.
+- **A user's tokens are personal.** `User#api_tokens` is scoped to `personal`, so code that lists, counts or deletes a user's tokens cannot reach connection tokens by forgetting `.personal`, and `Api::Me::ApiTokensController` no longer calls it. `of_connections` unscopes the `oauth_access_token_id` condition before its own, so `user.api_tokens.of_connections` is that user's connection tokens rather than `IS NULL AND IS NOT NULL`. `ApiToken` has no default scope: authentication (`find_active_by_value`), connection ending (`McpConnection.revoke`) and `PurgeExpiredApiTokensJob` must see connection tokens.
+- **One name limit.** `Oauth::MAX_NAME_LENGTH` is `ApiToken::MAX_NAME_LENGTH`, because a client's name becomes the name of its connection tokens. `Oauth::ClientMetadataDocument::MAX_NAME_LENGTH` is removed.
+
+### 12. CIMD is paused, and DCR is the only registration
+
+The second review of PR #29 asked that Goalner not fetch URLs that clients name, and that the CIMD code be kept.
+
+- `config.x.oauth.client_metadata_documents` is false in `config/initializers/doorkeeper.rb`. Code reads it through `Oauth.client_metadata_documents?`.
+- The metadata's `client_id_metadata_document_supported` follows the setting. MCP clients that see false register at `/oauth/register` instead.
+- `Oauth::AuthorizationsController#resolve_client_metadata_document` refuses every client id that is an HTTPS URL with the error page, before any fetch. A CIMD client stored earlier is refused too, so nothing relies on a document that is no longer checked. Its existing tokens still refresh until `PurgeMcpConnectionsJob` ends them. Production has none, because the PR has not shipped.
+- `Oauth::ClientMetadataDocument`, its tests and the CIMD fixtures stay. `OauthTestHelper` turns the setting on for every test, and `OauthClientMetadataDocumentsPausedTest` checks the default.
+- The blocked ranges each get a comment, and add `fec0::/10` (deprecated site-local, which some networks still route) and `3fff::/20` (documentation, RFC 9637).
+
+Alternatives:
+- *An allowlist of document hosts.* Not now. A client that sees `client_id_metadata_document_supported: true` uses its document and does not fall back to DCR, so every client that is not on the list would fail to connect. An allowlist is the likely way to turn CIMD back on, for a short list such as `claude.ai`.
+- *Delete the CIMD code.* Rejected, because the review asked to keep it.
+- *Make the fixtures DCR clients.* Not now. Most OAuth tests do not depend on how the client registered, and the CIMD tests would then need fixtures of their own.
 
 ## Risks / Trade-offs
 

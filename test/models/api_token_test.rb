@@ -111,6 +111,16 @@ class ApiTokenTest < ActiveSupport::TestCase
     assert_includes ApiToken.personal, api_tokens(:two_goal_read)
   end
 
+  test "a user's tokens are personal ones, and of_connections replaces personal with the user's connection tokens" do
+    connection_token, = create_connection_token(users(:two))
+    create_connection_token(users(:one))
+
+    assert_not_includes users(:two).api_tokens, connection_token
+    assert_includes users(:two).api_tokens, api_tokens(:two_goal_read)
+    assert_equal [ connection_token ], users(:two).api_tokens.of_connections.to_a
+    assert_equal [ connection_token ], ApiToken.personal.of_connections.where(user: users(:two)).to_a
+  end
+
   test "a personal token still needs a project and an expiry" do
     assert_not issue(project: nil).valid?
     assert_not issue(expires_in_days: nil).valid?

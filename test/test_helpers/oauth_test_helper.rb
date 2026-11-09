@@ -6,13 +6,22 @@ module OauthTestHelper
 
   Pkce = Data.define(:verifier, :challenge)
 
+  # Client ID metadata documents are paused in every environment
+  # (Oauth.client_metadata_documents?), but their code is kept, so tests run
+  # with them on. OauthClientMetadataDocumentsPausedTest checks the default.
+  #
   # Fixtures are loaded once per test process, so the fetch time they give
   # the CIMD clients can be minutes old when a test begins, and a request
   # with an unlisted redirect URI would then refetch the document. Every test
   # starts with them just fetched instead (harden-mcp-oauth design.md,
   # decision 10); the test's transaction rolls it back.
   included do
-    setup { Oauth::Application.cimd.update_all(metadata_fetched_at: Time.current) }
+    setup do
+      @client_metadata_documents = Rails.configuration.x.oauth.client_metadata_documents
+      Rails.configuration.x.oauth.client_metadata_documents = true
+      Oauth::Application.cimd.update_all(metadata_fetched_at: Time.current)
+    end
+    teardown { Rails.configuration.x.oauth.client_metadata_documents = @client_metadata_documents }
   end
 
   def new_pkce

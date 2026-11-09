@@ -30,7 +30,7 @@ class McpOauthAuthenticationTest < McpIntegrationTest
     _api_token, _access_token, access_token = create_connection_token(users(:two))
 
     assert_not_empty mcp_result("tools/list", token: access_token)["tools"]
-    assert_equal [ "POST /internal/mcp_tokens" ], api_requests
+    assert_equal [ "POST /internal/mcp_token_exchange" ], api_requests
   end
 
   test "a signed JWT Goalner never issued: 401 with error=invalid_token" do

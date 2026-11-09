@@ -13,7 +13,7 @@
 #   design.md, decision 2).
 # - Using a refresh token ends the one it replaced: the client received it,
 #   so rotation is complete (decision 1). The new access token's first use
-#   at the MCP server ends it too (Internal::McpTokensController).
+#   at the MCP server ends it too (Internal::McpTokenExchangesController).
 class Oauth::TokensController < Doorkeeper::TokensController
   before_action :refuse_other_resource, only: :create
 

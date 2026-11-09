@@ -8,7 +8,10 @@ class User < ApplicationRecord
   has_many :sessions, dependent: :destroy
   has_many :memberships, dependent: :destroy
   has_many :projects, through: :memberships
-  has_many :api_tokens, dependent: :delete_all
+  # Personal tokens only, so nothing that lists, counts or deletes a user's
+  # tokens reaches connection tokens: those end with their MCP connection
+  # (McpConnection). The user's connection tokens are api_tokens.of_connections.
+  has_many :api_tokens, -> { personal }, dependent: :delete_all
   has_one_attached :avatar
 
   normalizes :email_address, with: ->(e) { e.strip.downcase }

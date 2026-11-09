@@ -107,7 +107,7 @@ Environment variables set everything else:
 | `MCP_PUBLIC_URL` | the MCP server, which also takes its allowed host and origin from it | the MCP tunnel URL |
 | `MCP_RESOURCE_URL` | both | the MCP tunnel URL with `/mcp` |
 | `RAILS_DEVELOPMENT_HOSTS` | Rails host authorization | the Rails tunnel host |
-| `MCP_SERVICE_KEY` | both | a random value: the tunnel makes `/internal/mcp_tokens` public, and the development default is in the repository |
+| `MCP_SERVICE_KEY` | both | a random value: the tunnel makes `/internal/mcp_token_exchange` public, and the development default is in the repository |
 
 With cloudflared quick tunnels, which need no account:
 

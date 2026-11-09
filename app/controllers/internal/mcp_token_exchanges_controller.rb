@@ -18,7 +18,7 @@
 # 5. A connection token is issued, valid no longer than the access token.
 #
 # No session and no CSRF token: an ActionController::API.
-class Internal::McpTokensController < ActionController::API
+class Internal::McpTokenExchangesController < ActionController::API
   EXCHANGES_PER_HOUR = 60
 
   before_action :require_service_key

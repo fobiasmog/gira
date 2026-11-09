@@ -6,7 +6,7 @@
 # - Access tokens are JWTs for the MCP endpoint, valid for an hour
 #   (Oauth::JwtGenerator). Refresh tokens rotate: the previous one is revoked
 #   once the new access token is first used at the MCP server, whatever the
-#   request (Internal::McpTokensController), or the new refresh token is
+#   request (Internal::McpTokenExchangesController), or the new refresh token is
 #   (Oauth::TokensController; harden-mcp-oauth design.md, decision 1).
 # - Tokens and codes are stored as SHA-256 digests.
 # - Scopes: read, and write when the user grants read-write at consent.
@@ -31,9 +31,16 @@ Rails.application.configure do
   end
 
   # The MCP server's key for the connection token exchange
-  # (Internal::McpTokensController). bin/mcp falls back to the same value
+  # (Internal::McpTokenExchangesController). bin/mcp falls back to the same value
   # outside production.
   config.x.oauth.service_key = ENV.fetch("MCP_SERVICE_KEY") { "development-mcp-service-key" unless Rails.env.production? }
+
+  # Client ID metadata documents are paused (harden-mcp-oauth design.md,
+  # decision 12): Goalner fetches no URL a client names. The metadata does
+  # not offer them, so clients register dynamically, and a client ID that is
+  # an HTTPS URL gets the error page. Oauth::ClientMetadataDocument stays,
+  # and the tests run it with this on.
+  config.x.oauth.client_metadata_documents = false
 end
 
 Doorkeeper.configure do

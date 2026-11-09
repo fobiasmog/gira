@@ -25,7 +25,10 @@ class ApiToken < ApplicationRecord
   scope :active, -> { where(expires_at: Time.current..) }
   scope :expired, -> { where(expires_at: ...Time.current) }
   scope :personal, -> { where(oauth_access_token_id: nil) }
-  scope :of_connections, -> { where.not(oauth_access_token_id: nil) }
+  # Replaces personal, so the user's connection tokens are
+  # user.api_tokens.of_connections. It drops any earlier condition on
+  # oauth_access_token_id, so narrow by access token after it.
+  scope :of_connections, -> { unscope(where: :oauth_access_token_id).where.not(oauth_access_token_id: nil) }
 
   # Days from creation to expiry; required when a personal token is created.
   attribute :expires_in_days, :integer

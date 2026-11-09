@@ -4,6 +4,11 @@
 module Oauth
   SCOPES = %w[read write].freeze
 
+  # The longest client name, from registration or a metadata document. A
+  # client's name becomes the name of its connection tokens
+  # (ApiToken.issue_for_connection!), so the two limits are one.
+  MAX_NAME_LENGTH = ApiToken::MAX_NAME_LENGTH
+
   # The issuer: the application's origin (MCP_ISSUER), as the MCP server
   # names it in its protected resource metadata.
   def self.issuer
@@ -14,6 +19,12 @@ module Oauth
   # (MCP_RESOURCE_URL), which is also their audience.
   def self.resource
     Rails.configuration.x.oauth.resource
+  end
+
+  # Whether a client ID may be the URL of a client ID metadata document
+  # (Oauth::ClientMetadataDocument). Off: harden-mcp-oauth design.md, decision 12.
+  def self.client_metadata_documents?
+    Rails.configuration.x.oauth.client_metadata_documents
   end
 
   # A host written as a bracketed IPv6 address, as URI#host gives it.

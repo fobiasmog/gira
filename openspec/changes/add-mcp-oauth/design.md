@@ -234,7 +234,7 @@ Alternatives:
 - `Current#projects` gives connection tokens all of the user's kept projects. Personal tokens keep the `where(id: project_id)` narrowing, guaranteed by the constraint.
 - `Project#archive!` and `#remove_member!` keep deleting by `project_id`, so they leave connection tokens alone. Their reach shrinks through `Current#projects` instead.
 
-**The exchange:** `Internal::McpTokensController#create` at `POST /internal/mcp_tokens` (an `ActionController::API`, outside `/api`).
+**The exchange:** `Internal::McpTokenExchangesController#create` at `POST /internal/mcp_token_exchange` (an `ActionController::API`, outside `/api`).
 1. **Service key.** It compares `X-Goalner-Service-Key` with `MCP_SERVICE_KEY` using `secure_compare`. A mismatch answers 401.
 2. **Access token.** It looks up `params[:access_token]` with `Doorkeeper::AccessToken.by_token` and requires it to be accessible and issued with `aud` = `MCP_RESOURCE_URL`. A failure answers 401 `invalid_token`.
 3. **Refresh rotation.** It calls `revoke_previous_refresh_token!`. This exchange is the access token's first use in Goalner, which completes Doorkeeper's refresh rotation (spec mcp-authorization, "Old refresh token").

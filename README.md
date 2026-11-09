@@ -201,9 +201,6 @@ claude mcp add --transport http goalner-dev http://localhost:3100/mcp --header "
 npx @modelcontextprotocol/inspector   # or try it in the MCP Inspector (Streamable HTTP)
 ```
 
-Claude Code's client ID is a metadata document on claude.ai, which Rails
-fetches, so signing in needs network access.
-
 ### How sign-in works
 
 Goalner is an OAuth 2.1 authorization server (Doorkeeper), and the MCP server
@@ -212,13 +209,15 @@ a resource server:
 1. A request to `/mcp` without a token gets 401 with
    `WWW-Authenticate: Bearer scope="read write", resource_metadata="https://goalner.com/.well-known/oauth-protected-resource/mcp"`.
 2. The client reads that metadata, then `https://goalner.com/.well-known/oauth-authorization-server`.
-3. It identifies itself with a client ID metadata document (an HTTPS URL that
-   Goalner fetches, as Claude does) or registers at `/oauth/register`.
+3. It registers at `/oauth/register` (dynamic client registration). Client ID
+   metadata documents, client IDs that are HTTPS URLs Goalner would fetch,
+   are paused: the metadata does not offer them, and such a client ID gets an
+   error page (`config.x.oauth.client_metadata_documents`).
    Redirect URIs use HTTPS, or HTTP on `localhost` or an IPv4 loopback
    address such as `127.0.0.1`, on any port. IPv6 loopback addresses such as
    `[::1]` are not supported: the consent page's Content Security Policy
-   cannot name them, so the browser would block the redirect. Registration
-   refuses them, and a metadata document's are ignored.
+   cannot name them, so the browser would block the redirect, and
+   registration refuses them.
 4. It sends you to `/oauth/authorize` with an S256 PKCE challenge; you
    approve, and it exchanges the code at `/oauth/token`.
 5. Access tokens are JWTs signed with ES256, valid for an hour, for
@@ -227,7 +226,7 @@ a resource server:
    reaches the MCP server, with any request, or the new refresh token is used.
 6. The first time the MCP server sees an access token, whatever the request,
    it exchanges it for a short-lived connection token at
-   `/internal/mcp_tokens`, with its service key. Tool calls then call `/api`
+   `/internal/mcp_token_exchange`, with its service key. Tool calls then call `/api`
    with that. It caches connection tokens in Redis, encrypted with a key
    derived from the access token. If the exchange cannot be reached, or
    refuses the service key, the client gets 503 and keeps its tokens.

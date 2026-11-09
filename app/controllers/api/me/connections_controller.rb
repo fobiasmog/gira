@@ -1,6 +1,9 @@
-# The signed-in user's MCP connections (spec mcp-authorization, "Connected
-# apps"; add-mcp-oauth design.md, decision 7). Not opened to tokens: API
-# tokens and connections get 403. Another user's connection is a 404.
+# The signed-in user's MCP connections, behind Settings → Connected apps in
+# the web client: the list, and Disconnect (spec mcp-authorization,
+# "Connected apps"; add-mcp-oauth design.md, decision 7). Only the session
+# opens it: a request with a personal API token or a connection token gets
+# 403, so neither a token nor a connected app can list or end connections.
+# Another user's connection is a 404.
 class Api::Me::ConnectionsController < Api::BaseController
   def index
     render json: McpConnection.for(Current.user).map { |connection| serialize(connection) }

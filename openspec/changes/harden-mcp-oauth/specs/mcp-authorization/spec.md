@@ -28,7 +28,37 @@ A redirect URI on an IPv6 loopback address, such as `http://[::1]:8080/callback`
 - **WHEN** a client's document lists `http://127.0.0.1/callback` and `http://[::1]/callback`, and authorization requests use `http://127.0.0.1:8080/callback` and `http://[::1]:8080/callback`
 - **THEN** the first shows the consent page, and the second shows an error page without redirecting the browser
 
+### Requirement: Client ID metadata documents paused
+Goalner SHALL NOT fetch client ID metadata documents until a later change turns them back on. An authorization request whose client id is an HTTPS URL SHALL get the error page with `invalid_client`, without a request to the URL and without a redirect, even when a document for that URL was stored earlier. Clients SHALL register dynamically instead. While documents are paused, the requirements "Client ID metadata documents" and "Client metadata document fetches" describe the code kept for that later change, not the running service.
+
+#### Scenario: Document URL while paused
+- **WHEN** a signed-in user opens an authorization request whose client id is `https://inspector.example/oauth/metadata`
+- **THEN** an error page with `invalid_client` is shown, the browser is not redirected, and no request is made to that URL
+
+#### Scenario: Stored document client while paused
+- **WHEN** a signed-in user opens an authorization request for a client stored from a metadata document before the pause, and then approves the same request
+- **THEN** both show an error page, and no code is issued
+
+#### Scenario: Registered client while paused
+- **WHEN** a signed-in user opens an authorization request for a dynamically registered client
+- **THEN** the consent page is shown
+
 ## MODIFIED Requirements
+
+### Requirement: Authorization server metadata
+`/.well-known/oauth-authorization-server` SHALL publish OAuth authorization server metadata. It SHALL contain:
+- the issuer (the application's origin);
+- the authorization, token, registration and revocation endpoints;
+- response type `code`;
+- the grant types `authorization_code` and `refresh_token`;
+- `S256` as the only code challenge method;
+- `none` as the token endpoint authentication method;
+- the scopes `read` and `write`;
+- `client_id_metadata_document_supported` set to false while client ID metadata documents are paused, so that clients register dynamically.
+
+#### Scenario: Metadata
+- **WHEN** a client requests `/.well-known/oauth-authorization-server`
+- **THEN** the JSON contains the issuer `https://goalner.com`, the four endpoints, `code_challenge_methods_supported` equal to `["S256"]`, `token_endpoint_auth_methods_supported` containing `none`, and `client_id_metadata_document_supported` set to false
 
 ### Requirement: Dynamic client registration
 `POST /oauth/register` SHALL register a public client from a JSON body with a client name and redirect URIs, and SHALL return its client id. Redirect URIs SHALL use HTTPS, or HTTP on `localhost` or an IPv4 loopback address. A client registered without a name SHALL be named after the host of its first redirect URI, cut to 100 characters. Each IP address SHALL be limited to 20 registrations an hour. A registered client that has no authorization within 24 hours SHALL be deleted. A client that was authorized at least once SHALL NOT be deleted for lack of use.

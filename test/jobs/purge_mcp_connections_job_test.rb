@@ -18,7 +18,7 @@ class PurgeMcpConnectionsJobTest < ActionDispatch::IntegrationTest
   end
 
   def exchange(access_token)
-    post internal_mcp_tokens_path, params: { access_token: access_token }, headers: SERVICE_KEY
+    post internal_mcp_token_exchange_path, params: { access_token: access_token }, headers: SERVICE_KEY
     response
   end
 

@@ -24,7 +24,7 @@ Rails.application.routes.draw do
 
   # For the MCP server only, behind its service key; nginx refuses /internal/.
   namespace :internal do
-    resources :mcp_tokens, only: :create
+    resource :mcp_token_exchange, only: :create
   end
 
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.

@@ -105,12 +105,12 @@ class ConnectionTokenAccessTest < ActionDispatch::IntegrationTest
     get api_me_api_tokens_path
 
     assert_not_includes response.parsed_body.map { |token| token["id"] }, @api_token.id
-    assert_equal users(:two).api_tokens.personal.active.count, response.parsed_body.size
+    assert_equal users(:two).api_tokens.active.count, response.parsed_body.size
 
-    (ApiToken::MAX_ACTIVE_PER_USER - users(:two).api_tokens.personal.active.count).times do |n|
+    (ApiToken::MAX_ACTIVE_PER_USER - users(:two).api_tokens.active.count).times do |n|
       ApiToken.issue(user: users(:two), project: @goal, name: "T#{n}", access: "read", expires_in_days: 30).save!
     end
-    assert_equal ApiToken::MAX_ACTIVE_PER_USER + 1, users(:two).api_tokens.active.count
+    assert_equal ApiToken::MAX_ACTIVE_PER_USER + 1, ApiToken.where(user: users(:two)).active.count
   end
 
   test "connection token id: revoking it is a 404, and the connection keeps working" do

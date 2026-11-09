@@ -3,7 +3,7 @@ module GoalnerMcp
   # as the token"; add-mcp-oauth design.md, decisions 8 and 9). A tool call
   # with a connection's access token sends the API a connection token
   # instead, which Goalner issues in exchange for the access token and the
-  # service key (POST /internal/mcp_tokens). Goalner checks the access token
+  # service key (POST /internal/mcp_token_exchange). Goalner checks the access token
   # against its database there, and its first exchange completes refresh
   # rotation. Authentication exchanges before answering any request made
   # with a new access token, so a JWT that merely verifies can neither list
@@ -20,7 +20,7 @@ module GoalnerMcp
     HKDF_SALT = "goalner-mcp-connection-token-cache"
     HKDF_INFO = "goalner-mcp-connection-token"
     EXPIRY_MARGIN = 30
-    EXCHANGE_PATH = "/internal/mcp_tokens"
+    EXCHANGE_PATH = "/internal/mcp_token_exchange"
 
     # The exchange refused the access token (invalid_token): the connection
     # ended. The client gets 401, which makes it refresh or sign in again.

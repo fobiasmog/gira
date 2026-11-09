@@ -5,7 +5,7 @@ require_relative "support"
 # "Tool calls act as the token"; spec mcp-authorization, "Connection reach";
 # add-mcp-oauth design.md, decisions 8 and 9). two is a member of goal and side.
 class McpConnectionTokensTest < McpIntegrationTest
-  EXCHANGE = "POST /internal/mcp_tokens"
+  EXCHANGE = "POST /internal/mcp_token_exchange"
 
   # Raises on every call, like an unreachable Redis.
   class BrokenCache
@@ -155,7 +155,7 @@ class McpConnectionTokensTest < McpIntegrationTest
 
   test "exchange burst: once the access token was exchanged 60 times within the hour, tool calls get rate_limited" do
     @app = build_app(connection_token_cache: BrokenCache.new)
-    Internal::McpTokensController::EXCHANGES_PER_HOUR.times { call_tool("listProjects") }
+    Internal::McpTokenExchangesController::EXCHANGES_PER_HOUR.times { call_tool("listProjects") }
 
     assert_no_difference -> { Task.count } do
       result = call_tool("createTask", { project_id: @goal.id, title: "Too many" })

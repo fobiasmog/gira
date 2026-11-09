@@ -17,7 +17,7 @@
   - a non-transactional test (`self.use_transactional_tests = false`) with two threads covers the mcp-authorization scenario "Disconnected during a refresh". A latch inside `Oauth::AccessToken.create_for` holds the refresh while the other thread disconnects. The refresh's new token ends up revoked, and the connection is not listed;
   - the same test in the other order: the disconnect commits first, and the refresh answers `invalid_grant`;
   - the existing connections, purge and password tests pass.
-- [x] 2.3 Replace `Oauth::JwtGenerator.decode` with `.claims`, which checks `iss` and `aud` without verifying the signature, and use it in `Internal::McpTokensController`. Move the `oauth_flow_test` assertions to `decode_access_token` (decision 4). Verify in `test/controllers/internal/mcp_tokens_controller_test.rb`:
+- [x] 2.3 Replace `Oauth::JwtGenerator.decode` with `.claims`, which checks `iss` and `aud` without verifying the signature, and use it in `Internal::McpTokenExchangesController`. Move the `oauth_flow_test` assertions to `decode_access_token` (decision 4). Verify in `test/controllers/internal/mcp_token_exchanges_controller_test.rb`:
   - the api-tokens scenario "Previous signing key": issue a token, swap the private key the generator uses, and the exchange answers 201;
   - a live token row whose JWT has another `aud` answers 401.
 - [x] 2.4 In `ConnectionTokens#exchange`, raise `Refused` only for a 401 with `{"error":"invalid_token"}`. Any other 401 is logged and raises `ApiClient::Unavailable` (decision 3). Verify in `test/mcp/connection_tokens_test.rb`:
@@ -31,14 +31,14 @@
   - with the exchange rate limited, `tools/list` still lists tools and `tools/call` returns the `rate_limited` tool error with one exchange in total;
   - personal tokens make no exchange.
 
-  Together with the existing "Old refresh token" test in `test/controllers/internal/mcp_tokens_controller_test.rb`, this covers the mcp-authorization scenario "Old refresh token after listing tools".
+  Together with the existing "Old refresh token" test in `test/controllers/internal/mcp_token_exchanges_controller_test.rb`, this covers the mcp-authorization scenario "Old refresh token after listing tools".
 
 ## 3. Client registration and documents
 
 - [x] 3.1 Cut host fallback names to 100 characters in `Oauth::RegistrationsController` and `Oauth::ClientMetadataDocument`, and the connection token's name in `ApiToken.issue_for_connection!` (decision 5). Verify:
   - `test/controllers/oauth/registrations_controller_test.rb` stores a 100-character name for a 130-character host;
   - the CIMD model test does the same for a document without `client_name`;
-  - `test/controllers/internal/mcp_tokens_controller_test.rb` answers 201 for an application whose stored name has 130 characters. This covers the mcp-authorization scenario "Name from a long host".
+  - `test/controllers/internal/mcp_token_exchanges_controller_test.rb` answers 201 for an application whose stored name has 130 characters. This covers the mcp-authorization scenario "Name from a long host".
 - [x] 3.2 Add the per-user and per-URL fetch counters to `ClientMetadataDocument.resolve(url, redirect_uri:, user:)`, and pass `Current.user` from `Oauth::AuthorizationsController` (decision 6). Verify in the CIMD model test, with `Rails.cache.clear` in `setup`:
   - the mcp-authorization scenarios "Unreachable document" (two resolves within a minute make one transport call) and "Many documents" (the 11th URL makes no transport call);
   - a stored copy older than 24 hours whose host fails is fetched at most once a minute;
@@ -78,7 +78,7 @@
   - `MCP_ISSUER` for both roles;
   - IPv6 loopback redirect URIs are not supported.
 
-  Update the comments that describe rotation as finishing on a tool call (`config/initializers/doorkeeper.rb`, `Internal::McpTokensController`, `ConnectionTokens`, `McpConnection`). Verify by reading the section against decisions 1, 3, 4 and 9.
+  Update the comments that describe rotation as finishing on a tool call (`config/initializers/doorkeeper.rb`, `Internal::McpTokenExchangesController`, `ConnectionTokens`, `McpConnection`). Verify by reading the section against decisions 1, 3, 4 and 9.
 - [ ] 6.2 Run `bin/ci`, `bin/rails test:system` and `openspec validate harden-mcp-oauth`. Verify all pass and that Brakeman reports no new warnings.
 
   Status on 2026-11-04, left open:
@@ -91,6 +91,18 @@
   - connect read-only and force a refresh;
   - list tools with the new token only, then refresh with the old refresh token using curl. Verify the refresh answers `invalid_grant`;
   - restart `bin/mcp` with a wrong `MCP_SERVICE_KEY`, force a refresh, and list tools. Verify the answer is 503 and the Inspector does not start sign-in again.
+
+## 7. Second review of PR #29
+
+- [x] 7.1 Pause CIMD behind `config.x.oauth.client_metadata_documents` (false), read through `Oauth.client_metadata_documents?`. Use it in the metadata and in `Oauth::AuthorizationsController#resolve_client_metadata_document`. Turn it on in `OauthTestHelper` (decision 12). Verify:
+  - `test/integration/oauth_client_metadata_documents_paused_test.rb` covers the metadata and the mcp-authorization scenarios "Document URL while paused", "Stored document client while paused" and "Registered client while paused";
+  - removing the controller's check makes that test fail.
+- [x] 7.2 Comment each of `Oauth::ClientMetadataDocument::BLOCKED_RANGES`, and add `fec0::/10` and `3fff::/20` (decision 12). Verify that the CIMD model test refuses `fec0::1`, `3fff::1`, `100.100.100.200` and `192.0.0.192` without a request.
+- [x] 7.3 Move the exchange to `resource :mcp_token_exchange` (`Internal::McpTokenExchangesController`), with `ConnectionTokens::EXCHANGE_PATH`, the README and the tests (decision 11). Verify that `test/mcp` and `test/controllers/internal` pass, and `test/integration/request_forgery_test.rb` lists the new endpoint.
+- [x] 7.4 Scope `User#api_tokens` to `personal`, drop `.personal` from `Api::Me::ApiTokensController`, and have `of_connections` unscope the `oauth_access_token_id` condition. Add `Oauth::MAX_NAME_LENGTH` as `ApiToken::MAX_NAME_LENGTH` (decision 11). Verify:
+  - `test/models/api_token_test.rb` shows that `user.api_tokens` leaves out the user's connection token and `user.api_tokens.of_connections` finds only it;
+  - `test/integration/connection_token_access_test.rb` and `test/models/user_test.rb` pass.
+- [ ] 7.5 Against `bin/dev`, connect Claude Code (`/mcp` → Authenticate) and the MCP Inspector. Verify that both register at `/oauth/register` and reach the consent page.
 
 ## Workflow follow-up
 

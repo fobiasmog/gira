@@ -19,7 +19,7 @@ class RequestForgeryTest < ForgeryProtectedIntegrationTest
     "oauth/tokens#create", # OAuth token endpoint: codes and refresh tokens from public clients
     "oauth/tokens#revoke", # OAuth revocation endpoint (RFC 7009), for a client's own tokens
     "oauth/registrations#create", # dynamic client registration (RFC 7591), open to anyone
-    "internal/mcp_tokens#create" # connection tokens for the MCP server, behind its service key
+    "internal/mcp_token_exchanges#create" # connection tokens for the MCP server, behind its service key
   ].freeze
 
   test "every state-changing route rejects a request without a CSRF token" do

@@ -100,13 +100,13 @@ class Oauth::ClientMetadataDocumentTest < ActiveSupport::TestCase
   test "private address: IPv4, IPv6 and IPv4-mapped addresses are refused without a request" do
     [ "10.0.0.5", "127.0.0.1", "169.254.169.254", "192.168.1.1", "172.16.0.1", "100.64.0.1", "0.0.0.0", "224.0.0.1",
       "255.255.255.255", "::1", "fd00::1", "fe80::1", "::ffff:10.0.0.5", "::ffff:160.79.104.10", "64:ff9b::a00:5",
-      "2002:a00:5::1", "ff02::1", "::" ].each do |address|
+      "2002:a00:5::1", "ff02::1", "::", "fec0::1", "3fff::1", "100.100.100.200", "192.0.0.192" ].each do |address|
       Rails.cache.clear # each attempt is a first fetch, under no limit
       stub_resolver address
 
       assert_refused
     end
-    assert_equal 18, @resolved.size
+    assert_equal 22, @resolved.size
     assert_empty @transport.requests
   end
 

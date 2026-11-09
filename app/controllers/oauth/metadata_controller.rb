@@ -4,7 +4,9 @@
 # names Goalner as its authorization server.
 #
 # offline_access is not listed: refresh tokens are always issued, and
-# clients would otherwise ask for a scope Doorkeeper does not know.
+# clients would otherwise ask for a scope Doorkeeper does not know. While
+# client ID metadata documents are paused, client_id_metadata_document_supported
+# is false, so MCP clients fall back to dynamic registration.
 class Oauth::MetadataController < ActionController::API
   def show
     response.headers["Cache-Control"] = "public, max-age=3600"
@@ -22,7 +24,7 @@ class Oauth::MetadataController < ActionController::API
       token_endpoint_auth_methods_supported: %w[none],
       revocation_endpoint_auth_methods_supported: %w[none],
       scopes_supported: Oauth::SCOPES,
-      client_id_metadata_document_supported: true
+      client_id_metadata_document_supported: Oauth.client_metadata_documents?
     }
   end
 end

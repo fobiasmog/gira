@@ -59,7 +59,7 @@
   - new tests for the api-tokens scenarios "Connection token project list", "Connection token after leaving", "Connection token outlives no project", "Not a personal token" and "Connection token id";
   - a database test that a row with both or neither of `project_id` and `oauth_access_token_id` is rejected;
   - `test/integration/api_token_authentication_test.rb`, `test/integration/api_token_access_test.rb` and `OPENED_TO_TOKENS` are unchanged and pass.
-- [x] 4.2 Add `Internal::McpTokensController` with the service key check, the access token lookup, `revoke_previous_refresh_token!`, the 60-an-hour limit and connection token issuance (decision 8). Verify `test/controllers/internal/mcp_tokens_controller_test.rb` covers:
+- [x] 4.2 Add `Internal::McpTokenExchangesController` with the service key check, the access token lookup, `revoke_previous_refresh_token!`, the 60-an-hour limit and connection token issuance (decision 8). Verify `test/controllers/internal/mcp_token_exchanges_controller_test.rb` covers:
   - the api-tokens scenarios "Exchange", "Wrong service key", "Ended connection", "Disconnected while in use", "Read-only connection" and "Exchange burst";
   - the security-baseline scenario "Internal exchange without the service key";
   - the mcp-authorization scenarios "Access token at the API" and "Old refresh token" (an exchange with the new access token makes the old refresh token answer `invalid_grant`).

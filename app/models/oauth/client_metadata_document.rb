@@ -31,18 +31,37 @@ class Oauth::ClientMetadataDocument
 
   MAX_URL_LENGTH = 255
   MAX_BYTES = 5 * 1024
-  MAX_NAME_LENGTH = 100
   REUSE_FOR = 24.hours
   REFETCH_INTERVAL = 1.minute
   FETCHES_PER_USER = 10
   FETCH_WINDOW_PER_USER = 1.hour
 
-  # Ranges no document may be fetched from, besides those IPAddr already
-  # names private, loopback or link-local.
-  BLOCKED_RANGES = %w[
-    0.0.0.0/8 100.64.0.0/10 192.0.0.0/24 192.0.2.0/24 198.18.0.0/15 198.51.100.0/24 203.0.113.0/24
-    224.0.0.0/4 240.0.0.0/4
-    ::/128 64:ff9b::/96 64:ff9b:1::/48 100::/64 2001::/23 2001:db8::/32 2002::/16 fc00::/7 ff00::/8
+  # Ranges no document may be fetched from (IANA's special-purpose address
+  # registries, RFC 6890), besides those #public? already refuses through
+  # IPAddr: private (10/8, 172.16/12, 192.168/16, fc00::/7), loopback (127/8,
+  # ::1), link-local (169.254/16, where cloud metadata services answer, and
+  # fe80::/10), and IPv4-mapped or -compatible IPv6 addresses.
+  BLOCKED_RANGES = [
+    "0.0.0.0/8",       # "this network": on Linux, 0.0.0.0 reaches the local host
+    "100.64.0.0/10",   # carrier-grade NAT (RFC 6598): inside a provider, such as Alibaba Cloud's metadata at 100.100.100.200
+    "192.0.0.0/24",    # IETF protocol assignments: NAT64 discovery, DS-Lite, Oracle Cloud's legacy metadata at 192.0.0.192
+    "192.0.2.0/24",    # documentation, TEST-NET-1 (RFC 5737)
+    "198.18.0.0/15",   # network benchmarking (RFC 2544)
+    "198.51.100.0/24", # documentation, TEST-NET-2 (RFC 5737)
+    "203.0.113.0/24",  # documentation, TEST-NET-3 (RFC 5737)
+    "224.0.0.0/4",     # multicast
+    "240.0.0.0/4",     # reserved, and the 255.255.255.255 broadcast
+    "::/128",          # unspecified, IPv6's 0.0.0.0
+    "64:ff9b::/96",    # NAT64 (RFC 6052): embeds an IPv4 address, so 64:ff9b::a9fe:a9fe is 169.254.169.254
+    "64:ff9b:1::/48",  # local-use NAT64 (RFC 8215), the same
+    "100::/64",        # discard-only (RFC 6666)
+    "2001::/23",       # IETF protocol assignments, with Teredo (2001::/32), which embeds an IPv4 address
+    "2001:db8::/32",   # documentation (RFC 3849)
+    "2002::/16",       # 6to4 (RFC 3056): embeds an IPv4 address, so 2002:a9fe:a9fe:: reaches 169.254.169.254
+    "3fff::/20",       # documentation (RFC 9637)
+    "fc00::/7",        # unique local (RFC 4193), already private to IPAddr; kept to be explicit
+    "fec0::/10",       # site-local: deprecated (RFC 3879), but some networks still route it internally
+    "ff00::/8"         # multicast
   ].map { |range| IPAddr.new(range) }.freeze
 
   Response = Data.define(:status, :content_type, :body, :content_encoding) do
@@ -208,8 +227,8 @@ class Oauth::ClientMetadataDocument
 
     def client_name(document)
       name = document["client_name"]
-      return @uri.host.first(MAX_NAME_LENGTH) if name.nil? || (name.is_a?(String) && name.strip.empty?)
-      raise Error, "client_name refused" unless name.is_a?(String) && name.strip.length <= MAX_NAME_LENGTH
+      return @uri.host.first(Oauth::MAX_NAME_LENGTH) if name.nil? || (name.is_a?(String) && name.strip.empty?)
+      raise Error, "client_name refused" unless name.is_a?(String) && name.strip.length <= Oauth::MAX_NAME_LENGTH
 
       name.strip
     end

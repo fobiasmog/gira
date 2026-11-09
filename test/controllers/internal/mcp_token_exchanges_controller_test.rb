@@ -4,7 +4,7 @@ require "test_helper"
 # "Token rate limits"; spec security-baseline, "Deny by default"; spec
 # mcp-authorization, "Access tokens" and "Refresh tokens"; add-mcp-oauth
 # design.md, decision 8). two is a member of goal and side.
-class Internal::McpTokensControllerTest < ActionDispatch::IntegrationTest
+class Internal::McpTokenExchangesControllerTest < ActionDispatch::IntegrationTest
   SERVICE_KEY = { "X-Goalner-Service-Key" => "development-mcp-service-key" }.freeze
 
   setup do
@@ -12,7 +12,7 @@ class Internal::McpTokensControllerTest < ActionDispatch::IntegrationTest
   end
 
   def exchange(access_token, headers: SERVICE_KEY)
-    post internal_mcp_tokens_path, params: { access_token: access_token }, headers: headers
+    post internal_mcp_token_exchange_path, params: { access_token: access_token }, headers: headers
   end
 
   def bearer(value)
