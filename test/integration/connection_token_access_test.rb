@@ -126,6 +126,8 @@ class ConnectionTokenAccessTest < ActionDispatch::IntegrationTest
   test "a password change deletes connection tokens too" do
     users(:two).update!(password: "another long password")
 
+    assert_not ApiToken.exists?(@api_token.id)
+
     get api_projects_path, headers: @headers
     assert_response :unauthorized
   end
