@@ -72,5 +72,5 @@ group :test do
   gem "selenium-webdriver"
 
   # Checks API responses against docs/openapi.yaml, for bin/openapi-verify [https://github.com/ahx/openapi_first]
-  gem "openapi_first", "~> 4.2", require: false
+  gem "openapi_first", "~> 4.3", require: false
 end
