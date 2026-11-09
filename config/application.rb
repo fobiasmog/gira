@@ -39,6 +39,9 @@ module Goalner
     config.i18n.available_locales = %i[en ru]
     config.i18n.default_locale = :en
 
+    # How to connect MCP clients: the README's MCP section (McpGuidesController).
+    config.x.mcp.guide_url = "https://github.com/fobiasmog/gira#mcp-server"
+
     # Configuration for the application, engines, and railties goes here.
     #
     # These settings can be overridden in specific environments using the files
