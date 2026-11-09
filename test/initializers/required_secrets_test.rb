@@ -31,6 +31,12 @@ class RequiredSecretsTest < ActiveSupport::TestCase
     assert_equal [ "mcp.jwt_private_key" ], RequiredSecrets.missing(env: COMPLETE_ENV, credentials: COMPLETE_CREDENTIALS.except(:mcp))
   end
 
+  test "the public development service key counts as missing" do
+    env = COMPLETE_ENV.merge("MCP_SERVICE_KEY" => "development-mcp-service-key")
+
+    assert_equal [ "MCP_SERVICE_KEY" ], RequiredSecrets.missing(env: env, credentials: COMPLETE_CREDENTIALS)
+  end
+
   test "production refuses to boot without DATABASE_URL" do
     env = { "RAILS_ENV" => "production", "DATABASE_URL" => nil, "SECRET_KEY_BASE_DUMMY" => nil }
     _out, err, status = Open3.capture3(env, "bin/rails", "runner", "puts :booted", chdir: Rails.root.to_s)
