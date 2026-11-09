@@ -53,7 +53,7 @@ gem "jwt", "~> 3.3", groups: %i[default mcp]
 # The MCP server (mcp/, bin/mcp), a separate process. Rails requires only
 # Rails.groups, so it never loads these [https://github.com/modelcontextprotocol/ruby-sdk]
 group :mcp do
-  gem "mcp", "1.8.2"
+  gem "mcp", "1.9.0"
 
   # The encrypted connection token cache (add-mcp-oauth design.md, decision 9)
   gem "redis", "~> 5.4"
