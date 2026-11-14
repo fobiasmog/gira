@@ -46,6 +46,9 @@ class AccessibilityTest < ApplicationSystemTestCase
     @archived.archive!
     @project.invitations.create!(email: "pending@example.com", inviter: @user, token_digest: "x", expires_at: 1.day.from_now)
     Announcement.create!(body: "News for everyone")
+    agent = create_agent(@project, name: "Accessible agent")
+    issue_agent_token(agent, issuer: @user)
+    create_agent(@project, name: "Deleted agent").delete!
   end
 
   test "every screen names its controls, labels its fields and gives images alt text" do
@@ -62,6 +65,7 @@ class AccessibilityTest < ApplicationSystemTestCase
       "#{base}/milestones" => "Release",
       "#{base}/milestones/#{@milestone.id}" => "Release",
       "#{base}/members" => "pending@example.com",
+      "#{base}/agents" => "Accessible agent",
       "#{base}/settings" => "Project settings",
       "#{base}/archive" => "Archived task",
       "#{base}/archive/#{@archived.id}" => "Archived task",

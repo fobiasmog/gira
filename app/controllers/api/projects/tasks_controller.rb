@@ -4,19 +4,24 @@ class Api::Projects::TasksController < Api::BaseController
   allow_token_access only: %i[ index show create update destroy ]
   before_action :set_task, only: %i[ show update destroy ]
 
-  VIEWS = %w[board backlog backlog_done archived].freeze
+  VIEWS = %w[board backlog backlog_done archived assigned].freeze
 
   # ?view=board (default): root tasks on the board: the active sprint's, or
   #   those in no sprint when none is active
   # ?view=backlog: open root tasks in no sprint, in column order
   # ?view=backlog_done: done root tasks in no sprint, most recently completed first
   # ?view=archived: archived tasks, newest first
+  # ?view=assigned: the requester's open tasks, subtasks included, whatever
+  #   their sprint, by column and then by number (spec tasks, "Tasks assigned
+  #   to the requester"). With a token the requester is its owner, so an
+  #   agent finds its work here.
   def index
     tasks = case params.fetch(:view, "board").presence_in(VIEWS)
     when "board" then board_tasks(@project)
     when "backlog" then @project.tasks.kept.roots.in_backlog.not_done.in_column_order
     when "backlog_done" then @project.tasks.kept.roots.in_backlog.done.order(Task.arel_table[:completed_at].desc.nulls_last, id: :desc)
     when "archived" then @project.tasks.archived.order(archived_at: :desc, id: :desc)
+    when "assigned" then @project.tasks.kept.not_done.where(assignee: Current.user).order("statuses.position", :number)
     else raise ActiveRecord::RecordNotFound
     end
 

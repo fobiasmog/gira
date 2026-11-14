@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_04_090000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_13_090100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -42,6 +42,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_04_090000) do
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
   end
 
+  create_table "agents", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.bigint "created_by_id", null: false
+    t.datetime "deleted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_id"], name: "index_agents_on_created_by_id"
+    t.index ["user_id"], name: "index_agents_on_user_id", unique: true
+  end
+
   create_table "announcement_dismissals", force: :cascade do |t|
     t.bigint "announcement_id", null: false
     t.bigint "user_id", null: false
@@ -65,17 +75,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_04_090000) do
     t.string "access", null: false
     t.string "token_digest", null: false
     t.string "last_characters", null: false
-    t.datetime "expires_at", null: false
+    t.datetime "expires_at"
     t.datetime "last_used_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.bigint "oauth_access_token_id"
+    t.bigint "issuer_id"
+    t.string "channels"
     t.index ["expires_at"], name: "index_api_tokens_on_expires_at"
+    t.index ["issuer_id"], name: "index_api_tokens_on_issuer_id"
     t.index ["oauth_access_token_id"], name: "index_api_tokens_on_oauth_access_token_id"
     t.index ["project_id"], name: "index_api_tokens_on_project_id"
     t.index ["token_digest"], name: "index_api_tokens_on_token_digest", unique: true
     t.index ["user_id"], name: "index_api_tokens_on_user_id"
-    t.check_constraint "(project_id IS NULL) <> (oauth_access_token_id IS NULL)", name: "api_tokens_project_or_connection"
+    t.check_constraint "project_id IS NOT NULL AND oauth_access_token_id IS NULL AND issuer_id IS NULL AND channels IS NULL AND expires_at IS NOT NULL OR project_id IS NULL AND oauth_access_token_id IS NOT NULL AND issuer_id IS NULL AND channels IS NULL AND expires_at IS NOT NULL OR project_id IS NULL AND oauth_access_token_id IS NULL AND issuer_id IS NOT NULL AND channels IS NOT NULL AND (channels::text = ANY (ARRAY['api'::character varying, 'mcp'::character varying, 'api_mcp'::character varying]::text[])) AND expires_at IS NULL", name: "api_tokens_kind"
   end
 
   create_table "comments", force: :cascade do |t|
@@ -431,11 +444,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_04_090000) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "agents", "users"
+  add_foreign_key "agents", "users", column: "created_by_id"
   add_foreign_key "announcement_dismissals", "announcements"
   add_foreign_key "announcement_dismissals", "users"
   add_foreign_key "api_tokens", "oauth_access_tokens", on_delete: :cascade
   add_foreign_key "api_tokens", "projects"
   add_foreign_key "api_tokens", "users"
+  add_foreign_key "api_tokens", "users", column: "issuer_id"
   add_foreign_key "comments", "tasks"
   add_foreign_key "comments", "users", column: "author_id"
   add_foreign_key "invitations", "projects"

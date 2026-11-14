@@ -34,6 +34,21 @@ class SentryTest < ActiveSupport::TestCase
     assert_no_match(/glnr_secret_token_value/, payload)
   end
 
+  # add-agents design.md, decision 7: the MCP server sends its service key
+  # with every API request it makes.
+  test "before_send removes the MCP server's service key header" do
+    event = Sentry::ErrorEvent.new(configuration: Sentry::Configuration.new)
+    event.rack_env = Rack::MockRequest.env_for("https://goalner.test/api/me",
+      "HTTP_X_GOALNER_SERVICE_KEY" => "the-mcp-service-key-value", "HTTP_ACCEPT" => "application/json")
+    assert_includes event.request.headers.keys, "X-Goalner-Service-Key", "precondition: the unscrubbed event carries the header"
+
+    payload = SentryScrubber.call(event, {}).to_json_compatible.to_s
+
+    assert_not_includes event.request.headers.keys, "X-Goalner-Service-Key"
+    assert_includes event.request.headers.keys, "Accept"
+    assert_no_match(/the-mcp-service-key-value/, payload)
+  end
+
   test "Sentry is configured to collect no personal data" do
     data_collection = Sentry.configuration.data_collection
 

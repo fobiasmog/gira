@@ -4,6 +4,7 @@ import AppIcon from "../ui/AppIcon.vue"
 import UserAvatar from "../UserAvatar.vue"
 import type { Label, TaskCard, UserCard } from "../../api/types.ts"
 import { language, t, tc } from "../../i18n/index.ts"
+import { personName } from "../../i18n/people.ts"
 import { formatDateTime, formatRelativeDay } from "../../i18n/format.ts"
 import { toneOf } from "../../styles/tones.ts"
 
@@ -19,9 +20,9 @@ const overdue = computed(() => !!props.task.deadline && !props.task.completed_at
       <span class="card__key">{{ task.key }}</span>
       <span v-if="label" class="chip ellipsis" :data-tone="toneOf(label.id)">{{ label.title }}</span>
       <span class="grow" />
-      <span v-if="assignee" class="card__assignee" :title="assignee.name">
+      <span v-if="assignee" class="card__assignee" :title="personName(assignee)">
         <UserAvatar :user="assignee" :size="24" />
-        <span class="visually-hidden">{{ t("board.assignedTo", { name: assignee.name }) }}</span>
+        <span class="visually-hidden">{{ t("board.assignedTo", { name: personName(assignee) }) }}</span>
       </span>
     </div>
     <RouterLink

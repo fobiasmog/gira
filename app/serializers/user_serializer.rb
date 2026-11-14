@@ -1,5 +1,10 @@
 # JSON for a user. The full profile (email, language, contact links) is only
 # for the user themself; teammates get the public card.
+#
+# Every card says whether the user is an agent and, for an agent, whether it
+# is deleted (spec agents, "Agents in API responses"). An agent's generated
+# address stands where a person's email address does. Callers that render
+# many cards preload :agent.
 class UserSerializer
   include Rails.application.routes.url_helpers
 
@@ -8,7 +13,8 @@ class UserSerializer
   end
 
   def card
-    { id: @user.id, name: @user.name, email_address: @user.email_address, avatar_url: avatar_url }
+    { id: @user.id, name: @user.name, email_address: @user.email_address, avatar_url: avatar_url,
+      agent: @user.agent?, deleted: @user.agent&.deleted? || false }
   end
 
   def profile

@@ -21,8 +21,10 @@ Lets AI assistants and other MCP clients use Goalner through the Model Context P
 - **WHEN** a client sends a GET request to `/mcp`
 - **THEN** the response is HTTP 405
 
-### Requirement: Authentication by personal API token
-Every request to `/mcp` SHALL carry a personal API token (spec `api-tokens`) in the header `Authorization: Bearer <token>`. A request without such a header, or with a token the API rejects as unknown, expired or revoked, SHALL receive HTTP 401 with a `WWW-Authenticate: Bearer` header and no MCP result. This includes requests that only list tools. A token sent in the URL or the request body SHALL NOT authenticate.
+### Requirement: Authentication
+Every request to `/mcp` SHALL carry, in the header `Authorization: Bearer <token>`, either a personal API token (spec `api-tokens`) or an access token of an MCP connection (spec `mcp-authorization`). A request with no such token, or with one that is malformed, expired, revoked, issued for another audience, or rejected by the API, SHALL receive HTTP 401 and no MCP result. This includes requests that only list tools. A token sent in the URL or the request body SHALL NOT authenticate.
+
+A connection access token SHALL be confirmed with Goalner before the MCP server first answers a request made with it, whatever the request. When Goalner cannot be reached to confirm it, or refuses the MCP server's own service key, the request SHALL receive HTTP 503 with a generic message that reveals no internal detail. It SHALL NOT be answered as if the token were invalid.
 
 #### Scenario: No token
 - **WHEN** a client sends a tools list request without an `Authorization` header
@@ -40,8 +42,32 @@ Every request to `/mcp` SHALL carry a personal API token (spec `api-tokens`) in 
 - **WHEN** a client sends a valid token only as a query parameter of `/mcp`
 - **THEN** the response is HTTP 401
 
+#### Scenario: Connection access token
+- **WHEN** claude.ai lists tools with a valid access token of the user's connection
+- **THEN** the tools are listed
+
+#### Scenario: Expired access token
+- **WHEN** a client sends an access token whose expiry has passed
+- **THEN** the response is HTTP 401 with `error="invalid_token"` in the `WWW-Authenticate` header
+
+#### Scenario: Token for another audience
+- **WHEN** a client sends a JWT signed by Goalner's key whose audience is not `https://goalner.com/mcp`
+- **THEN** the response is HTTP 401
+
+#### Scenario: Connection ended between calls
+- **WHEN** a user disconnects claude.ai while its access token has not yet expired, and claude.ai then calls a tool
+- **THEN** the response is HTTP 401 and nothing changes
+
+#### Scenario: Ended connection, new access token
+- **WHEN** a client lists tools with an access token that the MCP server has not seen before, of a connection that has ended
+- **THEN** the response is HTTP 401 with `error="invalid_token"` in the `WWW-Authenticate` header
+
+#### Scenario: Service key refused
+- **WHEN** Goalner refuses the MCP server's service key, and a client sends a request with a valid connection access token the MCP server has not seen before
+- **THEN** the response is HTTP 503 with a message that Goalner is unavailable, and it carries no `error="invalid_token"`
+
 ### Requirement: Tool calls act as the token
-Each tool call SHALL make exactly one API request, authenticated by the caller's token. That request SHALL be subject to every rule of spec `api-tokens`: the token's project, its access level, the endpoints open to tokens, the rate limit and attribution to the token's owner. The MCP server SHALL reach Goalner data only through the API.
+Each tool call SHALL make exactly one API request, authenticated by the caller's personal token or by a connection token issued for the caller's connection (spec `api-tokens`). That request SHALL be subject to every rule of spec `api-tokens`: the token's reach, its access level, the endpoints open to tokens, the rate limit and attribution to the token's owner. The MCP server SHALL reach Goalner data only through the API.
 
 #### Scenario: Attribution
 - **WHEN** a client calls `createTask` with a read-write token for GOAL owned by Alice
@@ -58,6 +84,10 @@ Each tool call SHALL make exactly one API request, authenticated by the caller's
 #### Scenario: Rate limit
 - **WHEN** a client calls a tool with a token that has already made 300 requests within the last minute
 - **THEN** the result is a tool error with the code `rate_limited`, and the call has no effect
+
+#### Scenario: Connection across projects
+- **WHEN** claude.ai, connected read-write by Alice, a member of GOAL and TEST, calls `createTask` for GOAL and then for TEST
+- **THEN** both tasks are created, and Alice is the creator of each
 
 ### Requirement: Tools follow the API document
 The server SHALL offer one tool for each operation of the API document (spec `api-documentation`) whose success response is JSON, and no other tool. Each tool SHALL be named by the operation's id and described by its summary and description. Each tool SHALL take the operation's path, query and body parameters as named arguments, with the document's types and required fields.
@@ -150,3 +180,25 @@ The MCP server SHALL run as a process separate from the main application. It SHA
 #### Scenario: Started without a database
 - **WHEN** the MCP server is started without any database configuration and a client calls `listProjects` with a valid token
 - **THEN** the token's project is returned
+
+### Requirement: Protected resource metadata
+The MCP server SHALL publish OAuth protected resource metadata at `/.well-known/oauth-protected-resource` and at `/.well-known/oauth-protected-resource/mcp`. The metadata SHALL name the resource `https://goalner.com/mcp`, Goalner as its only authorization server, the scopes `read` and `write`, and the `Authorization` header as the only way to send tokens. Every HTTP 401 from `/mcp` SHALL point to this metadata in its `WWW-Authenticate` header and name the scopes `read write`.
+
+#### Scenario: Metadata
+- **WHEN** a client requests `/.well-known/oauth-protected-resource/mcp`
+- **THEN** the JSON names the resource `https://goalner.com/mcp` and the authorization server `https://goalner.com`
+
+#### Scenario: Challenge
+- **WHEN** a client sends a request to `/mcp` without a token
+- **THEN** the HTTP 401 carries a `WWW-Authenticate: Bearer` challenge with the parameters `resource_metadata="https://goalner.com/.well-known/oauth-protected-resource/mcp"` and `scope="read write"`, in either order, and no `error` parameter
+
+### Requirement: Tools for read-only connections
+A tools list made with the access token of a read-only connection SHALL contain only the tools marked read-only. A call to any other tool made with such a token SHALL return a tool error with the code `insufficient_scope` and SHALL have no effect.
+
+#### Scenario: Read-only connection lists tools
+- **WHEN** a client of a read-only connection lists tools
+- **THEN** `listTasks` is listed and `createTask` is not
+
+#### Scenario: Read-only connection calls a write tool
+- **WHEN** a client of a read-only connection calls `createTask`
+- **THEN** the result is a tool error with the code `insufficient_scope`, and no task is created

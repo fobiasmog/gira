@@ -34,6 +34,28 @@ class LogFilteringTest < ActionDispatch::IntegrationTest
     loggers.each { |owner, logger| owner.logger = logger }
   end
 
+  # add-agents design.md, decision 7.
+  test "request through the MCP server logged: the service key is not" do
+    output = StringIO.new
+    loggers = { Rails => Rails.logger, ActionController::Base => ActionController::Base.logger, ActiveRecord::Base => ActiveRecord::Base.logger }
+    loggers.each_key { |owner| owner.logger = ActiveSupport::Logger.new(output) }
+    service_key = Rails.configuration.x.oauth.service_key
+    agent = create_agent(projects(:goal))
+    token = issue_agent_token(agent, issuer: users(:two), channels: %w[mcp])
+    output.truncate(0)
+
+    get api_project_board_path(projects(:goal)), headers: bearer(token).merge(ApiTokenAuthentication::SERVICE_KEY_HEADER => service_key)
+    get api_project_board_path(projects(:goal)), headers: bearer(token).merge(ApiTokenAuthentication::SERVICE_KEY_HEADER => "a-wrong-service-key")
+
+    log = output.string
+    assert_includes log, "Api::Projects::BoardsController#show"
+    assert_not_includes log, service_key
+    assert_not_includes log, "a-wrong-service-key"
+    assert_not_includes log, token
+  ensure
+    loggers.each { |owner, logger| owner.logger = logger }
+  end
+
   test "OAuth flow logged: codes, verifiers and tokens are not" do
     output = StringIO.new
     loggers = { Rails => Rails.logger, ActionController::Base => ActionController::Base.logger, ActiveRecord::Base => ActiveRecord::Base.logger }

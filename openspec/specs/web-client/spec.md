@@ -18,7 +18,7 @@ The client SHALL be served under `/app` to signed-in users and SHALL support dee
 - **THEN** a not-found screen is shown with a link to the project list
 
 ### Requirement: Screens
-The client SHALL provide screens for: a personal dashboard (own or a teammate's open tasks and upcoming deadlines); the project list and project creation; a project's board in kanban and list layouts; backlog; task details; sprints; milestones and a single milestone; members and invitations; project settings (owner only); the project archive and an archived task; profile settings (name, language, contact links, avatar, password, API tokens); announcements; and feedback.
+The client SHALL provide screens for: a personal dashboard (own or a teammate's open tasks and upcoming deadlines); the project list and project creation; a project's board in kanban and list layouts; backlog; task details; sprints; milestones and a single milestone; members and invitations; project settings (owner only); the project archive and an archived task; profile settings (name, language, contact links, avatar, password, API tokens, connected apps); announcements; and feedback.
 
 #### Scenario: Board screen
 - **WHEN** a member opens a project's board
@@ -287,8 +287,23 @@ The settings SHALL include an API tokens screen that lists the user's tokens and
 
 #### Scenario: Password change warning
 - **WHEN** a user opens the password change form
-- **THEN** it states that changing the password revokes all API tokens
+- **THEN** it states that changing the password revokes all API tokens and disconnects all connected apps
 
 #### Scenario: Link to the API documentation
 - **WHEN** a user follows the API documentation link on the API tokens screen
 - **THEN** the API documentation page opens
+
+### Requirement: Connected apps screen
+The settings SHALL include a Connected apps screen that lists the user's MCP connections. Each connection SHALL show the client's name, its redirect host, the access level, when it was connected and when it was last active. Disconnecting SHALL ask for confirmation. With no connections, the screen SHALL explain how to connect an MCP client and link to the README's MCP section.
+
+#### Scenario: List connections
+- **WHEN** a user with a read-write claude.ai connection opens the Connected apps screen
+- **THEN** the connection is listed with its client name, the host `claude.ai`, read-write access, and its connection and last-active times
+
+#### Scenario: Disconnect
+- **WHEN** a user chooses to disconnect a connection and confirms
+- **THEN** the connection disappears from the list
+
+#### Scenario: No connections
+- **WHEN** a user without connections opens the Connected apps screen
+- **THEN** the screen explains how to connect an MCP client instead of showing an empty list

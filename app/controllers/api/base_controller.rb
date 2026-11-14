@@ -20,6 +20,7 @@ class Api::BaseController < ApplicationController
   MESSAGES = {
     unauthorized: "Sign in to continue.",
     invalid_token: "The API token is missing, invalid or expired.",
+    invalid_service_key: "The service key sent with this request was refused.",
     forbidden: "You do not have permission to do this.",
     token_not_allowed: "This action is not available with an API token.",
     insufficient_scope: "This API token is read-only.",

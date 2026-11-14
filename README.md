@@ -115,6 +115,62 @@ It runs the contract tests in `test/openapi/` (they end in `_contract.rb`, so
 few seconds, and exits non-zero naming each mismatch, so it also works as a
 git `pre-push` hook.
 
+## Agents
+
+An agent is an account of its own that works on tasks the way a person does:
+it is assigned tasks, moves them, comments, creates tasks and assigns them to
+others, including other agents. What it does is recorded as its own doing,
+not as that of the person who set it up. How an agent decides what to do (its
+runtime, model and budget) is outside Goalner: an agent is whatever program
+holds one of its tokens.
+
+Any member creates an agent on a project's **Agents** screen, with a name and
+its first token. The agent:
+
+- joins that project at once, without an invitation, and can be added to
+  other projects by anyone who shares a project with it;
+- gets a generated address such as `silver-fish-4821@agents.goalner.com`. It
+  never signs in and never receives email;
+- is handled by every member of its projects: they rename it, issue and
+  revoke its tokens, remove it from a project, delete it and restore it.
+  Whoever created it has no more rights than any other member;
+- is marked as an agent wherever a person would be shown.
+
+An agent's token:
+
+- acts as the agent, read-only or read-write, with the same endpoints and
+  rate limit as a personal token;
+- works at the **API**, through **MCP**, or both, as chosen when it is
+  issued. On the other channel it is refused like an unknown token;
+- reaches every project that both the agent and the person who issued it
+  belong to, as they are at each request. When the issuer leaves a project,
+  the token stops reaching it;
+- never expires. It ends when someone revokes it or the agent is deleted. No
+  password change affects it;
+- is shown once, to the person who issues it, who enters their own password
+  again. Everyone who can see the agent sees its tokens' names, issuers and
+  last use, and can revoke them.
+
+An agent finds its work with the `assigned` view of the task list, which
+lists its open tasks and subtasks in a project:
+
+```sh
+curl -H "Authorization: Bearer glnr_..." "http://localhost:3000/api/projects/1/tasks?view=assigned"
+```
+
+Deleting an agent deletes its tokens for good and unassigns its open tasks in
+every project it belongs to. Its comments and finished work stay, marked as a
+deleted agent's. Any member of one of its projects can restore it from the
+Agents screen; it comes back without tokens and without tasks.
+
+The agent domain must accept no mail. Publish a null MX record for it:
+
+```
+agents.goalner.com.  MX  0 .
+```
+
+Goalner never sends to these addresses in any case: every mailer drops them.
+
 ## MCP server
 
 AI assistants such as Claude can work with Goalner through the Model Context
@@ -124,7 +180,7 @@ downloads are left out), named by their `operationId`: `listProjects`,
 `showBoard`, `createTask` and so on. Read tools are marked read-only and
 deleting tools destructive, so clients can ask before using them.
 
-A client connects in one of two ways:
+A client connects in one of three ways:
 
 - **Sign in (OAuth).** The client sends you to Goalner to sign in and approve
   it. The connection reaches **all of your projects**, including ones you join
@@ -132,8 +188,10 @@ A client connects in one of two ways:
   Desktop and mobile, and Claude Code connect.
 - **A personal API token** in the `Authorization` header, for one project, as
   below. Clients that cannot sign in use this.
+- **An agent's token** in the same header, issued for MCP on a project's
+  Agents screen (see [Agents](#agents)). The client then acts as the agent.
 
-Either way the server acts exactly as a token would against `/api`: the same
+Whichever way, the server acts exactly as a token would against `/api`: the same
 reach, access level, endpoints, rate limit and attribution. Each tool call is
 one API request.
 
@@ -177,6 +235,19 @@ default `local` scope (`~/.claude.json`), but **never commit a token**: with
 header (`'Authorization: Bearer ${GOALNER_TOKEN}'`) so the file keeps the
 variable, which Claude Code expands at startup. A read-only token makes tools
 that change data answer with the `insufficient_scope` error.
+
+### With an agent's token
+
+Issue a token for the agent on the project's **Agents** screen, with **MCP
+only** or **API and MCP**. The screen shows the command to copy, with the
+token in it:
+
+```sh
+claude mcp add --transport http goalner https://goalner.com/mcp --header "Authorization: Bearer glnr_..."
+```
+
+Tool calls are then the agent's: a task it creates has the agent as its
+creator. `listTasks` with the view `assigned` lists the agent's own work.
 
 ### Connected apps
 
@@ -245,7 +316,7 @@ private network. Its environment:
 | `MCP_RESOURCE_URL` | The MCP endpoint, `https://goalner.com/mcp`: the audience of access tokens (development: `http://localhost:3100/mcp`). |
 | `MCP_ISSUER` | Goalner's origin, `https://goalner.com`, as its authorization server metadata names it (development: `http://localhost:3000`). The web role reads it too, as the issuer of the tokens it signs. |
 | `MCP_JWT_PUBLIC_KEYS` | The PEM public key of the web role's `mcp.jwt_private_key`; several keys, one after another, while rotating. |
-| `MCP_SERVICE_KEY` | Secret. The key for the connection token exchange, the same as the web role's. |
+| `MCP_SERVICE_KEY` | Secret. The same as the web role's. The key for the connection token exchange. It is also sent with every API request, so the API can tell requests made through MCP from direct ones, which matters for agent tokens issued for one channel only. By itself it authenticates nothing. |
 | `REDIS_URL` | Secret. The connection token cache, the Valkey accessory: `redis://:<password>@goalner-redis:6379/0`. Without it outside production, an in-memory cache is used. |
 | `MCP_PORT` | The port to listen on, 3100 by default. |
 | `SENTRY_DSN` | Optional. Unexpected errors are reported there, without request data, headers or arguments. |
@@ -319,7 +390,10 @@ own tokens by their stored digest, whichever key signed them.
 The service key: set a new `MCP_SERVICE_KEY` and redeploy both roles. Until
 both run with the same key, requests with an access token the MCP server has
 not exchanged yet get 503 "Goalner is unavailable". Clients keep their tokens
-and stay signed in; personal tokens are not affected.
+and stay signed in; personal tokens are not affected. Agent tokens issued for
+one channel only (MCP only, or API only) get the same 503 through MCP, and
+"unavailable" tool errors, until the keys match again. Agent tokens for both
+channels are not affected.
 
 Для дат всегда юзать ```.current``` ибо он возвращает с учётом ```Time.zone```
 

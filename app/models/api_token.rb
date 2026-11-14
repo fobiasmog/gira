@@ -9,26 +9,39 @@
 #   of its user's projects (Current#projects), expires with the access token,
 #   and stops authenticating once that is revoked. It goes with its access
 #   token's row.
+# - An agent token (spec agents; add-agents design.md, decision 5) is issued
+#   by a person for an agent, and its user is the agent, so what it changes is
+#   the agent's doing. It reaches the agent's projects that its issuer also
+#   belongs to (Current#projects), works on the channels it was issued for
+#   (ApiTokenAuthentication), and never expires: it ends when it is revoked
+#   or its agent is deleted.
 class ApiToken < ApplicationRecord
   PREFIX = "glnr_"
   MAX_LIFETIME_DAYS = 365
   MAX_ACTIVE_PER_USER = 20
   TOUCH_INTERVAL = 1.hour
   MAX_NAME_LENGTH = 100
+  # Where an agent token works: the API, the MCP server, or both. Stored as
+  # "api", "mcp" or "api_mcp".
+  CHANNELS = %w[api mcp].freeze
+  CHANNEL_SETS = %w[api mcp api_mcp].freeze
 
   belongs_to :user
   belongs_to :project, optional: true
   belongs_to :oauth_access_token, class_name: "Oauth::AccessToken", optional: true
+  belongs_to :issuer, class_name: "User", optional: true
 
   enum :access, { read: "read", read_write: "read_write" }, validate: true
 
-  scope :active, -> { where(expires_at: Time.current..) }
+  # Agent tokens have no expiry.
+  scope :active, -> { where("api_tokens.expires_at IS NULL OR api_tokens.expires_at >= ?", Time.current) }
   scope :expired, -> { where(expires_at: ...Time.current) }
-  scope :personal, -> { where(oauth_access_token_id: nil) }
-  # Replaces personal, so the user's connection tokens are
-  # user.api_tokens.of_connections. It drops any earlier condition on
-  # oauth_access_token_id, so narrow by access token after it.
-  scope :of_connections, -> { unscope(where: :oauth_access_token_id).where.not(oauth_access_token_id: nil) }
+  scope :personal, -> { where(oauth_access_token_id: nil, issuer_id: nil) }
+  # Each replaces personal, so the user's connection tokens are
+  # user.api_tokens.of_connections. They drop any earlier condition on
+  # oauth_access_token_id and issuer_id, so narrow by those after them.
+  scope :of_connections, -> { unscope(where: %i[oauth_access_token_id issuer_id]).where.not(oauth_access_token_id: nil) }
+  scope :of_agents, -> { unscope(where: %i[oauth_access_token_id issuer_id]).where.not(issuer_id: nil) }
 
   # Days from creation to expiry; required when a personal token is created.
   attribute :expires_in_days, :integer
@@ -36,6 +49,8 @@ class ApiToken < ApplicationRecord
   validates :name, presence: true, length: { maximum: MAX_NAME_LENGTH }
   validates :project, presence: true, if: :personal?
   validates :expires_in_days, numericality: { only_integer: true, in: 1..MAX_LIFETIME_DAYS }, on: :create, if: :personal?
+  validates :channels, inclusion: { in: CHANNEL_SETS }, if: :agent?
+  validate :agent_has_room_for_a_token, :agent_is_not_deleted, on: :create, if: :agent?
 
   before_create { self.expires_at = expires_in_days.days.from_now if personal? }
 
@@ -64,16 +79,46 @@ class ApiToken < ApplicationRecord
       access: access_token.includes_scope?("write") ? :read_write : :read, expires_at: access_token.expires_at.floor).tap(&:save!)
   end
 
+  # A new, unsaved token for agent that acts as the agent, issued by a
+  # person. Its channels are given as a list: ["api"], ["mcp"] or both.
+  def self.issue_for_agent(agent, issuer:, channels: nil, **attributes)
+    issue(user_id: agent.user_id, issuer: issuer, **attributes).tap { |api_token| api_token.channel_list = channels }
+  end
+
   def self.digest(value)
     OpenSSL::Digest::SHA256.hexdigest(value)
   end
 
   def personal?
-    oauth_access_token_id.nil? && oauth_access_token.nil?
+    !connection? && !agent?
   end
 
   def connection?
-    !personal?
+    oauth_access_token_id.present? || oauth_access_token.present?
+  end
+
+  def agent?
+    issuer_id.present? || issuer.present?
+  end
+
+  def channel_list
+    channels.to_s.split("_")
+  end
+
+  # Unknown names are kept as they are, so that validation refuses them.
+  def channel_list=(names)
+    names = Array(names).map(&:to_s)
+    self.channels = names.all? { |name| CHANNELS.include?(name) } ? CHANNELS.select { |name| names.include?(name) }.join("_") : names.join("_")
+  end
+
+  def channel?(name)
+    channel_list.include?(name.to_s)
+  end
+
+  # An agent token issued for the API only or for MCP only: the one kind of
+  # token for which it matters where a request came from.
+  def single_channel?
+    agent? && channel_list.one?
   end
 
   def value=(value)
@@ -86,4 +131,17 @@ class ApiToken < ApplicationRecord
   def touch_last_used!
     update_column(:last_used_at, Time.current) if last_used_at.nil? || last_used_at < TOUCH_INTERVAL.ago
   end
+
+  private
+    # An agent has at most MAX_ACTIVE_PER_USER live tokens, whoever issued them.
+    def agent_has_room_for_a_token
+      return if self.class.of_agents.where(user_id: user_id).count < MAX_ACTIVE_PER_USER
+
+      errors.add(:base, :too_many_for_agent, count: MAX_ACTIVE_PER_USER)
+    end
+
+    # A deleted agent has no tokens until it is restored.
+    def agent_is_not_deleted
+      errors.add(:base, :agent_deleted) if Agent.deleted.exists?(user_id: user_id)
+    end
 end

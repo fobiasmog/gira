@@ -44,6 +44,10 @@ module Goalner
     # with MCP_ISSUER and MCP_RESOURCE_URL (config/deploy.yml).
     config.x.domain = "goalner.com"
 
+    # The domain of agents' generated addresses (spec agents, "Agent
+    # accounts"). It accepts no mail: its DNS publishes a null MX record.
+    config.x.agents.email_domain = "agents.#{config.x.domain}"
+
     # How to connect MCP clients: the README's MCP section (McpGuidesController).
     config.x.mcp.guide_url = "https://github.com/fobiasmog/gira#mcp-server"
 

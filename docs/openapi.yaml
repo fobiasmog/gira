@@ -15,6 +15,12 @@ info:
     a read-only token may only send GET requests. Requests are limited to 300
     a minute per token.
 
+    An agent's token works the same way, as the agent. It is issued on a
+    project's Agents screen, never expires, and reaches every project that
+    both the agent and the person who issued it belong to. A token issued for
+    MCP only does not work here. List an agent's own work with
+    `GET /api/projects/{project_id}/tasks?view=assigned`.
+
     Errors use one JSON envelope: `{ "error": { "code", "message", "fields" } }`.
 
 servers:
@@ -190,10 +196,11 @@ paths:
             - `board` (default): root tasks on the board, the active sprint's or, when none is active, those in no sprint, in column order;
             - `backlog`: open root tasks in no sprint, in column order;
             - `backlog_done`: done root tasks in no sprint, most recently completed first;
-            - `archived`: archived tasks, newest first.
+            - `archived`: archived tasks, newest first;
+            - `assigned`: the tasks assigned to the token's owner that are neither archived nor done, subtasks included (see `parent_id`), whatever their sprint, by column and then by number.
           schema:
             type: string
-            enum: [board, backlog, backlog_done, archived]
+            enum: [board, backlog, backlog_done, archived, assigned]
             default: board
       responses:
         "200":
@@ -1090,7 +1097,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: A personal API token, starting with `glnr_`.
+      description: A personal API token or an agent's token, starting with `glnr_`.
 
   parameters:
     ProjectId:
@@ -1130,7 +1137,11 @@ components:
 
   responses:
     Unauthorized:
-      description: The token is missing, unknown, expired or revoked.
+      description: |
+        The token is missing, unknown, expired or revoked, or it is an agent's
+        token used where it was not issued for (`invalid_token`). The code
+        `invalid_service_key` only answers a request that carries a service
+        key header, which the MCP server sends and API clients never do.
       content:
         application/json:
           schema:
@@ -1207,7 +1218,7 @@ components:
           properties:
             code:
               type: string
-              enum: [invalid_token, insufficient_scope, not_found, validation_failed, rate_limited, internal_error]
+              enum: [invalid_token, invalid_service_key, insufficient_scope, not_found, validation_failed, rate_limited, internal_error]
             message:
               type: string
               description: A human-readable message, in English.
@@ -1222,7 +1233,7 @@ components:
     # Open sets of fields that closed schemas below combine with allOf.
     UserCardFields:
       type: object
-      required: [id, name, email_address, avatar_url]
+      required: [id, name, email_address, avatar_url, agent, deleted]
       properties:
         id:
           type: integer
@@ -1231,9 +1242,19 @@ components:
         email_address:
           type: string
           format: email
+          description: An agent has a generated address here, which receives no mail.
         avatar_url:
           type: [string, "null"]
           description: A `/files/...` URL; download it with the same token.
+        agent:
+          type: boolean
+          description: Whether this is an agent's account rather than a person's.
+        deleted:
+          type: boolean
+          description: |
+            True only for a deleted agent. It still appears as the creator,
+            author or assignee of its past work, but is not among a project's
+            members and cannot be assigned tasks.
 
     UserCard:
       description: A user as teammates see them.

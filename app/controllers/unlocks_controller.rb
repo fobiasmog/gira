@@ -9,9 +9,10 @@ class UnlocksController < ApplicationController
   def new
   end
 
-  # Same response whether or not the address has a locked account.
+  # Same response whether or not the address has a locked account. Agents
+  # are never emailed.
   def create
-    user = User.find_by(email_address: params[:email_address])
+    user = User.find_person_by_email(params[:email_address])
     AccountMailer.unlock(user).deliver_later if user&.locked?
 
     redirect_to new_session_path, notice: t("unlocks.sent")

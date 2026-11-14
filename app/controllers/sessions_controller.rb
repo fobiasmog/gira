@@ -7,13 +7,16 @@ class SessionsController < ApplicationController
 
   # Unknown email, wrong password and locked account all get the same error.
   # authenticate_by takes comparable time whether or not the email exists.
+  # An agent's address is answered like an unknown one, whatever the
+  # password, and its failures are not counted: agents never sign in (spec
+  # user-auth, "Agent accounts cannot sign in").
   def create
     credentials = params.permit(:email_address, :password)
 
-    if (user = User.authenticate_by(credentials))
+    if (user = User.authenticate_by(credentials)) && !user.agent?
       sign_in_verified user
     else
-      User.find_by(email_address: credentials[:email_address])&.register_failed_sign_in!
+      User.find_person_by_email(credentials[:email_address])&.register_failed_sign_in!
       refuse_sign_in
     end
   end

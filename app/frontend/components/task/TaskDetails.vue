@@ -2,10 +2,12 @@
 import { computed, ref } from "vue"
 import AppIcon from "../ui/AppIcon.vue"
 import ChoiceMenu, { type Choice } from "../ui/ChoiceMenu.vue"
+import AgentChip from "../AgentChip.vue"
 import UserAvatar from "../UserAvatar.vue"
 import StatusDot from "../board/StatusDot.vue"
 import type { Column, Label, Milestone, SprintSummary, TaskDetail, UserCard } from "../../api/types.ts"
 import { language, t } from "../../i18n/index.ts"
+import { personName } from "../../i18n/people.ts"
 import { formatDate, fromDateTimeInput, toDateTimeInput } from "../../i18n/format.ts"
 import { toneOf } from "../../styles/tones.ts"
 
@@ -30,7 +32,7 @@ const emit = defineEmits<{
 const statusChoices = computed<Choice<number>[]>(() => props.columns.map((column) => ({ value: column.id, label: column.title })))
 const assigneeChoices = computed<Choice<number | null>[]>(() => [
   { value: null, label: t("task.unassigned") },
-  ...props.members.map((member) => ({ value: member.id, label: member.name })),
+  ...props.members.map((member) => ({ value: member.id, label: personName(member) })),
 ])
 const milestoneChoices = computed<Choice<number | null>[]>(() => [
   { value: null, label: t("task.noMilestone") },
@@ -86,7 +88,10 @@ function createLabel(close: () => void) {
       <dd>
         <ChoiceMenu :label="t('task.assignee')" :choices="assigneeChoices" :selected="task.assignee_id" @choose="emit('update', { assignee_id: $event })">
           <template #value>
-            <span class="value"><UserAvatar :user="assignee" :size="22" /><span class="ellipsis">{{ assignee?.name ?? t("task.unassigned") }}</span></span>
+            <span class="value">
+              <UserAvatar :user="assignee" :size="22" /><span class="ellipsis">{{ assignee?.name ?? t("task.unassigned") }}</span>
+              <AgentChip :user="assignee" />
+            </span>
           </template>
         </ChoiceMenu>
       </dd>
@@ -152,7 +157,7 @@ function createLabel(close: () => void) {
 
   </dl>
   <p v-if="task.creator" class="details__creator">
-    {{ t("task.creator", { name: task.creator.name, date: formatDate(language, task.created_at) }) }}
+    {{ t("task.creator", { name: personName(task.creator), date: formatDate(language, task.created_at) }) }}
   </p>
 </template>
 

@@ -101,8 +101,16 @@ class Task < ApplicationRecord
       end
     end
 
+    # A deleted agent keeps its membership but takes no new work (spec
+    # agents, "Delete an agent").
     def assignee_is_member
-      errors.add(:assignee, :not_a_member) if assignee_id && !project.memberships.exists?(user_id: assignee_id)
+      return unless assignee_id
+
+      if !project.memberships.exists?(user_id: assignee_id)
+        errors.add(:assignee, :not_a_member)
+      elsif Agent.deleted.exists?(user_id: assignee_id)
+        errors.add(:assignee, :deleted)
+      end
     end
 
     def milestone_is_not_deleted

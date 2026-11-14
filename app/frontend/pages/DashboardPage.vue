@@ -9,6 +9,7 @@ import { useStatisticsStore } from "../stores/statistics.ts"
 import { useUiStore } from "../stores/ui.ts"
 import { parseId } from "../router/routes.ts"
 import { language, t, tc } from "../i18n/index.ts"
+import { personName } from "../i18n/people.ts"
 import { calendarDaysFrom, formatDateTime, formatDayTile, formatLongDate } from "../i18n/format.ts"
 import { toneOf } from "../styles/tones.ts"
 
@@ -51,13 +52,13 @@ function showTasksOf(event: Event) {
     <header class="dashboard__header">
       <div class="dashboard__heading">
         <p class="dashboard__date">{{ formatLongDate(language, today) }}</p>
-        <h1>{{ teammate ? t("dashboard.tasksOf", { name: teammate.name }) : t("dashboard.myTasks") }}</h1>
+        <h1>{{ teammate ? t("dashboard.tasksOf", { name: personName(teammate) }) : t("dashboard.myTasks") }}</h1>
       </div>
       <label v-if="teammates.length" class="dashboard__person">
         {{ t("dashboard.showTasksOf") }}
         <select class="input" :value="userId ?? ''" @change="showTasksOf">
           <option value="">{{ t("dashboard.me") }}</option>
-          <option v-for="person in teammates.filter((p) => p.id !== profile?.id)" :key="person.id" :value="person.id">{{ person.name }}</option>
+          <option v-for="person in teammates.filter((p) => p.id !== profile?.id)" :key="person.id" :value="person.id">{{ personName(person) }}</option>
         </select>
       </label>
     </header>

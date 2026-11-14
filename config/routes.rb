@@ -51,6 +51,13 @@ Rails.application.routes.draw do
     end
 
     resources :teammates, only: :index
+    # Agents, for the members of their projects (spec agents). Session only.
+    resources :agents, only: %i[index update destroy] do
+      scope module: :agents do
+        resource :restoration, only: :create
+        resources :tokens, only: %i[index create destroy]
+      end
+    end
     resources :comments, only: %i[update destroy]
     get "announcements", to: "announcements#index"
     delete "announcements", to: "announcements#destroy"
@@ -65,6 +72,8 @@ Rails.application.routes.draw do
         resource :membership, only: :destroy
         resources :invitations, only: %i[index create destroy]
         resources :members, only: %i[index destroy]
+        resources :agents, only: %i[index create]
+        resources :agent_memberships, only: :create
         resource :board, only: :show
         resources :statuses, only: %i[index create update destroy]
         resources :tasks, only: %i[index show create update destroy] do

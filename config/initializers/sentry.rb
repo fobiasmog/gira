@@ -8,7 +8,9 @@ SentryScrubber = lambda do |event, _hint|
   if (request = event.request)
     request.data = nil
     request.cookies = nil
-    request.headers = request.headers&.reject { |name, _| name.match?(/cookie|authorization|forwarded|real-ip|csrf/i) }
+    # service-key: the MCP server's key, sent with every API request it makes
+    # (add-agents design.md, decision 7).
+    request.headers = request.headers&.reject { |name, _| name.match?(/cookie|authorization|forwarded|real-ip|csrf|service-key/i) }
     request.env = request.env&.except("REMOTE_ADDR", "HTTP_X_FORWARDED_FOR", "HTTP_X_REAL_IP")
   end
   event.user = event.user.slice(:id) if event.user

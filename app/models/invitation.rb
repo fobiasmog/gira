@@ -9,6 +9,10 @@ class Invitation < ApplicationRecord
 
   normalizes :email, with: ->(email) { email.strip.downcase }
   validates :email, presence: true, format: { with: URI::MailTo::EMAIL_REGEXP }, length: { maximum: 255 }
+  # Agents join projects without invitations (spec project-membership, "Agent
+  # addresses cannot be invited"). The whole agent domain is refused, so the
+  # answer never says whether an agent has the address.
+  validate { errors.add(:email, :reserved) if Agent.reserved_address?(email) }
 
   scope :pending, -> { where(accepted_at: nil, revoked_at: nil) }
   scope :usable, -> { pending.where(expires_at: Time.current..) }

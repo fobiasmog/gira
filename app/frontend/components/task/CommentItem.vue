@@ -5,6 +5,7 @@ import AppMenu from "../ui/AppMenu.vue"
 import AppTextarea from "../ui/AppTextarea.vue"
 import ConfirmDialog from "../ui/ConfirmDialog.vue"
 import MarkdownView from "../MarkdownView.vue"
+import AgentChip from "../AgentChip.vue"
 import UserAvatar from "../UserAvatar.vue"
 import type { Comment } from "../../api/types.ts"
 import { language, t } from "../../i18n/index.ts"
@@ -41,6 +42,7 @@ const size = (bytes: number) => `${formatNumber(language.value, Math.max(1, Math
     <div class="comment__body">
       <header class="comment__header">
         <strong class="comment__author">{{ comment.author.name }}</strong>
+        <AgentChip :user="comment.author" />
         <time class="comment__meta" :datetime="comment.created_at">{{ formatDateTime(language, comment.created_at) }}</time>
         <span v-if="comment.updated_at !== comment.created_at" class="comment__meta">· {{ t("task.edited") }}</span>
         <span class="grow" />

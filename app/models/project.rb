@@ -28,6 +28,13 @@ class Project < ApplicationRecord
     memberships.exists?(user: user)
   end
 
+  # The members to show and choose from: people and agents by name, without
+  # deleted agents, whose memberships are only kept so that they can be
+  # restored (add-agents design.md, decision 8). Loaded with what their cards need.
+  def listed_members
+    members.active.with_attached_avatar.includes(:agent).order(:name)
+  end
+
   # Hides the project and its content from every member. The data stays in
   # the database for operators to recover; API tokens for it are deleted, so
   # they stay revoked if it is restored.
@@ -53,8 +60,15 @@ class Project < ApplicationRecord
   # Ends a user's membership; tasks assigned to them in this project become
   # unassigned, and their API tokens for it are deleted for good. The owner
   # cannot leave or be removed.
+  #
+  # An agent is not removed from its only non-archived project, where nobody
+  # could see it any more: it is deleted instead (spec agents, "Agents in
+  # projects"). Agent tokens name no project, so none is deleted here: those
+  # of a removed agent, and those a removed person issued, stop reaching this
+  # project through Current#projects.
   def remove_member!(user)
     raise ArgumentError, "the owner cannot leave the project" if owned_by?(user)
+    raise Agent::LastProject if user.agent&.last_project?(self)
 
     transaction do
       tasks.where(assignee: user).update_all(assignee_id: nil, updated_at: Time.current)

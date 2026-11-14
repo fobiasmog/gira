@@ -13,7 +13,7 @@ class Api::Projects::BoardsController < Api::BaseController
       project: ProjectSerializer.new(@project, viewer: Current.user),
       columns: @project.statuses.map { |status| StatusSerializer.new(status) },
       tasks: TaskSerializer.cards(tasks),
-      members: @project.members.with_attached_avatar.order(:name).map { |member| UserSerializer.new(member).card },
+      members: @project.listed_members.map { |member| UserSerializer.new(member).card },
       labels: @project.labels.order(:title).map { |label| label.slice(:id, :title) },
       active_sprint: sprint&.slice(:id, :title, :starts_on, :ends_on)
     }

@@ -5,6 +5,7 @@ import UserAvatar from "../UserAvatar.vue"
 import StatusDot from "./StatusDot.vue"
 import type { Column, Label, TaskCard, UserCard } from "../../api/types.ts"
 import { language, t } from "../../i18n/index.ts"
+import { personName } from "../../i18n/people.ts"
 import { formatDateTime, formatRelativeDay } from "../../i18n/format.ts"
 import { toneOf } from "../../styles/tones.ts"
 
@@ -47,9 +48,9 @@ const overdue = computed(() => !!props.task.deadline && !props.task.completed_at
       :datetime="task.deadline"
       :title="formatDateTime(language, task.deadline)"
     >{{ formatRelativeDay(language, task.deadline) }}</time>
-    <span class="task-row__assignee" :title="assignee?.name ?? t('board.unassigned')">
+    <span class="task-row__assignee" :title="assignee ? personName(assignee) : t('board.unassigned')">
       <UserAvatar :user="assignee" :size="26" />
-      <span class="visually-hidden">{{ assignee ? t("board.assignedTo", { name: assignee.name }) : t("board.unassigned") }}</span>
+      <span class="visually-hidden">{{ assignee ? t("board.assignedTo", { name: personName(assignee) }) : t("board.unassigned") }}</span>
     </span>
     <slot name="actions" />
   </div>
