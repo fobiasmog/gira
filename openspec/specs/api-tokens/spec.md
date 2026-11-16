@@ -121,7 +121,7 @@ A read-only token SHALL be allowed only GET and HEAD requests. A read-write toke
 - **THEN** the comment's author is Alice
 
 ### Requirement: Endpoints available to tokens
-Tokens SHALL be accepted only by endpoints explicitly opened to them: reading the project, its board, its columns and its member list; tasks and their subtasks, placement, completion, label, sprint and comments; editing and deleting comments; labels; milestones; sprints; reading one's own profile; and file downloads. Every other endpoint SHALL answer a token with HTTP 403 and have no effect, including endpoints added later unless they are opened.
+Tokens SHALL be accepted only by endpoints explicitly opened to them: reading the project, its board, its columns and its member list; tasks and their subtasks, placement, completion, label, sprint and comments; editing and deleting comments; labels; milestones; sprints; importing and reading OpenSpec changes (spec `openspec-changes`); reading one's own profile; and file downloads. Every other endpoint SHALL answer a token with HTTP 403 and have no effect, including endpoints added later unless they are opened.
 
 #### Scenario: Project administration
 - **WHEN** a read-write token for GOAL renames or archives GOAL, creates a project, invites someone, removes a member, leaves GOAL, or adds, renames, moves or deletes a column
@@ -150,6 +150,14 @@ Tokens SHALL be accepted only by endpoints explicitly opened to them: reading th
 #### Scenario: Own profile
 - **WHEN** a token requests the signed-in user's profile
 - **THEN** its owner's profile is returned
+
+#### Scenario: OpenSpec import
+- **WHEN** a read-write token for GOAL imports an OpenSpec change into GOAL, and a read-only token for GOAL opens it
+- **THEN** both requests succeed
+
+#### Scenario: OpenSpec import with a read-only token
+- **WHEN** a read-only token for GOAL imports an OpenSpec change
+- **THEN** the response is HTTP 403 with the code `insufficient_scope` and nothing changes
 
 ### Requirement: File downloads with a token
 A token SHALL be able to download the attachments of comments in the projects it reaches and the avatars of those projects' members, including its owner's. Any other file SHALL receive HTTP 404, as for a user who may not see it.
