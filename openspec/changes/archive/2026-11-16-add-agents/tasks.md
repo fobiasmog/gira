@@ -131,5 +131,5 @@
   3. Through MCP, list its assigned tasks, move the task and comment.
 
   Verify that the board shows the agent as the actor, and that `bin/ci` passes.
-- [ ] 9.4 Before archiving this change, confirm that `add-mcp-oauth` and `harden-mcp-oauth` are archived (`openspec list --json` no longer lists them), and that `openspec validate add-agents --strict` still passes.
+- [x] 9.4 Before archiving this change, confirm that `add-mcp-oauth` and `harden-mcp-oauth` are archived (`openspec list --json` no longer lists them), and that `openspec validate add-agents --strict` still passes.
 - [ ] 9.5 On the production nginx, drop `X-Goalner-Service-Key` from requests forwarded to the web role, as `DEPLOYMENT.md`, "nginx: drop the service key header", describes. Verify with a single-channel agent token and a made-up key that no answer says `invalid_service_key`.
