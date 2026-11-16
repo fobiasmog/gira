@@ -65,6 +65,8 @@ export interface TaskCard {
   important: boolean
   completed_at: Timestamp | null
   archived_at: Timestamp | null
+  // The OpenSpec change whose import made the task (spec openspec-changes).
+  openspec_change: { id: Id; name: string } | null
   subtask_count: number
   subtask_done_count: number
   comment_count: number

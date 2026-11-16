@@ -15,7 +15,7 @@ class Api::Projects::Tasks::CompletionsController < Api::BaseController
 
   private
     def set_subtask
-      @subtask = @project.tasks.kept.where.not(parent_id: nil).find(params[:task_id])
+      @subtask = @project.tasks.kept.where.not(parent_id: nil).find_by_ref!(params[:task_id])
     end
 
     def move_to(status)

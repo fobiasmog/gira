@@ -250,6 +250,13 @@ export const ru: Messages = {
     archiveTitle: "Архивировать «{title}»",
     carryTo: "Перенести незавершённые задачи в",
     noCarry: "Оставить их в архивном спринте",
+    openspecWarning: "Над этими карточками OpenSpec могут работать агенты. Копии, перенесённые в другой спринт, теряют список подзадач и связь с изменением.",
+    openspecUnfinished: {
+      one: "{name}: {count} незавершённая карточка",
+      few: "{name}: {count} незавершённые карточки",
+      many: "{name}: {count} незавершённых карточек",
+      other: "{name}: {count} незавершённой карточки",
+    },
     archived: "«{title}» перенесён в архив",
     archivedSprints: "Архивные спринты",
     total: { one: "Всего {count} задача", few: "Всего {count} задачи", many: "Всего {count} задач", other: "Всего {count} задачи" },

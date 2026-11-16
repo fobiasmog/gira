@@ -87,6 +87,7 @@ Rails.application.routes.draw do
           end
         end
         resources :labels, only: %i[index create]
+        resources :openspec_changes, only: %i[show create], param: :name
         resources :milestones, only: %i[index show create destroy] do
           resource :recovery, only: :create, module: :milestones
         end

@@ -16,6 +16,6 @@ class Api::Projects::Tasks::LabelsController < Api::BaseController
 
   private
     def set_task
-      @task = @project.tasks.kept.find(params[:task_id])
+      @task = @project.tasks.kept.find_by_ref!(params[:task_id])
     end
 end

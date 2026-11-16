@@ -112,6 +112,39 @@ class SprintsMilestonesTest < ApplicationSystemTestCase
     assert_selector "button[aria-controls][aria-expanded=#{expanded}]", text: title, exact_text: true
   end
 
+  # Spec web-client, "OpenSpec work in a sprint being archived".
+  test "archiving a sprint with unfinished OpenSpec cards warns, and still archives" do
+    sprint = @project.sprints.create!(title: "Openspec integration", starts_on: Date.current, ends_on: 7.days.from_now)
+    sprint.activate!
+    text = "## 1. Model\n- [x] 1.1 Table\n## 2. API\n- [ ] 2.1 Routes\n## 3. Docs\n- [ ] 3.1 README\n## 4. UI\n- [ ] 4.1 Dialog\n"
+    OpenspecChange::Import.new(project: @project, user: @user, name: "add-labels", artifacts: { "tasks" => text }).run!
+    visit "/app/projects/#{@project.id}/sprints"
+
+    within(sprint_card("Openspec integration")) { click_button "Archive" }
+
+    within("dialog[open]") do
+      assert_text "Agents may be working on these OpenSpec cards."
+      assert_text "add-labels: 3 unfinished cards"
+      click_button "Archive"
+    end
+    assert_text "“Openspec integration” was archived"
+    assert sprint.reload.archived_at
+  end
+
+  test "archiving a sprint whose OpenSpec cards are all done shows no warning" do
+    sprint = @project.sprints.create!(title: "Done sprint", starts_on: Date.current, ends_on: 7.days.from_now)
+    sprint.activate!
+    OpenspecChange::Import.new(project: @project, user: @user, name: "add-labels", artifacts: { "tasks" => "## 1. Model\n- [x] 1.1 Table\n" }).run!
+    visit "/app/projects/#{@project.id}/sprints"
+
+    within(sprint_card("Done sprint")) { click_button "Archive" }
+
+    within("dialog[open]") do
+      assert_text "Move unfinished tasks to"
+      assert_no_text "OpenSpec"
+    end
+  end
+
   test "plan a task: listed under the sprint, neither on the board nor in the backlog" do
     create_sprint("Sprint 1", active: true)
     planned = create_sprint("Sprint 3")

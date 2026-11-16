@@ -27,6 +27,7 @@ class Api::BaseController < ApplicationController
     not_found: "Not found.",
     invalid_authenticity_token: "Your session has expired. Reload the page and try again.",
     validation_failed: "Some fields are invalid.",
+    keys_missing: "This change already has tasks, but the text carries none of their Goalner marks. Save the text returned here into tasks.md, edit it, and import again.",
     rate_limited: "Too many requests. Try again later.",
     internal_error: "Something went wrong. Please try again."
   }.freeze

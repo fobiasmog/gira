@@ -6,7 +6,7 @@ class Api::Projects::Tasks::PlacementsController < Api::BaseController
   allow_token_access only: :update
 
   def update
-    task = @project.tasks.kept.find(params[:task_id])
+    task = @project.tasks.kept.find_by_ref!(params[:task_id])
     sprint = params.key?(:sprint_id) ? { sprint_id: params[:sprint_id] } : {}
     placed = Board.new(@project).place(task, status_id: params[:status_id], position: params.fetch(:position, 0), **sprint)
 

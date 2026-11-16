@@ -7,6 +7,8 @@ class Project < ApplicationRecord
   has_many :members, through: :memberships, source: :user
   has_many :statuses, -> { order(:position) }, dependent: :destroy, inverse_of: :project
   has_many :tasks, dependent: :destroy
+  # After tasks, which reference them, and before milestones, which they reference.
+  has_many :openspec_changes, dependent: :destroy
   has_many :sprints, dependent: :destroy
   has_many :milestones, dependent: :destroy
   has_many :labels, dependent: :destroy

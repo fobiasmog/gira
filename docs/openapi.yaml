@@ -21,6 +21,11 @@ info:
     MCP only does not work here. List an agent's own work with
     `GET /api/projects/{project_id}/tasks?view=assigned`.
 
+    Agents that plan with OpenSpec push a change's `tasks.md` with
+    `POST /api/projects/{project_id}/openspec_changes`, and save the marked
+    text it returns; see that operation for the whole loop. Every request
+    that names a task takes its id or its key, such as `GOAL-12`.
+
     Errors use one JSON envelope: `{ "error": { "code", "message", "fields" } }`.
 
 servers:
@@ -46,6 +51,8 @@ tags:
     description: Milestones group tasks across sprints.
   - name: Sprints
     description: Time-boxed sprints; the board shows the active one.
+  - name: OpenSpec
+    description: OpenSpec changes, whose tasks.md sections become cards and whose items become their subtasks.
   - name: Files
     description: Downloads of the attachments and avatars linked from other responses.
 
@@ -513,9 +520,10 @@ paths:
       - name: task_id
         in: path
         required: true
-        description: The subtask's id. A root task is not found.
+        description: The subtask's id, or its key such as `GOAL-12`. A root task is not found.
         schema:
-          type: integer
+          type: [integer, string]
+          pattern: "^([1-9][0-9]*|[A-Z][A-Z0-9]*-[1-9][0-9]*)$"
     put:
       operationId: completeSubtask
       tags: [Subtasks]
@@ -1037,6 +1045,114 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
+  /api/projects/{project_id}/openspec_changes:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: importOpenspecChange
+      tags: [OpenSpec]
+      summary: Import an OpenSpec change
+      description: |
+        Creates or updates an OpenSpec change from the text of its `tasks.md`.
+        Each `##` section becomes a card titled `<change>: <section>`, and each
+        checkbox item a subtask of that card; items before the first section
+        go on a card `<change>: Tasks`. New cards join the active sprint, if
+        any, and carry a milestone named after the change.
+
+        The response's `tasks` is the same text with every heading and item
+        marked with its task's key, such as `<!-- goalner:GOAL-12 -->`, and the
+        items done in Goalner checked. Save it into `tasks.md`: later imports
+        match sections and items by these marks, so renumbering or rewording
+        keeps each task with its assignee and comments. A re-import whose text
+        carries no mark at all is refused with 409 `keys_missing`, which
+        carries the marked text to save.
+
+        How an agent works through a change:
+        1. Import the change, and save the returned `tasks` into `tasks.md`.
+        2. Take a card assigned to you (`listTasks` with `view=assigned`), and
+           work through its subtasks in order.
+        3. Complete each subtask (`completeSubtask`, with the key from its
+           mark), check its box in `tasks.md`, and commit.
+        4. Move the card to the done column (`placeTask`).
+        5. Import again, and save the returned `tasks`.
+
+        A checked item completes its subtask, a subtask done in Goalner is
+        checked in the returned text, and an import never reopens anything.
+        Tasks whose marks are gone from the text are archived. The text is the
+        source of titles and descriptions; discuss in comments.
+
+        The first import of a name answers 201, later ones 200.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenspecImport"
+      responses:
+        "201":
+          description: The change, imported for the first time.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenspecChange"
+        "200":
+          description: The change, imported again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenspecChange"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            The change already has tasks, but the text carries none of their
+            marks: the text the last import returned was not saved. Nothing
+            changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenspecKeysMissing"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/openspec_changes/{name}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: name
+        in: path
+        required: true
+        description: The change's name, such as `add-agents`.
+        schema:
+          type: string
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+          maxLength: 100
+    get:
+      operationId: showOpenspecChange
+      tags: [OpenSpec]
+      summary: Show an OpenSpec change
+      description: |
+        The change with its marked `tasks.md` text as last imported, in which
+        every item whose subtask is now done is checked, and its cards.
+      responses:
+        "200":
+          description: The change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenspecChange"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
   /files/{signed_id}:
     get:
       operationId: downloadFile
@@ -1118,9 +1234,10 @@ components:
       name: task_id
       in: path
       required: true
-      description: The task's id.
+      description: The task's id, or its key such as `GOAL-12`.
       schema:
-        type: integer
+        type: [integer, string]
+        pattern: "^([1-9][0-9]*|[A-Z][A-Z0-9]*-[1-9][0-9]*)$"
     SprintId:
       name: sprint_id
       in: path
@@ -1377,7 +1494,7 @@ components:
     TaskCardFields:
       type: object
       required: [id, number, key, title, status_id, position, parent_id, sprint_id, milestone_id, label_id, assignee_id,
-        deadline, important, completed_at, archived_at, subtask_count, subtask_done_count, comment_count]
+        deadline, important, completed_at, archived_at, openspec_change, subtask_count, subtask_done_count, comment_count]
       properties:
         id:
           type: integer
@@ -1418,6 +1535,11 @@ components:
         archived_at:
           type: [string, "null"]
           format: date-time
+        openspec_change:
+          description: The OpenSpec change whose import made the task, for its cards and subtasks.
+          oneOf:
+            - $ref: "#/components/schemas/OpenspecChangeReference"
+            - type: "null"
         subtask_count:
           type: integer
         subtask_done_count:
@@ -1501,6 +1623,96 @@ components:
       properties:
         id: { type: integer }
         title: { type: string }
+
+    OpenspecChangeReference:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+
+    OpenspecImport:
+      type: object
+      required: [name, artifacts]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+          description: The change's OpenSpec name, which is the name of its folder under `openspec/changes/`.
+        artifacts:
+          type: object
+          additionalProperties: false
+          required: [tasks]
+          properties:
+            tasks:
+              type: string
+              maxLength: 100000
+              description: |
+                The text of the change's `tasks.md` as it is in the repository,
+                with the marks of earlier imports. At most 50 sections and 500
+                items.
+
+    OpenspecChange:
+      type: object
+      additionalProperties: false
+      required: [id, name, milestone, imported_by, imported_at, tasks, cards]
+      properties:
+        id: { type: integer }
+        name:
+          type: string
+          description: The change's OpenSpec name, such as `add-agents`.
+        milestone:
+          description: The milestone that groups the change's cards. Its counts are of cards, not of subtasks.
+          type: object
+          additionalProperties: false
+          required: [id, title, total, done]
+          properties:
+            id: { type: integer }
+            title: { type: string }
+            total:
+              type: integer
+              description: Tasks in the milestone that are not archived.
+            done:
+              type: integer
+              description: Of those, the tasks in the done column.
+        imported_by:
+          $ref: "#/components/schemas/UserCard"
+        imported_at:
+          type: string
+          format: date-time
+        tasks:
+          type: string
+          description: |
+            The change's `tasks.md` with every heading and item marked with its
+            task's key, and the items done in Goalner checked. Save it into
+            `tasks.md`.
+        cards:
+          type: array
+          description: The change's cards that are not archived, in column order.
+          items:
+            $ref: "#/components/schemas/TaskCard"
+
+    OpenspecKeysMissing:
+      type: object
+      additionalProperties: false
+      required: [error, tasks]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [keys_missing]
+            message:
+              type: string
+        tasks:
+          type: string
+          description: The change's marked text, as `showOpenspecChange` returns it. Save it into `tasks.md`, redo your edits, and import again.
 
     TaskCreate:
       type: object
