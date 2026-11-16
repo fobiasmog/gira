@@ -13,6 +13,7 @@ import { useSprintsStore } from "../stores/sprints.ts"
 import { useUiStore } from "../stores/ui.ts"
 import { language, t, tc } from "../i18n/index.ts"
 import { formatDate } from "../i18n/format.ts"
+import { unfinishedOpenspecWork } from "../composables/openspecWork.ts"
 
 // Sprint planning (spec web-client, "Sprint planning screen"): each open
 // sprint is a section listing its tasks, which can be added and moved between
@@ -145,9 +146,15 @@ const archiveOpen = computed({ get: () => archiving.value !== null, set: (open) 
 const carryTo = ref<number | null>(null)
 const carryTargets = computed(() => sprints.value.filter((sprint) => sprint.id !== archiving.value?.id))
 
+// Unfinished OpenSpec cards in the sprint, which agents may be working on
+// (spec web-client, "OpenSpec work in a sprint being archived").
+const doneColumnIds = computed(() => new Set(board.columns.filter((column) => column.done).map((column) => column.id)))
+const openspecWork = computed(() => archiving.value ? unfinishedOpenspecWork(store.tasks.get(archiving.value.id) ?? [], doneColumnIds.value) : [])
+
 function openArchive(sprint: Sprint) {
   carryTo.value = null
   archiving.value = sprint
+  loadTasks(sprint)
 }
 
 async function archive() {
@@ -291,6 +298,12 @@ async function archive() {
     </AppDialog>
 
     <AppDialog v-model:open="archiveOpen" :title="t('sprints.archiveTitle', { title: archiving?.title ?? '' })">
+      <div v-if="openspecWork.length" class="openspec-warning" role="note">
+        <p>{{ t("sprints.openspecWarning") }}</p>
+        <ul>
+          <li v-for="work in openspecWork" :key="work.name">{{ tc("sprints.openspecUnfinished", work.count, { name: work.name, count: work.count }) }}</li>
+        </ul>
+      </div>
       <fieldset class="stack carry">
         <legend class="field__label">{{ t("sprints.carryTo") }}</legend>
         <label class="row"><input v-model="carryTo" type="radio" name="carry-to" :value="null">{{ t("sprints.noCarry") }}</label>
@@ -348,6 +361,9 @@ async function archive() {
 }
 .dates > * { flex: 1 1 10rem; }
 .carry { margin: 0; padding: 0; border: none; }
+.openspec-warning { display: grid; gap: var(--space-2); margin-block-end: var(--space-4); padding: var(--space-3); border-radius: var(--radius); background: var(--tone-3-bg); color: var(--tone-3-text); }
+.openspec-warning p, .openspec-warning ul { margin: 0; }
+.openspec-warning ul { padding-inline-start: var(--space-5); }
 .archived summary { cursor: pointer; font-weight: 500; }
 .archived ul { margin-block-start: var(--space-3); }
 </style>

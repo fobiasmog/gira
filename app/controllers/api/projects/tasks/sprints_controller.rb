@@ -5,7 +5,7 @@ class Api::Projects::Tasks::SprintsController < Api::BaseController
   allow_token_access only: :update
 
   def update
-    task = @project.tasks.kept.find(params[:task_id])
+    task = @project.tasks.kept.find_by_ref!(params[:task_id])
     task.update!(sprint_id: params[:sprint_id])
     render json: TaskSerializer.new(task).card
   end

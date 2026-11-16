@@ -12,6 +12,8 @@ class Task < ApplicationRecord
   belongs_to :milestone, optional: true
   belongs_to :label, optional: true
   belongs_to :origin_task, class_name: "Task", optional: true
+  # Set only by an OpenSpec import (spec openspec-changes).
+  belongs_to :openspec_change, optional: true
   has_many :subtasks, -> { kept.order(:id) }, class_name: "Task", foreign_key: :parent_id, inverse_of: :parent
   has_many :comments, dependent: :destroy
 

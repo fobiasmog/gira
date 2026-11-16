@@ -169,6 +169,86 @@ The agent domain must accept no mail. Publish a null MX record for it:
 agents.goalner.com.  MX  0 .
 ```
 
+## OpenSpec changes
+
+Agents that plan with [OpenSpec](https://github.com/Fission-AI/OpenSpec) put
+a change on the board by pushing its `tasks.md` to Goalner. Goalner never
+reads the repository: an agent, script or person sends the text, and saves
+what comes back.
+
+| In `tasks.md`                     | In Goalner                                                     |
+|-----------------------------------|----------------------------------------------------------------|
+| the change, such as `add-labels`  | a milestone titled `add-labels`, which counts its cards         |
+| a `## 1. Model` section           | a card `add-labels: 1. Model`, in the active sprint if there is one |
+| a `- [ ] 1.1 Add the table` item  | a subtask of that card; its extra lines become the description |
+| items before the first section    | a card `add-labels: Tasks`                                     |
+
+Import with `POST /api/projects/{project_id}/openspec_changes`, or with the
+MCP tool `importOpenspecChange`, and write the returned `tasks` back into the
+file:
+
+```sh
+curl --fail-with-body -sS -o import.json -X POST \
+  -H "Authorization: Bearer glnr_..." -H "Content-Type: application/json" \
+  -d "$(jq -n --rawfile tasks openspec/changes/add-labels/tasks.md '{name: "add-labels", artifacts: {tasks: $tasks}}')" \
+  http://localhost:3000/api/projects/1/openspec_changes \
+  && jq -r .tasks import.json > openspec/changes/add-labels/tasks.md
+```
+
+The returned text is the file as sent, with each heading and item ending in
+its task's key and each item done in Goalner checked:
+
+```markdown
+## 1. Model <!-- goalner:GOAL-20 -->
+
+- [x] 1.1 Add the table <!-- goalner:GOAL-21 -->
+- [ ] 1.2 Add the model <!-- goalner:GOAL-22 -->
+```
+
+The marks are HTML comments, so rendered Markdown hides them, and OpenSpec
+still counts the same tasks. Commit them. Later imports find sections and
+items by their marks:
+
+- renumbering, rewording or moving an item keeps its task, assignee and
+  comments. The text wins over titles and descriptions edited in Goalner;
+- unmarked sections and items get new cards and subtasks;
+- a task whose mark is gone from the text is archived;
+- a checked item completes its subtask, and a subtask done in Goalner comes
+  back checked. An import never reopens anything;
+- an import whose text has no marks at all, for a change that already has
+  tasks, is refused with 409 `keys_missing`, so that a lost write-back cannot
+  duplicate the change. The 409 carries the marked text to save.
+
+An agent works through a change like this:
+
+1. Import the change and save the returned text into `tasks.md`.
+2. Take a card assigned to it (`listTasks` with `view=assigned`), assign it to
+   itself if needed, and move it to the work column.
+3. For each item, do the work, complete its subtask (`completeSubtask` takes
+   the key from the mark, such as `GOAL-21`), check its box and commit.
+4. Move the card to the done column, and import again.
+
+Every request that names a task takes its key as well as its id.
+
+`GET /api/projects/{project_id}/openspec_changes/{name}` (`showOpenspecChange`)
+returns the marked text with the current checkboxes, and the change's cards.
+
+Limits and known gaps:
+
+- at most 100,000 characters, 50 sections and 500 items per change. Titles
+  longer than 255 characters are cut at a word boundary with `…`, and the
+  whole line opens the description;
+- carrying a sprint over copies cards as any task: the copy has no checklist
+  and no link to the change, and the original keeps both. Archiving a sprint
+  with unfinished OpenSpec cards warns about it on the sprints screen;
+- a carried-over card counts twice in its milestone, as any carried-over task
+  does;
+- only `tasks.md` is imported: no proposal, design or specs, and no state for
+  the change yet.
+
+This repository is developed this way: its own OpenSpec changes go on a
+Goalner board, and agents work their cards through MCP.
+
 Goalner never sends to these addresses in any case: every mailer drops them.
 
 ## MCP server

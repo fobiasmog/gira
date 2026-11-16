@@ -13,6 +13,7 @@ class TaskSerializer
 
   def self.cards(tasks)
     tasks = tasks.to_a
+    ActiveRecord::Associations::Preloader.new(records: tasks, associations: :openspec_change).call
     counts = counts_for(tasks.map(&:id))
     tasks.map { |task| new(task, counts: counts[task.id]).card }
   end
@@ -39,6 +40,7 @@ class TaskSerializer
       important: @task.important,
       completed_at: @task.completed_at,
       archived_at: @task.archived_at,
+      openspec_change: @task.openspec_change&.slice(:id, :name),
       subtask_count: @counts.subtasks,
       subtask_done_count: @counts.subtasks_done,
       comment_count: @counts.comments

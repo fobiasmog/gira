@@ -18,6 +18,6 @@ class Api::Projects::Tasks::SubtasksController < Api::BaseController
 
   private
     def set_parent
-      @parent = @project.tasks.kept.find(params[:task_id])
+      @parent = @project.tasks.kept.find_by_ref!(params[:task_id])
     end
 end

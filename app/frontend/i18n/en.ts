@@ -263,6 +263,8 @@ export const en = {
     archiveTitle: "Archive “{title}”",
     carryTo: "Move unfinished tasks to",
     noCarry: "Leave them in the archived sprint",
+    openspecWarning: "Agents may be working on these OpenSpec cards. Copies carried over to another sprint lose their checklist and their link to the change.",
+    openspecUnfinished: { one: "{name}: {count} unfinished card", other: "{name}: {count} unfinished cards" },
     archived: "“{title}” was archived",
     archivedSprints: "Archived sprints",
     total: { one: "{count} task in total", other: "{count} tasks in total" },
