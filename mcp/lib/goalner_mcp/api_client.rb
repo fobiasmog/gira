@@ -5,6 +5,11 @@ module GoalnerMcp
   # timed-out write is never repeated. No cookies and no X-Forwarded-For are
   # sent, so the API sees the MCP container as the client.
   #
+  # Every request also carries the MCP server's service key, when it has one
+  # (add-agents design.md, decision 7): it tells the API that the request came
+  # through MCP, which matters for agent tokens issued for one channel only.
+  # The key authenticates nothing by itself.
+  #
   # The transport is swappable: tests call the Rails application in-process.
   class ApiClient
     Response = Data.define(:status, :body)
@@ -14,6 +19,7 @@ module GoalnerMcp
     class Unavailable < StandardError; end
 
     UNAVAILABLE_MESSAGE = "Goalner is unavailable. Try again later."
+    SERVICE_KEY_HEADER = "X-Goalner-Service-Key"
 
     HEADERS = {
       "Accept" => "application/json",
@@ -25,8 +31,29 @@ module GoalnerMcp
 
     attr_reader :transport
 
-    def initialize(transport)
+    def initialize(transport, service_key: nil)
       @transport = transport
+      @service_key_header = service_key.to_s.empty? ? {} : { SERVICE_KEY_HEADER => service_key }.freeze
+    end
+
+    # The code of an error answer: error.code in the API's envelope, error in
+    # the exchange's. Only invalid_token says that a credential is dead: any
+    # other 401, such as invalid_service_key, an empty body or a proxy's
+    # page, is the MCP server's own trouble (harden-mcp-oauth design.md,
+    # decision 3).
+    def self.error_code(body)
+      error = JSON.parse(body.to_s)
+      error = error["error"] if error.is_a?(Hash)
+      error = error["code"] if error.is_a?(Hash)
+      error if error.is_a?(String)
+    rescue JSON::ParserError
+      nil
+    end
+
+    # Raised for a 401 that does not say invalid_token.
+    def self.refused_credentials!
+      GoalnerMcp.logger.error("The API refused the MCP server's credentials; check MCP_SERVICE_KEY")
+      raise Unavailable, "the API refused the MCP server's credentials"
     end
 
     # path includes any query string; body is JSON-encoded when given. Raises
@@ -34,7 +61,7 @@ module GoalnerMcp
     # misconfiguration, such as a public GOALNER_API_URL or a lost
     # X-Forwarded-Proto, and is logged as an error.
     def request(method, path, token: nil, headers: {}, body: nil)
-      headers = HEADERS.merge(headers)
+      headers = HEADERS.merge(@service_key_header, headers)
       headers["Authorization"] = "Bearer #{token}" if token
       headers["Content-Type"] = "application/json" if body
 

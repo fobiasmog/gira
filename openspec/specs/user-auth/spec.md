@@ -71,7 +71,7 @@ The system SHALL lock an account after 10 consecutive failed password attempts. 
 - **THEN** the failed-attempt count is reset to zero
 
 ### Requirement: Password reset
-The system SHALL let a user request a password reset link by email. The response SHALL be identical whether or not the email belongs to an account. Reset links SHALL expire after 15 minutes and SHALL stop working once the password has been changed. Completing a reset SHALL end every existing session of that account and SHALL revoke all of its API tokens.
+The system SHALL let a user request a password reset link by email. The response SHALL be identical whether or not the email belongs to an account. Reset links SHALL expire after 15 minutes and SHALL stop working once the password has been changed. Completing a reset SHALL end every existing session of that account, SHALL revoke all of its API tokens and SHALL end all of its MCP connections (spec `mcp-authorization`).
 
 #### Scenario: Reset requested for unknown email
 - **WHEN** a visitor requests a reset for an email with no account
@@ -85,8 +85,12 @@ The system SHALL let a user request a password reset link by email. The response
 - **WHEN** a user sets a new valid password through a valid reset link
 - **THEN** the password is changed, the same link can no longer be used, all sessions of the account are ended and all of its API tokens stop authenticating
 
+#### Scenario: Connections end on reset
+- **WHEN** a user with a claude.ai connection completes a password reset
+- **THEN** claude.ai's next MCP request receives HTTP 401 and its refresh receives `invalid_grant`
+
 ### Requirement: Change password from settings
-The system SHALL let a signed-in user change their password only after re-entering their current password. A successful change SHALL end all of the user's other sessions, keep the current one, and revoke all of the user's API tokens.
+The system SHALL let a signed-in user change their password only after re-entering their current password. A successful change SHALL end all of the user's other sessions, keep the current one, revoke all of the user's API tokens and end all of the user's MCP connections (spec `mcp-authorization`).
 
 #### Scenario: Wrong current password
 - **WHEN** a signed-in user submits a new password with an incorrect current password
@@ -99,6 +103,10 @@ The system SHALL let a signed-in user change their password only after re-enteri
 #### Scenario: API tokens revoked
 - **WHEN** a user with API tokens changes their password from settings
 - **THEN** every one of their tokens stops authenticating
+
+#### Scenario: Connections ended
+- **WHEN** a user with MCP connections changes their password from settings
+- **THEN** every connection ends and the connected apps list is empty
 
 ### Requirement: Sessions
 Each sign-in SHALL create a server-side session record identified by a signed cookie. A session SHALL end after 14 days without use, on sign-out, or on a password change or reset as described above. Session records SHALL store the creation and last-use times and the user agent, and SHALL NOT store IP addresses.
@@ -135,3 +143,25 @@ The session cookie SHALL be signed and marked Secure, HttpOnly and SameSite=Lax.
 #### Scenario: Cookie attributes
 - **WHEN** a user signs in over HTTPS
 - **THEN** the session cookie is set with Secure, HttpOnly and SameSite=Lax attributes
+
+### Requirement: Agent accounts cannot sign in
+An agent account (spec `agents`) SHALL NOT be able to sign in, reset its password, unlock its account or confirm its address. For each of these actions, the system SHALL respond to an agent's address exactly as to an address without an account. Failed sign-in attempts with an agent's address SHALL NOT count toward lockout.
+
+#### Scenario: Sign-in
+- **WHEN** someone submits an agent's address with any password
+- **THEN** sign-in is refused with the same generic error as for an unknown address
+
+#### Scenario: Password reset
+- **WHEN** someone requests a password reset for an agent's address
+- **THEN** the response is the same as for an unknown address, and no email is sent
+
+#### Scenario: Repeated failures
+- **WHEN** sign-in fails ten times in a row with an agent's address
+- **THEN** no unlock email is sent and the agent's tokens keep working
+
+### Requirement: Agent domain is reserved
+Registration with an address on the agent domain (`agents.goalner.com`) SHALL be rejected with a validation error on the address, whether or not an agent has that address. No account SHALL be created and no email SHALL be sent.
+
+#### Scenario: Registering an agent address
+- **WHEN** a visitor registers with `silver-fish-4821@agents.goalner.com`
+- **THEN** registration is rejected with a validation error on the email field, no account is created and no email is sent

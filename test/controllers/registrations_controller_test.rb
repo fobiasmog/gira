@@ -1,6 +1,8 @@
 require "test_helper"
 
 class RegistrationsControllerTest < ActionDispatch::IntegrationTest
+  include ActionMailer::TestHelper
+
   def register(email_address: "new@example.com", password: "a long password", name: "New Person")
     post registration_path, params: { user: { name: name, email_address: email_address, password: password } }
   end
@@ -53,6 +55,21 @@ class RegistrationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unprocessable_content
     assert_select ".errors li", count: 1
     assert_select ".errors li", text: /Password/
+  end
+
+  # Spec user-auth, "Agent domain is reserved".
+  test "registering an address on the agent domain is refused, whether or not an agent has it" do
+    agent = create_agent(projects(:goal))
+
+    [ agent.user.email_address, "silver-fish-4821@agents.goalner.com" ].each do |address|
+      assert_no_difference -> { User.count } do
+        assert_no_enqueued_emails { register email_address: address }
+      end
+
+      assert_response :unprocessable_content
+      assert_select ".errors li", count: 1
+      assert_select ".errors li", text: /Email is reserved for agents/
+    end
   end
 
   test "the account takes the language the visitor used" do

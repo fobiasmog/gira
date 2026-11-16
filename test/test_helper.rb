@@ -3,6 +3,7 @@ require_relative "../config/environment"
 require "rails/test_help"
 require_relative "test_helpers/session_test_helper"
 require_relative "test_helpers/oauth_test_helper"
+require_relative "test_helpers/agent_test_helper"
 
 # No test reaches the network for a client ID metadata document
 # (harden-mcp-oauth design.md, decision 10): the default resolver and

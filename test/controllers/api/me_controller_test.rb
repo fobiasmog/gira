@@ -14,7 +14,20 @@ class Api::MeControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_equal({ "id" => @user.id, "name" => "User One", "email_address" => "one@example.com", "lang" => "en",
-                   "contact_links" => {}, "admin" => false, "avatar_url" => nil }, response.parsed_body)
+                   "contact_links" => {}, "admin" => false, "avatar_url" => nil, "agent" => false, "deleted" => false }, response.parsed_body)
+  end
+
+  # Spec agents, "Agents in API responses".
+  test "own profile with an agent's token: the profile is the agent's and says so" do
+    sign_out
+    agent = create_agent(projects(:goal), name: "Fish")
+
+    get api_me_path, headers: bearer(issue_agent_token(agent, issuer: @user))
+
+    assert_response :success
+    body = response.parsed_body
+    assert_equal [ agent.user.id, "Fish", agent.user.email_address, true, false, false ],
+      body.values_at("id", "name", "email_address", "agent", "deleted", "admin")
   end
 
   test "update name and language" do

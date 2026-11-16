@@ -24,6 +24,25 @@ class OpenapiErrorsContract < OpenapiContractTest
     assert_equal "invalid_token", error_code
   end
 
+  test "401 invalid_token for an agent's token used where it was not issued for" do
+    agent = create_agent(projects(:goal))
+
+    get api_me_path, headers: bearer(issue_agent_token(agent, issuer: users(:two), channels: %w[mcp]))
+
+    assert_response :unauthorized
+    assert_equal "invalid_token", error_code
+  end
+
+  test "401 invalid_service_key for an agent's token sent with a service key that is not the MCP server's" do
+    agent = create_agent(projects(:goal))
+    headers = bearer(issue_agent_token(agent, issuer: users(:two), channels: %w[mcp])).merge(ApiTokenAuthentication::SERVICE_KEY_HEADER => "made-up")
+
+    get api_me_path, headers: headers
+
+    assert_response :unauthorized
+    assert_equal "invalid_service_key", error_code
+  end
+
   test "403 insufficient_scope for a write with a read-only token" do
     post api_project_tasks_path(projects(:goal)), params: { title: "Nope" }, headers: bearer("glnr_two_goal_read"), as: :json
 

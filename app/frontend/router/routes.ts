@@ -27,6 +27,7 @@ export const routes: RouteRecordRaw[] = [
   { path: `/projects/:pid${id}/milestones`, name: "milestones", component: () => import("../pages/MilestonesPage.vue"), props: ids },
   { path: `/projects/:pid${id}/milestones/:mid${id}`, name: "milestone", component: () => import("../pages/MilestonePage.vue"), props: ids },
   { path: `/projects/:pid${id}/members`, name: "members", component: () => import("../pages/MembersPage.vue"), props: ids },
+  { path: `/projects/:pid${id}/agents`, name: "agents", component: () => import("../pages/ProjectAgentsPage.vue"), props: ids },
   { path: `/projects/:pid${id}/settings`, name: "project-settings", component: () => import("../pages/ProjectSettingsPage.vue"), props: ids },
   { path: `/projects/:pid${id}/archive`, name: "archive", component: () => import("../pages/ArchivePage.vue"), props: ids },
   { path: `/projects/:pid${id}/archive/:tid${id}`, name: "archived-task", component: () => import("../pages/ArchivedTaskPage.vue"), props: ids },

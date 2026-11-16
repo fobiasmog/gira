@@ -123,14 +123,18 @@ module GoalnerMcp
     # key, cached in Redis or, without REDIS_URL outside production, in memory
     # (add-mcp-oauth design.md, decisions 9 and 11). Production refuses to
     # start without any of these settings.
+    #
+    # The service key also goes with every API request, so the API can tell
+    # requests made through MCP from direct ones (add-agents design.md,
+    # decision 7).
     def app(
       public_url: setting("MCP_PUBLIC_URL", "http://localhost:3100"),
-      api: ApiClient.new(ApiClient::HttpTransport.new(setting("GOALNER_API_URL", "http://localhost:3000"))),
+      service_key: setting("MCP_SERVICE_KEY", "development-mcp-service-key"),
+      api: ApiClient.new(ApiClient::HttpTransport.new(setting("GOALNER_API_URL", "http://localhost:3000")), service_key: service_key),
       tools: ToolBuilder.new(api).tools,
       resource: setting("MCP_RESOURCE_URL", "http://localhost:3100/mcp"),
       issuer: setting("MCP_ISSUER", "http://localhost:3000"),
       jwt_public_keys: setting("MCP_JWT_PUBLIC_KEYS", nil),
-      service_key: setting("MCP_SERVICE_KEY", "development-mcp-service-key"),
       connection_token_cache: connection_token_cache(setting("REDIS_URL", nil))
     )
       reporter = ->(exception, _context) { report(exception) unless EXPECTED_ERRORS.any? { exception.is_a?(it) } }

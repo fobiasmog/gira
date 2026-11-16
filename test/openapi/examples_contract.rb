@@ -81,6 +81,32 @@ class OpenapiExamplesContract < OpenapiContractTest
     @sprint.carry_over_to(@planned)
   end
 
+  # The view agents find their work with (spec tasks, "Tasks assigned to the
+  # requester"), made with an agent's token.
+  test "listTasks, assigned to the token's owner" do
+    agent = create_agent(@project, name: "Fish")
+    @project.tasks.create!(title: "Fish's task", creator: users(:two), assignee: agent.user, status: statuses(:goal_work))
+    @project.tasks.create!(title: "Fish's subtask", creator: agent.user, assignee: agent.user, parent: @task)
+
+    get api_project_tasks_path(@project, view: "assigned"), headers: bearer(issue_agent_token(agent, issuer: users(:two), channels: %w[api]))
+
+    assert_response :success
+    assert_equal [ "Fish's subtask", "Fish's task" ], response.parsed_body.map { |card| card["title"] }
+  end
+
+  test "showProfile and listMembers with an agent's token" do
+    agent = create_agent(@project, name: "Fish")
+    headers = bearer(issue_agent_token(agent, issuer: users(:two), access: :read))
+
+    get api_me_path, headers: headers
+    assert_response :success
+    assert response.parsed_body["agent"]
+
+    get api_project_members_path(@project), headers: headers
+    assert_response :success
+    assert_includes response.parsed_body.map { |member| member.values_at("name", "agent") }, [ "Fish", true ]
+  end
+
   test "every documented operation has an example" do
     assert_empty OpenapiContractTest.operations.map(&:id) - EXAMPLES.keys, "documented operations without an example"
   end

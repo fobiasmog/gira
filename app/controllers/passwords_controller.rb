@@ -6,9 +6,10 @@ class PasswordsController < ApplicationController
   def new
   end
 
-  # Same response whether or not the address has an account.
+  # Same response whether or not the address has an account. An agent's
+  # address gets no link: agents have no password to reset.
   def create
-    if user = User.find_by(email_address: params[:email_address])
+    if user = User.find_person_by_email(params[:email_address])
       PasswordsMailer.reset(user).deliver_later
     end
 
@@ -32,6 +33,7 @@ class PasswordsController < ApplicationController
   private
     def set_user_by_token
       @user = User.find_by_password_reset_token!(params[:token])
+      raise ActiveRecord::RecordNotFound if @user.agent?
     rescue ActiveSupport::MessageVerifier::InvalidSignature, ActiveRecord::RecordNotFound
       redirect_to new_password_path, alert: t("passwords.invalid")
     end

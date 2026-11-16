@@ -4,6 +4,7 @@ import { storeToRefs } from "pinia"
 import { useRouter } from "vue-router"
 import AppIcon from "../components/ui/AppIcon.vue"
 import MarkdownView from "../components/MarkdownView.vue"
+import AgentChip from "../components/AgentChip.vue"
 import UserAvatar from "../components/UserAvatar.vue"
 import CommentItem from "../components/task/CommentItem.vue"
 import { useArchiveStore } from "../stores/archive.ts"
@@ -44,7 +45,7 @@ watch(() => [props.projectId, props.taskId] as const, async ([projectId, taskId]
 
     <dl class="facts small">
       <div v-if="task.status"><dt>{{ t("task.status") }}</dt><dd>{{ task.status.title }}</dd></div>
-      <div><dt>{{ t("task.assignee") }}</dt><dd class="row"><UserAvatar :user="task.assignee" :size="20" />{{ task.assignee?.name ?? t("task.unassigned") }}</dd></div>
+      <div><dt>{{ t("task.assignee") }}</dt><dd class="row"><UserAvatar :user="task.assignee" :size="20" />{{ task.assignee?.name ?? t("task.unassigned") }}<AgentChip :user="task.assignee" /></dd></div>
       <div v-if="task.deadline"><dt>{{ t("task.deadline") }}</dt><dd>{{ formatDateTime(language, task.deadline) }}</dd></div>
       <div v-if="task.milestone"><dt>{{ t("task.milestone") }}</dt><dd>{{ task.milestone.title }}</dd></div>
       <div v-if="task.label"><dt>{{ t("task.label") }}</dt><dd>{{ task.label.title }}</dd></div>

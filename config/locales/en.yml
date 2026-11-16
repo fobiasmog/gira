@@ -202,6 +202,7 @@ en:
       invalid_service: "has an unknown service %{service}"
       invalid_url: "for %{service} must be an https URL of at most 255 characters"
       not_a_member: must be a member of the project
+      reserved: is reserved for agents
       deleted: has been deleted
       nested: cannot have subtasks of its own
       archived: is archived
@@ -217,10 +218,16 @@ en:
   activerecord:
     errors:
       models:
+        agent:
+          attributes:
+            base:
+              last_project: An agent cannot be removed from its only project. Delete it instead.
         api_token:
           attributes:
             base:
               too_many: "You can have at most %{count} active API tokens. Revoke one to create another."
+              too_many_for_agent: "An agent can have at most %{count} tokens. Revoke one to issue another."
+              agent_deleted: This agent is deleted. Restore it to issue tokens.
         task:
           attributes:
             base:
@@ -231,6 +238,7 @@ en:
         project_id: Project
         access: Access
         expires_in_days: Expiry
+        channels: Channels
       user:
         name: Name
         email_address: Email

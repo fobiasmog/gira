@@ -7,7 +7,7 @@ export type IconName =
   | "format_h2" | "format_h3" | "format_italic" | "format_list_bulleted" | "format_list_numbered"
   | "format_quote" | "format_strikethrough" | "group" | "home" | "inbox" | "link" | "local_fire_department"
   | "local_fire_department_filled" | "logout" | "mail" | "menu" | "more_vert" | "person"
-  | "radio_button_unchecked" | "redo" | "restore_from_trash" | "self_improvement" | "settings" | "sprint"
+  | "radio_button_unchecked" | "redo" | "restore_from_trash" | "robot" | "self_improvement" | "settings" | "sprint"
   | "thumb_up" | "undo" | "view_kanban" | "view_list"
 </script>
 

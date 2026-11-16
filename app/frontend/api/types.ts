@@ -11,11 +11,15 @@ export const CONTACT_SERVICES = ["fb", "vk", "tg", "ig", "slack"] as const
 export type ContactService = (typeof CONTACT_SERVICES)[number]
 export type ContactLinks = Partial<Record<ContactService, string>>
 
+// agent: an agent's account rather than a person's. deleted: true only for a
+// deleted agent, which still appears on its past work.
 export interface UserCard {
   id: Id
   name: string
   email_address: string
   avatar_url: string | null
+  agent: boolean
+  deleted: boolean
 }
 
 export interface Profile extends UserCard {
@@ -181,6 +185,54 @@ export interface Connection {
   access: ApiTokenAccess
   connected_at: Timestamp
   last_active_at: Timestamp
+}
+
+// Where an agent token works.
+export type AgentChannel = "api" | "mcp"
+
+// An agent, for the people who handle it. Its id is its account's id: the
+// one member lists, assignees and comment authors carry.
+export interface Agent extends UserCard {
+  created_by: UserCard
+  created_at: Timestamp
+  deleted_at: Timestamp | null
+}
+
+// An agent in a project's list. removable: it belongs to another project
+// too, so it can be removed from this one.
+export interface ProjectAgent extends Agent {
+  token_count: number
+  removable: boolean
+}
+
+// An agent the user can see, with the projects they share.
+export interface VisibleAgent extends Agent {
+  projects: Pick<Project, "id" | "title" | "short_name">[]
+}
+
+// An agent's token. The value itself is never listed: only its last four
+// characters.
+export interface AgentToken {
+  id: Id
+  name: string
+  issuer: UserCard
+  access: ApiTokenAccess
+  channels: AgentChannel[]
+  last_characters: string
+  created_at: Timestamp
+  last_used_at: Timestamp | null
+}
+
+// The response that issues a token, the only one that carries the value.
+export interface NewAgentToken extends AgentToken {
+  token: string
+  // The MCP endpoint, as the server knows it.
+  mcp_url: string
+}
+
+// The creation response: the agent and its first token.
+export interface NewAgent extends ProjectAgent {
+  first_token: NewAgentToken
 }
 
 export interface Announcement {

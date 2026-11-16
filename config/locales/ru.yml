@@ -189,10 +189,16 @@ ru:
   activerecord:
     errors:
       models:
+        agent:
+          attributes:
+            base:
+              last_project: Агента нельзя убрать из его единственного проекта. Удалите его.
         api_token:
           attributes:
             base:
               too_many: "Можно иметь не больше %{count} действующих API-токенов. Отзовите один, чтобы создать новый."
+              too_many_for_agent: "У агента может быть не больше %{count} токенов. Отзовите один, чтобы выпустить новый."
+              agent_deleted: Этот агент удалён. Восстановите его, чтобы выпускать токены.
         task:
           attributes:
             base:
@@ -203,6 +209,7 @@ ru:
         project_id: Проект
         access: Доступ
         expires_in_days: Срок действия
+        channels: Каналы
       user:
         name: Имя
         email_address: Email
@@ -246,6 +253,7 @@ ru:
       invalid_service: "содержит неизвестный сервис %{service}"
       invalid_url: "для %{service} должна быть https-адресом не длиннее 255 символов"
       not_a_member: должен быть участником проекта
+      reserved: зарезервирован для агентов
       deleted: удалён
       nested: не может иметь собственных подзадач
       archived: в архиве

@@ -5,7 +5,7 @@ class Api::Projects::Tasks::CommentsController < Api::BaseController
   before_action :set_task
 
   def index
-    comments = @task.comments.kept.order(created_at: :desc, id: :desc).includes(:author, attachments_attachments: :blob)
+    comments = @task.comments.kept.order(created_at: :desc, id: :desc).includes(author: [ :agent, { avatar_attachment: :blob } ], attachments_attachments: :blob)
     render json: comments.map { |comment| CommentSerializer.new(comment) }
   end
 

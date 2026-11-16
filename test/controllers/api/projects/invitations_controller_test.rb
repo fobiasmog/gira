@@ -123,6 +123,21 @@ class Api::Projects::InvitationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :no_content
   end
 
+  # Spec project-membership, "Agent addresses cannot be invited".
+  test "an address on the agent domain cannot be invited, whether or not an agent has it" do
+    agent = create_agent(@project)
+
+    [ agent.user.email_address, "Silver-Fish-4821@agents.goalner.com" ].each do |address|
+      assert_no_difference -> { Invitation.count } do
+        invite address
+      end
+
+      assert_response :unprocessable_content
+      assert_equal [ "Email is reserved for agents" ], response.parsed_body.dig("error", "fields", "email")
+    end
+    assert_empty ActionMailer::Base.deliveries
+  end
+
   test "non-members cannot invite" do
     invite "newcomer@example.com", project: projects(:side)
 

@@ -1,8 +1,14 @@
 module GoalnerMcp
-  # Verifies personal API tokens (spec mcp-server, "Authentication"; add-mcp-
-  # server design.md, decision 6) by asking the API: GET /api/me. A success is
+  # Verifies personal API tokens and agents' tokens (spec mcp-server,
+  # "Authentication" and "Agent tokens at the MCP endpoint"; add-mcp-server
+  # design.md, decision 6) by asking the API: GET /api/me. A success is
   # remembered for TTL seconds, keyed by the token's SHA-256, so each token
   # costs at most one extra API request a minute per process.
+  #
+  # The API refuses an agent's token that was not issued for MCP like an
+  # unknown one. A 401 that does not say invalid_token is not about the
+  # token: the API refused the MCP server's own service key, and the client
+  # is told that Goalner is unavailable (add-agents design.md, decision 7).
   class TokenVerifier
     PREFIX = "glnr_"
     TTL = 60
@@ -27,7 +33,8 @@ module GoalnerMcp
       credential = Credential.new(token: token, cache_key: key)
       return credential if @cache.read(key)
 
-      case @api.request("GET", "/api/me", token: token).status
+      response = @api.request("GET", "/api/me", token: token)
+      case response.status
       when 200
         @cache.write(key, true)
         credential
@@ -36,6 +43,7 @@ module GoalnerMcp
         # it, so the token is valid; tool calls then get rate_limited.
         credential
       when 401
+        ApiClient.refused_credentials! unless ApiClient.error_code(response.body) == "invalid_token"
         nil
       else
         raise ApiClient::Unavailable, "GET /api/me answered an unexpected status"

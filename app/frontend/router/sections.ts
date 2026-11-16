@@ -17,6 +17,7 @@ export const projectSections: ProjectSection[] = [
   { name: "sprints", label: "navigation.sprints", icon: "sprint" },
   { name: "milestones", label: "navigation.milestones", icon: "flag", also: ["milestone"] },
   { name: "members", label: "navigation.members", icon: "group" },
+  { name: "agents", label: "navigation.agents", icon: "robot" },
   { name: "archive", label: "navigation.archive", icon: "archive", also: ["archived-task"] },
   { name: "project-settings", label: "navigation.projectSettings", icon: "settings", ownerOnly: true },
 ]

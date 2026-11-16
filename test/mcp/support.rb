@@ -14,17 +14,20 @@ class McpIntegrationTest < ActiveSupport::TestCase
   PUBLIC_URL = "http://example.org"
 
   # Stands in for ApiClient::HttpTransport: hands each request to the Rails
-  # application and records it, so tests can count API requests.
+  # application and records it, so tests can count API requests and read the
+  # headers they carried.
   class RackTransport
-    attr_reader :requests
+    attr_reader :requests, :headers
 
     def initialize(app)
       @app = app
       @requests = []
+      @headers = []
     end
 
     def call(method, path, headers, body)
       @requests << "#{method} #{path}"
+      @headers << headers
       env = headers.to_h { |name, value| [ name == "Content-Type" ? "CONTENT_TYPE" : "HTTP_#{name.upcase.tr("-", "_")}", value ] }
       response = Rack::MockRequest.new(@app).request(method, path, env.merge(input: body.to_s))
       [ response.status, response.body ]
@@ -43,9 +46,11 @@ class McpIntegrationTest < ActiveSupport::TestCase
   end
 
   # The MCP application as configured in production: the resource, the
-  # issuer and the public key match this Rails application's (Oauth).
-  def build_app(public_url: PUBLIC_URL, **options)
-    GoalnerMcp.app(public_url: public_url, api: GoalnerMcp::ApiClient.new(@api_transport), resource: Oauth.resource,
+  # issuer, the public key and the service key match this Rails
+  # application's (Oauth).
+  def build_app(public_url: PUBLIC_URL, service_key: Rails.configuration.x.oauth.service_key, **options)
+    GoalnerMcp.app(public_url: public_url, service_key: service_key,
+      api: GoalnerMcp::ApiClient.new(@api_transport, service_key: service_key), resource: Oauth.resource,
       issuer: Oauth.issuer, jwt_public_keys: Oauth::JwtGenerator.public_key_pem, **options)
   end
 

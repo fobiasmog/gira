@@ -7,10 +7,13 @@ module GoalnerMcp
   # - Path parameters are URL-encoded, so task keys such as GOAL-12 pass.
   # - Query parameters and body properties are sent only when given. A body
   #   property given as nil is sent as null.
-  # - 2xx: the response body as text, or "Done." when there is none. 401: the
-  #   credential is marked rejected, and Authentication answers 401. Other
-  #   errors: the envelope's code, message and field messages, as a tool error.
-  #   An unreachable or failing API: a generic tool error.
+  # - 2xx: the response body as text, or "Done." when there is none. 401
+  #   invalid_token: the credential is marked rejected, and Authentication
+  #   answers 401. Any other 401 is the API refusing the MCP server's own
+  #   service key, and is answered like a failing API (add-agents design.md,
+  #   decision 7). Other errors: the envelope's code, message and field
+  #   messages, as a tool error. An unreachable or failing API: a generic
+  #   tool error.
   # - A read-only connection calling a tool that is not read-only gets
   #   insufficient_scope without an API request (add-mcp-oauth design.md,
   #   decision 9). A connection whose exchange is refused is answered like an
@@ -35,6 +38,7 @@ module GoalnerMcp
       when 204 then text("Done.")
       when 200..299 then text(response.body)
       when 401
+        ApiClient.refused_credentials! unless ApiClient.error_code(response.body) == "invalid_token"
         credential.reject!
         raise Unauthorized
       else error(describe(response))

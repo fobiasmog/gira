@@ -5,6 +5,7 @@ import { useRouter } from "vue-router"
 import AppField from "../components/ui/AppField.vue"
 import AppIcon from "../components/ui/AppIcon.vue"
 import ConfirmDialog from "../components/ui/ConfirmDialog.vue"
+import AgentChip from "../components/AgentChip.vue"
 import UserAvatar from "../components/UserAvatar.vue"
 import { ApiError } from "../api/client.ts"
 import { projectsApi } from "../api/projects.ts"
@@ -108,10 +109,14 @@ async function leave() {
           <p class="member__name">
             {{ member.name }}
             <span v-if="member.id === profile?.id" class="muted">({{ t("members.you") }})</span>
+            <AgentChip :user="member" />
           </p>
           <p class="small muted break-word">{{ member.email_address }}</p>
         </div>
         <span v-if="member.id === project.owner_id" class="chip">{{ t("members.owner") }}</span>
+        <RouterLink v-else-if="member.agent" :to="{ name: 'agents', params: { pid: projectId } }" class="small" :title="t('agents.manage')">
+          {{ t("navigation.agents") }}
+        </RouterLink>
         <button
           v-else-if="project.owned_by_me"
           type="button"

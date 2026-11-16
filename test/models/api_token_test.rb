@@ -125,4 +125,151 @@ class ApiTokenTest < ActiveSupport::TestCase
     assert_not issue(project: nil).valid?
     assert_not issue(expires_in_days: nil).valid?
   end
+
+  # Agent tokens (spec agents, "Issue agent tokens"; add-agents design.md, decision 5)
+
+  def issue_for_agent(agent, **attributes)
+    ApiToken.issue_for_agent(agent, issuer: users(:two), name: "runner", access: "read_write", channels: %w[api mcp], **attributes)
+  end
+
+  test "an agent token belongs to the agent, names its issuer, has no project and expires in 100 years" do
+    agent = create_agent(projects(:goal))
+    token = issue_for_agent(agent).tap(&:save!)
+
+    assert_equal agent.user, token.user
+    assert_equal users(:two), token.issuer
+    assert_nil token.project_id
+    assert_in_delta 100.years.from_now, token.expires_at, 1.minute
+    assert_match(/\Aglnr_[1-9A-HJ-NP-Za-km-z]{40}\z/, token.value)
+    assert token.agent?
+    assert_not token.personal?
+    assert_not token.connection?
+  end
+
+  test "an agent token is not a personal token of the agent or of its issuer" do
+    agent = create_agent(projects(:goal))
+    token = issue_for_agent(agent).tap(&:save!)
+
+    assert_not_includes ApiToken.personal, token
+    assert_not_includes ApiToken.of_connections, token
+    assert_includes ApiToken.of_agents, token
+    assert_equal [ token ], agent.tokens.to_a
+    assert_empty agent.user.api_tokens
+    assert_not_includes users(:two).api_tokens, token
+    assert_equal [ token ], agent.user.api_tokens.of_agents.to_a
+  end
+
+  test "agent tokens do not count toward their issuer's personal tokens" do
+    agent = create_agent(projects(:goal))
+
+    assert_no_difference -> { users(:two).api_tokens.active.count } do
+      issue_for_agent(agent).save!
+    end
+  end
+
+  test "an agent token is found by its value long after a personal token's longest life, and not after 100 years" do
+    agent = create_agent(projects(:goal))
+    token = issue_for_agent(agent).tap(&:save!)
+
+    travel 400.days do
+      assert_includes ApiToken.active, token
+      assert_not_includes ApiToken.expired, token
+      assert_equal token, ApiToken.find_active_by_value(token.value)
+    end
+
+    travel 100.years + 1.day do
+      assert_includes ApiToken.expired, token
+      assert_nil ApiToken.find_active_by_value(token.value)
+    end
+  end
+
+  test "an agent token's expiry is not the issuer's to choose" do
+    agent = create_agent(projects(:goal))
+
+    [ { expires_at: 1.day.from_now }, { expires_in_days: 7 } ].each do |given|
+      token = issue_for_agent(agent, name: given.keys.sole.to_s, **given).tap(&:save!)
+
+      assert_in_delta 100.years.from_now, token.reload.expires_at, 1.minute, given.inspect
+    end
+  end
+
+  test "personal and connection tokens keep their kinds" do
+    personal = api_tokens(:two_goal_read_write)
+    connection, _access_token = create_connection_token(users(:two))
+
+    assert personal.personal?
+    assert_not personal.agent?
+    assert connection.connection?
+    assert_not connection.personal?
+    assert_not connection.agent?
+    assert_includes ApiToken.personal, personal
+    assert_not_includes ApiToken.personal, connection
+    assert_equal [ connection ], users(:two).api_tokens.of_connections.to_a
+  end
+
+  test "channels are the API, MCP or both" do
+    agent = create_agent(projects(:goal))
+
+    { %w[api] => "api", %w[mcp] => "mcp", %w[mcp api] => "api_mcp", %w[api api] => "api" }.each do |given, stored|
+      token = issue_for_agent(agent, channels: given)
+
+      assert token.valid?, given.inspect
+      assert_equal stored, token.channels
+    end
+    assert_equal %w[api mcp], issue_for_agent(agent).channel_list
+    assert issue_for_agent(agent, channels: %w[mcp]).channel?("mcp")
+    assert_not issue_for_agent(agent, channels: %w[mcp]).channel?("api")
+  end
+
+  test "unknown or missing channels are rejected" do
+    agent = create_agent(projects(:goal))
+
+    [ nil, [], %w[ftp], %w[api ftp], "api_mcp_ftp" ].each do |given|
+      token = issue_for_agent(agent, channels: given)
+
+      assert_not token.valid?, given.inspect
+      assert token.errors.of_kind?(:channels, :inclusion)
+    end
+  end
+
+  test "only an agent token for one channel is single-channel" do
+    agent = create_agent(projects(:goal))
+
+    assert issue_for_agent(agent, channels: %w[api]).single_channel?
+    assert issue_for_agent(agent, channels: %w[mcp]).single_channel?
+    assert_not issue_for_agent(agent).single_channel?
+    assert_not api_tokens(:two_goal_read_write).single_channel?
+  end
+
+  test "an agent has at most 20 live tokens, whoever issued them" do
+    agent = create_agent(projects(:goal))
+    10.times { issue_for_agent(agent).save! }
+    10.times { issue_for_agent(agent, issuer: users(:one)).save! }
+
+    token = issue_for_agent(agent)
+
+    assert_not token.save
+    assert token.errors.of_kind?(:base, :too_many_for_agent)
+    assert_equal 20, agent.tokens.count
+
+    other = create_agent(projects(:goal), name: "Owl")
+    assert issue_for_agent(other).save
+  end
+
+  test "the database rejects a row that mixes kinds or has no expiry" do
+    agent = create_agent(projects(:goal))
+    token = issue_for_agent(agent).tap(&:save!)
+
+    [
+      -> { token.update_columns(project_id: projects(:goal).id) },
+      -> { token.update_columns(expires_at: nil) },
+      -> { token.update_columns(channels: nil) },
+      -> { token.update_columns(channels: "ftp") },
+      -> { api_tokens(:two_goal_read_write).update_columns(expires_at: nil) },
+      -> { api_tokens(:two_goal_read_write).update_columns(issuer_id: users(:one).id) },
+      -> { api_tokens(:two_goal_read_write).update_columns(channels: "api") }
+    ].each do |change|
+      assert_raises(ActiveRecord::StatementInvalid) { ApiToken.transaction(requires_new: true) { change.call } }
+    end
+  end
 end

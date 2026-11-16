@@ -12,7 +12,15 @@ class User < ApplicationRecord
   # tokens reaches connection tokens: those end with their MCP connection
   # (McpConnection). The user's connection tokens are api_tokens.of_connections.
   has_many :api_tokens, -> { personal }, dependent: :delete_all
+  # Present for agents only (spec agents): the row that makes this account an
+  # agent. Authorization asks agent?, never the address's domain.
+  has_one :agent
   has_one_attached :avatar
+
+  # Everyone but deleted agents, who keep their memberships so that they can
+  # be restored, but are left out wherever people are listed or accepted
+  # (add-agents design.md, decision 8).
+  scope :active, -> { where.not(id: Agent.deleted.select(:user_id)) }
 
   normalizes :email_address, with: ->(e) { e.strip.downcase }
 
@@ -22,6 +30,8 @@ class User < ApplicationRecord
   validates :name, presence: true, length: { maximum: 100 }
   validates :lang, inclusion: { in: LANGUAGES }
   validate :contact_links_are_https_urls
+  validate :address_is_not_reserved, if: :email_address_changed?, unless: :agent?
+  validate :agents_are_never_admins
 
   after_create :attach_default_avatar
   # Changing or resetting the password revokes every API token (design.md,
@@ -40,10 +50,18 @@ class User < ApplicationRecord
     locked_until&.to_i
   end
 
-  # Distinct users who share at least one non-archived project with this user.
+  # The person with this address. An agent is not found: every flow that
+  # starts from an address answers for an agent's as for an unknown one
+  # (spec user-auth, "Agent accounts cannot sign in").
+  def self.find_person_by_email(email_address)
+    find_by(email_address: email_address).then { |user| user unless user&.agent? }
+  end
+
+  # Distinct users who share at least one non-archived project with this
+  # user: people and agents, but not deleted agents.
   def teammates
     shared = Membership.where(project_id: projects.kept.select(:id)).select(:user_id)
-    User.where(id: shared).where.not(id: id)
+    User.active.where(id: shared).where.not(id: id)
   end
 
   def teammate_of?(other)
@@ -53,6 +71,10 @@ class User < ApplicationRecord
   # Ids of non-archived projects both users belong to.
   def shared_project_ids_with(other)
     projects.kept.where(id: other.projects.kept.select(:id)).pluck(:id)
+  end
+
+  def agent?
+    agent.present?
   end
 
   def confirmed?
@@ -127,6 +149,17 @@ class User < ApplicationRecord
   private
     def attach_default_avatar
       avatar.attach(io: StringIO.new(Avatar.default_png), filename: "avatar.png", content_type: "image/png", identify: false)
+    end
+
+    # Addresses on the agent domain are generated for agents only (spec
+    # user-auth, "Agent domain is reserved"). The whole domain is refused, so
+    # the answer never says whether an agent has the address.
+    def address_is_not_reserved
+      errors.add(:email_address, :reserved) if Agent.reserved_address?(email_address)
+    end
+
+    def agents_are_never_admins
+      errors.add(:admin, :invalid) if admin? && agent?
     end
 
     def contact_links_are_https_urls

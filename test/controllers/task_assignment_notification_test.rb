@@ -2,6 +2,8 @@ require "test_helper"
 
 # Assignment emails (spec notifications, "Assignment email").
 class TaskAssignmentNotificationTest < ActionDispatch::IntegrationTest
+  include ActionMailer::TestHelper
+
   setup do
     @project = projects(:goal)
     @task = @project.tasks.create!(title: "Ship it", description: "secret plans", creator: users(:one), status: statuses(:goal_todo))
@@ -67,5 +69,30 @@ class TaskAssignmentNotificationTest < ActionDispatch::IntegrationTest
 
   test "failed deliveries are retried" do
     assert_includes MailDeliveryJob.rescue_handlers.map(&:first), "Net::OpenTimeout"
+  end
+
+  # Agents (spec notifications, "Assignment email"; spec agents)
+
+  test "assign to an agent: no email" do
+    agent = create_agent(@project)
+
+    # Not even enqueued: the interceptor is only the second line of defence.
+    assert_no_enqueued_emails do
+      patch api_project_task_path(@project, @task.id), params: { assignee_id: agent.user.id }, as: :json
+    end
+
+    assert_response :success
+    assert_equal agent.user.id, @task.reload.assignee_id
+  end
+
+  test "an agent assigns a person: one email naming the agent and the task key" do
+    agent = create_agent(@project, name: "Fish")
+    @task.update!(assignee: users(:two))
+
+    perform_enqueued_jobs { TaskAssignment.notify(@task, previous_assignee_id: nil, actor: agent.user) }
+
+    mail = ActionMailer::Base.deliveries.sole
+    assert_equal [ "two@example.com" ], mail.to
+    assert_equal "Fish assigned GOAL-1 to you", mail.subject
   end
 end
