@@ -59,3 +59,9 @@ Rails (`RAILS_ENV=test bin/rails server -p 3011`, fixtures loaded) and `bin/mcp`
   - `DashboardTest#test_deadlines_show_date_tiles_with_today_highlighted` builds "due today" from UTC's end of day, which is tomorrow in CET. It passes with `TZ=UTC`.
   - `TaskPageTest#test_post_a_comment_with_an_attachment,_edit_it_and_delete_it` selects all with Ctrl+A, which macOS does not do. It passes with Cmd+A.
 - **The MCP server's instructions** (`GoalnerMcp::INSTRUCTIONS`) do not mention the `assigned` view. One sentence there would tell agents where to find their work. Not in this change's tasks.
+
+## Review of decision 7 (2026-11-16)
+
+The API reads `X-Goalner-Service-Key` on the public `/api`, where before this change the key was read only at `/internal/`, which nginx refuses from outside. A leaked key, together with an MCP-only agent token, would let its holder call the API directly, and a wrong key gets a distinct answer that allows guesses to be tested.
+
+The answer is a step on the production nginx, which drops the header from requests it forwards to the web role. The instructions are in `DEPLOYMENT.md` in the repository root, "nginx: drop the service key header". This is task 9.5. No code changed.

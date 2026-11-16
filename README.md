@@ -370,6 +370,9 @@ location ^~ /internal/ {
 }
 ```
 
+The location that sends everything else to the web role must also drop the
+`X-Goalner-Service-Key` header: see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 To roll back sign-in, remove the two protected resource locations: clients
 then get a 401 without a metadata pointer, and personal tokens keep working.
 
