@@ -29,13 +29,13 @@
 
 ## 4. Agent tokens
 
-- [x] 4.1 Migrate `api_tokens`: add `issuer_id` (foreign key to `users`) and `channels`, make `expires_at` nullable, and replace `api_tokens_project_or_connection` with the three-kind `api_tokens_kind` (design decision 5). Verify that the migration runs and rolls back, and that a model test shows the database rejects a row mixing kinds.
+- [x] 4.1 Migrate `api_tokens`: add `issuer_id` (foreign key to `users`) and `channels`, keep `expires_at` NOT NULL, and replace `api_tokens_project_or_connection` with the three-kind `api_tokens_kind` (design decision 5). Verify that the migration runs and rolls back, and that a model test shows the database rejects a row mixing kinds.
 - [x] 4.2 `ApiToken`:
   - `personal` and `personal?` also require no issuer;
   - `of_agents` scope and `agent?`;
   - `issuer` association;
   - `channels` enum (`api`, `mcp`, `api_mcp`);
-  - `active` including `expires_at IS NULL`;
+  - an expiry 100 years ahead, set on create (`AGENT_LIFETIME`), with `active` unchanged;
   - at most 20 live tokens per agent.
 
   Add `Agent#tokens`. Verify with model tests, including that agent tokens are absent from `personal` and from `User#api_tokens`, and do not count toward the issuer's 20.

@@ -24,7 +24,7 @@ This change gives agents their own accounts in the tracker: members can create a
   - **Issuing.** Issued by a member who can see the agent, with that member's current password. The first token is issued when the agent is created.
   - **Where it works:** the API, the MCP server, or both, chosen at issue. When the API refuses the MCP server's own service key, clients get "Goalner is unavailable", never "invalid token".
   - **Reach.** It reaches every non-archived project that both the agent and the token's issuer belong to, checked on every request. When the issuer leaves a project, the token stops reaching it.
-  - **Lifetime.** No expiry. It ends only when someone revokes it or the agent is deleted. Nobody's password change affects it.
+  - **Lifetime.** 100 years, so in practice it does not expire, while every token still has an expiry date. It ends when someone revokes it or the agent is deleted. Nobody's password change affects it.
   - **Visibility.** Everyone who can see the agent sees its tokens (name, issuer, access, channels, last four characters, created, last use) and can revoke them. Only the issuer sees the value, once. When MCP is included, the value is shown together with a ready-to-paste MCP configuration.
   - **Limits:** at most 20 live tokens per agent, and at most 10 agent tokens issued per user per hour.
 - **Soft deletion and restore:**
@@ -88,7 +88,7 @@ Not included:
 
 - **Data:**
   - a new `agents` table (`user_id`, `created_by_id`, `deleted_at`);
-  - `api_tokens` gains `issuer_id` and `channels`, and `expires_at` becomes nullable for agent tokens. The check constraint `api_tokens_project_or_connection` is replaced by one that allows three kinds of token.
+  - `api_tokens` gains `issuer_id` and `channels`. `expires_at` stays required: an agent token gets a date 100 years ahead. The check constraint `api_tokens_project_or_connection` is replaced by one that allows three kinds of token.
 - **Main application:**
   - `Agent` model and handle generator;
   - agent scopes on `User`;

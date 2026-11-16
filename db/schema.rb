@@ -75,7 +75,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_090100) do
     t.string "access", null: false
     t.string "token_digest", null: false
     t.string "last_characters", null: false
-    t.datetime "expires_at"
+    t.datetime "expires_at", null: false
     t.datetime "last_used_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
@@ -88,7 +88,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_090100) do
     t.index ["project_id"], name: "index_api_tokens_on_project_id"
     t.index ["token_digest"], name: "index_api_tokens_on_token_digest", unique: true
     t.index ["user_id"], name: "index_api_tokens_on_user_id"
-    t.check_constraint "project_id IS NOT NULL AND oauth_access_token_id IS NULL AND issuer_id IS NULL AND channels IS NULL AND expires_at IS NOT NULL OR project_id IS NULL AND oauth_access_token_id IS NOT NULL AND issuer_id IS NULL AND channels IS NULL AND expires_at IS NOT NULL OR project_id IS NULL AND oauth_access_token_id IS NULL AND issuer_id IS NOT NULL AND channels IS NOT NULL AND (channels::text = ANY (ARRAY['api'::character varying, 'mcp'::character varying, 'api_mcp'::character varying]::text[])) AND expires_at IS NULL", name: "api_tokens_kind"
+    t.check_constraint "project_id IS NOT NULL AND oauth_access_token_id IS NULL AND issuer_id IS NULL AND channels IS NULL OR project_id IS NULL AND oauth_access_token_id IS NOT NULL AND issuer_id IS NULL AND channels IS NULL OR project_id IS NULL AND oauth_access_token_id IS NULL AND issuer_id IS NOT NULL AND channels IS NOT NULL AND (channels::text = ANY (ARRAY['api'::character varying, 'mcp'::character varying, 'api_mcp'::character varying]::text[]))", name: "api_tokens_kind"
   end
 
   create_table "comments", force: :cascade do |t|

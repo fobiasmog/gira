@@ -60,6 +60,19 @@ Rails (`RAILS_ENV=test bin/rails server -p 3011`, fixtures loaded) and `bin/mcp`
   - `TaskPageTest#test_post_a_comment_with_an_attachment,_edit_it_and_delete_it` selects all with Ctrl+A, which macOS does not do. It passes with Cmd+A.
 - **The MCP server's instructions** (`GoalnerMcp::INSTRUCTIONS`) do not mention the `assigned` view. One sentence there would tell agents where to find their work. Not in this change's tasks.
 
+## Agent tokens get an expiry (2026-11-16)
+
+Decided on review: an agent token is valid for 100 years (`ApiToken::AGENT_LIFETIME`) and `api_tokens.expires_at` stays NOT NULL, so that no code meets a token without an expiry. Before, agent tokens had `expires_at` null. The proposal, design.md (decision 5), the `agents` spec and tasks 4.1 and 4.2 are updated.
+
+- **The migration was edited in place** (`20261113090100`), not followed by another one, because it had run only on local databases. If it has run anywhere else, that database needs the three steps below.
+- **The development database was brought in line by hand,** keeping its data:
+  1. the one agent token without an expiry got `created_at` plus 100 years;
+  2. `expires_at` is NOT NULL again;
+  3. `api_tokens_kind` was replaced with the version that does not mention `expires_at`.
+- **Checked:** every migration run on an empty test database gives exactly `db/schema.rb`, and so does rolling this migration back and forward.
+- **Rollback of the application changes meaning** (design.md, "Migration Plan"): with an expiry, agent tokens still authenticate under the previous code, but reach no project.
+- **The API and the web client do not show the expiry.** It is the same for every agent token.
+
 ## Review of decision 7 (2026-11-16)
 
 The API reads `X-Goalner-Service-Key` on the public `/api`, where before this change the key was read only at `/internal/`, which nginx refuses from outside. A leaked key, together with an MCP-only agent token, would let its holder call the API directly, and a wrong key gets a distinct answer that allows guesses to be tested.

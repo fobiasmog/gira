@@ -13,11 +13,14 @@
 #   by a person for an agent, and its user is the agent, so what it changes is
 #   the agent's doing. It reaches the agent's projects that its issuer also
 #   belongs to (Current#projects), works on the channels it was issued for
-#   (ApiTokenAuthentication), and never expires: it ends when it is revoked
-#   or its agent is deleted.
+#   (ApiTokenAuthentication), and in practice does not expire: it is issued
+#   for AGENT_LIFETIME and ends when it is revoked or its agent is deleted.
 class ApiToken < ApplicationRecord
   PREFIX = "glnr_"
   MAX_LIFETIME_DAYS = 365
+  # How long an agent token is valid. Long enough to never matter, and still
+  # a date: every token has an expiry, so nothing has to handle its absence.
+  AGENT_LIFETIME = 100.years
   MAX_ACTIVE_PER_USER = 20
   TOUCH_INTERVAL = 1.hour
   MAX_NAME_LENGTH = 100
@@ -33,8 +36,7 @@ class ApiToken < ApplicationRecord
 
   enum :access, { read: "read", read_write: "read_write" }, validate: true
 
-  # Agent tokens have no expiry.
-  scope :active, -> { where("api_tokens.expires_at IS NULL OR api_tokens.expires_at >= ?", Time.current) }
+  scope :active, -> { where(expires_at: Time.current..) }
   scope :expired, -> { where(expires_at: ...Time.current) }
   scope :personal, -> { where(oauth_access_token_id: nil, issuer_id: nil) }
   # Each replaces personal, so the user's connection tokens are
@@ -52,7 +54,7 @@ class ApiToken < ApplicationRecord
   validates :channels, inclusion: { in: CHANNEL_SETS }, if: :agent?
   validate :agent_has_room_for_a_token, :agent_is_not_deleted, on: :create, if: :agent?
 
-  before_create { self.expires_at = expires_in_days.days.from_now if personal? }
+  before_create :set_expiry, unless: :connection?
 
   attr_reader :value
 
@@ -133,6 +135,13 @@ class ApiToken < ApplicationRecord
   end
 
   private
+    # A personal token expires when its user chose, an agent token after
+    # AGENT_LIFETIME, whatever was given. A connection token is issued with
+    # its access token's expiry.
+    def set_expiry
+      self.expires_at = agent? ? AGENT_LIFETIME.from_now : expires_in_days.days.from_now
+    end
+
     # An agent has at most MAX_ACTIVE_PER_USER live tokens, whoever issued them.
     def agent_has_room_for_a_token
       return if self.class.of_agents.where(user_id: user_id).count < MAX_ACTIVE_PER_USER

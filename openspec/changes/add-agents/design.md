@@ -118,19 +118,23 @@ Password re-entry reuses `PasswordReentry` and `User#verify_reentered_password`,
 **Schema:**
 - `issuer_id`: foreign key to `users`, null for other kinds;
 - `channels`: string `api`, `mcp` or `api_mcp`, null for other kinds;
-- `expires_at` becomes nullable.
+- `expires_at` stays NOT NULL, for every kind.
+
+**Expiry.** An agent token is issued for `ApiToken::AGENT_LIFETIME`, 100 years. A `before_create` sets it, whatever was given, so the issuer cannot choose another lifetime. In practice the token does not expire, and still every token has an expiry date: the `active` and `expired` scopes, the purge job and anything written later never meet a token without one. The first version made `expires_at` nullable for agent tokens. That was dropped on review (2026-11-16), because every reader of the column would have had to remember the null case.
 
 **Check constraint.** `api_tokens_project_or_connection` is replaced by `api_tokens_kind`, which allows exactly one kind:
-- personal: `project_id` set, `expires_at` set;
-- connection: `oauth_access_token_id` set, `expires_at` set;
-- agent: `issuer_id` and `channels` set, `project_id`, `oauth_access_token_id` and `expires_at` null.
+- personal: `project_id` set;
+- connection: `oauth_access_token_id` set;
+- agent: `issuer_id` and `channels` set, `project_id` and `oauth_access_token_id` null.
+
+It says nothing about `expires_at`, which the column's NOT NULL covers.
 
 **`ApiToken`:**
 - `personal` becomes `where(oauth_access_token_id: nil, issuer_id: nil)`, and `personal?` also requires no issuer. Without this, an agent token would count as personal: it would need a project and an expiry, and `Current#projects` would give it none;
 - `scope :of_agents`, which drops the `personal` conditions as `of_connections` does, and `agent?`;
 - `belongs_to :issuer, class_name: "User", optional: true`;
 - `channels`: an enum over `api`, `mcp` and `api_mcp`, validated for agent tokens only;
-- `active` becomes `where(expires_at: nil).or(where(expires_at: Time.current..))`. `find_active_by_value` keeps its join;
+- `active` is unchanged, `where(expires_at: Time.current..)`, and `find_active_by_value` keeps its join;
 - the 20-live-tokens validation is per agent (`user_id`), on create.
 
 **Why this kind of row.** The token's `user_id` is the agent, so attribution, `touch_last_used!`, the per-token rate limit, the endpoint allowlist and the read-only check work unchanged. `Current.user` is the agent.
@@ -282,7 +286,7 @@ The robot icon is drawn for Goalner and added to the sprite, which otherwise hol
 ## Risks / Trade-offs
 
 - **[A code path treats an agent as a person: a new mailer, admin tooling, the welcome announcement]** → The mail interceptor catches mail by domain, whatever the code path. The auth guards come with per-flow tests. `admin` is always false for agents. The welcome announcement is harmless, because agents never read announcements.
-- **[Agent tokens never expire, so a leaked one lives until someone acts]** →
+- **[Agent tokens are valid for 100 years, so a leaked one lives until someone acts]** →
   - every member sees issuer and last use, and any member can revoke;
   - deleting the agent kills all its tokens;
   - reach shrinks automatically as the issuer's memberships change.
@@ -303,12 +307,11 @@ The robot icon is drawn for Goalner and added to the sprite, which otherwise hol
 2. **Migrations:**
    - create `agents`;
    - add `api_tokens.issuer_id` and `api_tokens.channels`;
-   - make `api_tokens.expires_at` nullable;
    - replace `api_tokens_project_or_connection` with `api_tokens_kind`.
 
    All of them are reversible while no agent rows exist.
 3. **Deploy the MCP server and the application in either order.** The header is ignored by an application that does not check it, and no agent tokens exist before the application ships.
 4. **Rollback.** Reverting the application leaves agent rows inert:
-   - the old `ApiToken.active` excludes `expires_at IS NULL`, so agent tokens stop authenticating;
+   - agent tokens still authenticate as the agent's account, since they have an expiry, but reach no project: the old `Current#projects` narrows every token without a connection to its `project_id`, which is null. To stop them entirely, roll the migration back, which deletes them;
    - agents cannot sign in;
    - cards render agents as ordinary users until re-deploy.

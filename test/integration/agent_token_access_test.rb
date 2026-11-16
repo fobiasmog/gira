@@ -96,7 +96,7 @@ class AgentTokenAccessTest < ActionDispatch::IntegrationTest
 
   # Lifetime
 
-  test "no expiry: a token issued 400 days ago still authenticates as the agent" do
+  test "a token issued 400 days ago still authenticates as the agent" do
     token = issue_agent_token(@fish, issuer: users(:two))
 
     travel 400.days do
@@ -104,6 +104,17 @@ class AgentTokenAccessTest < ActionDispatch::IntegrationTest
 
       assert_response :success
       assert_equal @fish.user.id, response.parsed_body["id"]
+    end
+  end
+
+  test "after 100 years the token is expired like any other: 401" do
+    token = issue_agent_token(@fish, issuer: users(:two))
+
+    travel 100.years + 1.day do
+      get api_me_path, headers: bearer(token)
+
+      assert_response :unauthorized
+      assert_equal "invalid_token", response.parsed_body.dig("error", "code")
     end
   end
 

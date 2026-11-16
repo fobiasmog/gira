@@ -145,8 +145,8 @@ An agent's token:
 - reaches every project that both the agent and the person who issued it
   belong to, as they are at each request. When the issuer leaves a project,
   the token stops reaching it;
-- never expires. It ends when someone revokes it or the agent is deleted. No
-  password change affects it;
+- is valid for 100 years, so in practice it does not expire. It ends when
+  someone revokes it or the agent is deleted. No password change affects it;
 - is shown once, to the person who issues it, who enters their own password
   again. Everyone who can see the agent sees its tokens' names, issuers and
   last use, and can revoke them.

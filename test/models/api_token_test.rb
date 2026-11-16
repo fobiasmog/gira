@@ -132,14 +132,14 @@ class ApiTokenTest < ActiveSupport::TestCase
     ApiToken.issue_for_agent(agent, issuer: users(:two), name: "runner", access: "read_write", channels: %w[api mcp], **attributes)
   end
 
-  test "an agent token belongs to the agent, names its issuer, and has no project and no expiry" do
+  test "an agent token belongs to the agent, names its issuer, has no project and expires in 100 years" do
     agent = create_agent(projects(:goal))
     token = issue_for_agent(agent).tap(&:save!)
 
     assert_equal agent.user, token.user
     assert_equal users(:two), token.issuer
     assert_nil token.project_id
-    assert_nil token.expires_at
+    assert_in_delta 100.years.from_now, token.expires_at, 1.minute
     assert_match(/\Aglnr_[1-9A-HJ-NP-Za-km-z]{40}\z/, token.value)
     assert token.agent?
     assert_not token.personal?
@@ -167,7 +167,7 @@ class ApiTokenTest < ActiveSupport::TestCase
     end
   end
 
-  test "an agent token never expires and is found by its value" do
+  test "an agent token is found by its value long after a personal token's longest life, and not after 100 years" do
     agent = create_agent(projects(:goal))
     token = issue_for_agent(agent).tap(&:save!)
 
@@ -175,6 +175,21 @@ class ApiTokenTest < ActiveSupport::TestCase
       assert_includes ApiToken.active, token
       assert_not_includes ApiToken.expired, token
       assert_equal token, ApiToken.find_active_by_value(token.value)
+    end
+
+    travel 100.years + 1.day do
+      assert_includes ApiToken.expired, token
+      assert_nil ApiToken.find_active_by_value(token.value)
+    end
+  end
+
+  test "an agent token's expiry is not the issuer's to choose" do
+    agent = create_agent(projects(:goal))
+
+    [ { expires_at: 1.day.from_now }, { expires_in_days: 7 } ].each do |given|
+      token = issue_for_agent(agent, name: given.keys.sole.to_s, **given).tap(&:save!)
+
+      assert_in_delta 100.years.from_now, token.reload.expires_at, 1.minute, given.inspect
     end
   end
 
@@ -241,13 +256,13 @@ class ApiTokenTest < ActiveSupport::TestCase
     assert issue_for_agent(other).save
   end
 
-  test "the database rejects a row that mixes kinds" do
+  test "the database rejects a row that mixes kinds or has no expiry" do
     agent = create_agent(projects(:goal))
     token = issue_for_agent(agent).tap(&:save!)
 
     [
       -> { token.update_columns(project_id: projects(:goal).id) },
-      -> { token.update_columns(expires_at: 1.day.from_now) },
+      -> { token.update_columns(expires_at: nil) },
       -> { token.update_columns(channels: nil) },
       -> { token.update_columns(channels: "ftp") },
       -> { api_tokens(:two_goal_read_write).update_columns(expires_at: nil) },

@@ -124,7 +124,7 @@ A user who can see an agent SHALL be able to issue a token for it, giving:
 - an access level of read-only or read-write;
 - its channels: the API, the MCP server, or both.
 
-Issuing SHALL require the issuer's current password, with the same lockout rules as for personal tokens in `api-tokens`. The response SHALL contain the token's value, which SHALL NOT be retrievable afterwards. An agent token SHALL have no expiry.
+Issuing SHALL require the issuer's current password, with the same lockout rules as for personal tokens in `api-tokens`. The response SHALL contain the token's value, which SHALL NOT be retrievable afterwards. An agent token SHALL be valid for 100 years from its issue, and the issuer SHALL NOT be able to choose another lifetime.
 
 Limits:
 - An agent SHALL have at most 20 live tokens. Issuing beyond that SHALL be rejected with a validation error.
@@ -132,7 +132,7 @@ Limits:
 
 #### Scenario: Issue
 - **WHEN** Bob, who shares GOAL with agent Fish, issues a read-only token named "runner" for MCP only, entering his correct password
-- **THEN** the response contains the token's value, name, access level and channels and no expiry, and the token is listed among Fish's tokens with Bob as its issuer
+- **THEN** the response contains the token's value, name, access level and channels, the token is valid for 100 years, and it is listed among Fish's tokens with Bob as its issuer
 
 #### Scenario: Wrong password
 - **WHEN** a user issues an agent token with a wrong current password
@@ -211,15 +211,19 @@ The list SHALL include tokens issued by anyone, and SHALL never show a whole val
 - **THEN** the next request with that token receives HTTP 401
 
 ### Requirement: Agent token lifetime
-An agent token SHALL stop authenticating only when it is revoked or when its agent is deleted, and SHALL NOT work again afterwards, even when the agent is restored. Changing or resetting any user's password, including the issuer's or the agent's creator's, SHALL NOT affect agent tokens. A project leaving a token's reach (requirement "Agent token reach") SHALL narrow the token without ending it. The time of a token's last use SHALL be recorded to within one hour.
+An agent token SHALL stop authenticating only when it is revoked, when its agent is deleted, or 100 years after its issue, and SHALL NOT work again afterwards, even when the agent is restored. Changing or resetting any user's password, including the issuer's or the agent's creator's, SHALL NOT affect agent tokens. A project leaving a token's reach (requirement "Agent token reach") SHALL narrow the token without ending it. The time of a token's last use SHALL be recorded to within one hour.
 
 #### Scenario: Issuer changes password
 - **WHEN** Bob, who issued a token for Fish, changes his password
 - **THEN** the token keeps working
 
-#### Scenario: No expiry
+#### Scenario: Long after a personal token would have expired
 - **WHEN** a token issued 400 days ago, and never revoked, is used
 - **THEN** the request is authenticated as the agent
+
+#### Scenario: A hundred years
+- **WHEN** a token is used more than 100 years after it was issued
+- **THEN** the request receives HTTP 401
 
 #### Scenario: Deleted and restored
 - **WHEN** agent Fish is deleted and later restored

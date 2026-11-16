@@ -18,7 +18,7 @@ class Api::Agents::TokensControllerTest < ActionDispatch::IntegrationTest
     response.parsed_body.dig("error", "fields")
   end
 
-  test "issue: the value is returned once, with no expiry, and the token is listed with its issuer" do
+  test "issue: the value is returned once, the token is valid for 100 years, and it is listed with its issuer" do
     assert_difference -> { @fish.tokens.count }, 1 do
       issue
     end
@@ -28,8 +28,8 @@ class Api::Agents::TokensControllerTest < ActionDispatch::IntegrationTest
     assert_match(/\Aglnr_\w{40}\z/, body["token"])
     assert_equal [ "runner", "read", %w[mcp], body["token"].last(4) ], body.values_at("name", "access", "channels", "last_characters")
     assert_equal Oauth.resource, body["mcp_url"]
-    assert_not body.key?("expires_at")
-    assert_nil @fish.tokens.sole.expires_at
+    assert_not body.key?("expires_at") # the same for every agent token, so not part of the answer
+    assert_in_delta 100.years.from_now, @fish.tokens.sole.expires_at, 1.minute
 
     get api_agent_tokens_path(@fish.user_id)
     listed = response.parsed_body.sole

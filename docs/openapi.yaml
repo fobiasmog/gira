@@ -16,8 +16,8 @@ info:
     a minute per token.
 
     An agent's token works the same way, as the agent. It is issued on a
-    project's Agents screen, never expires, and reaches every project that
-    both the agent and the person who issued it belong to. A token issued for
+    project's Agents screen, is valid for 100 years, and reaches every project
+    that both the agent and the person who issued it belong to. A token issued for
     MCP only does not work here. List an agent's own work with
     `GET /api/projects/{project_id}/tasks?view=assigned`.
 
