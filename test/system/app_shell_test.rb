@@ -24,8 +24,8 @@ class AppShellTest < ApplicationSystemTestCase
     execute_script("window.__sameDocument = true")
 
     within(".side-nav") { click_link "Goalner", href: "/app/projects/#{projects(:goal).id}/board" }
-    within(".side-nav") { click_link "Backlog" }
-    assert_current_path "/app/projects/#{projects(:goal).id}/backlog"
+    within(".side-nav") { click_link "Changes" }
+    assert_current_path "/app/projects/#{projects(:goal).id}/changes"
     assert evaluate_script("window.__sameDocument === true")
   end
 
@@ -109,7 +109,7 @@ class AppShellTest < ApplicationSystemTestCase
       assert_button "Choose a project"
       assert_link "Goalner"
       assert_no_link "Board"
-      assert_no_link "Backlog"
+      assert_no_link "Changes"
       assert_no_link "Team"
     end
   end
@@ -122,7 +122,7 @@ class AppShellTest < ApplicationSystemTestCase
 
     click_button "Menu"
     within("dialog[open]") do
-      assert_no_link "Backlog"
+      assert_no_link "Changes"
       click_button "Choose a project"
     end
     within(".menu:popover-open") { click_link "Mobile app" }
@@ -132,7 +132,7 @@ class AppShellTest < ApplicationSystemTestCase
     click_button "Menu"
     within("dialog[open]") do
       assert_selector ".switcher", text: "Mobile app"
-      assert_link "Backlog"
+      assert_link "Changes"
     end
   ensure
     page.driver.browser.manage.window.resize_to(1400, 1000)
@@ -183,14 +183,14 @@ class AppShellTest < ApplicationSystemTestCase
     assert_sidebar_width 64
     assert_operator find(".shell__main").evaluate_script("this.offsetWidth"), :>, main_width
     within(".side-nav") do
-      assert_equal 1, label_width("Backlog")
+      assert_equal 1, label_width("Changes")
       assert_no_link "Goalner", href: board
       assert_link "Dashboard"
-      click_link "Backlog"
+      click_link "Changes"
     end
 
-    assert_current_path "/app/projects/#{projects(:goal).id}/backlog"
-    assert_selector ".side-nav a[aria-current=page][title=Backlog]"
+    assert_current_path "/app/projects/#{projects(:goal).id}/changes"
+    assert_selector ".side-nav a[aria-current=page][title=Changes]"
   end
 
   test "switch project from the collapsed sidebar" do
@@ -216,7 +216,7 @@ class AppShellTest < ApplicationSystemTestCase
 
     assert_sidebar_width 256
     within(".side-nav") do
-      assert_operator label_width("Backlog"), :>, 1
+      assert_operator label_width("Changes"), :>, 1
       assert_link "Goalner", href: "/app/projects/#{projects(:goal).id}/board"
     end
     assert_equal "Collapse menu", evaluate_script("document.activeElement.textContent.trim()")
@@ -243,7 +243,7 @@ class AppShellTest < ApplicationSystemTestCase
     page.driver.browser.manage.window.resize_to(600, 900)
     click_button "Menu"
     within("dialog[open]") do
-      assert_operator label_width("Backlog"), :>, 1
+      assert_operator label_width("Changes"), :>, 1
       assert_link "Goalner", href: "/app/projects/#{projects(:goal).id}/board"
       assert_no_button "Collapse menu"
       assert_no_button "Expand menu"

@@ -41,8 +41,8 @@ test("success: JSON body, headers, credentials and query string", async () => {
   assert.equal(headers.Accept, "application/json")
 
   respond(200, [])
-  await api.get("/projects/1/tasks", { view: "backlog", user_id: undefined })
-  assert.equal(calls[1]!.url, "/api/projects/1/tasks?view=backlog")
+  await api.get("/projects/1/tasks", { view: "archived", user_id: undefined })
+  assert.equal(calls[1]!.url, "/api/projects/1/tasks?view=archived")
   assert.equal((calls[1]!.init.headers as Record<string, string>)["X-CSRF-Token"], undefined)
 })
 

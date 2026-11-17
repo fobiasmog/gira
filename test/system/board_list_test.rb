@@ -1,7 +1,8 @@
 require "application_system_test_case"
 require "support/drag_and_drop_helper"
 
-# Spec board-drag-and-drop, "Move rows in the list layout", and the backlog.
+# Spec board-drag-and-drop, "Move rows in the list layout", and the list
+# layout's change tabs.
 class BoardListTest < ApplicationSystemTestCase
   include DragAndDropHelper
 
@@ -66,67 +67,40 @@ class BoardListTest < ApplicationSystemTestCase
     assert_equal "Two", evaluate_script("document.activeElement.textContent.trim()")
   end
 
-  test "move to backlog during a sprint, then put the task back on the board" do
-    sprint = @project.sprints.create!(title: "Sprint 1", starts_on: Date.current, ends_on: 13.days.from_now, active: true)
-    task("Someday", :goal_work).update!(sprint: sprint)
-    visit "/app/projects/#{@project.id}/list"
+  test "the list layout shows a change's tab, keeps it when switching layouts, and has no move to the backlog" do
+    change = @project.project_changes.create!(name: "add-labels")
+    task("In the change", :goal_work).update!(change: change)
+    task("In no change", :goal_todo)
+    visit "/app/projects/#{@project.id}/list/changes/add-labels"
 
-    click_button "Actions for GOAL-1"
-    click_button "Move to backlog"
-    assert_text "GOAL-1 moved to the backlog"
-    assert_empty rows("Work")
-    moved = Task.find_by!(title: "Someday")
-    assert_equal [ nil, statuses(:goal_work) ], [ moved.sprint, moved.status ]
-
-    within(".side-nav") { click_link "Backlog" }
-    assert_selector "h1", text: "Backlog"
-    within(".backlog > li", text: "Someday") { assert_text "Work" }
-
-    click_button "Move GOAL-1"
-    click_button "To Do"
-    assert_text "GOAL-1 is now in To Do"
-    assert_text "The backlog is empty."
-
-    within(".side-nav") { click_link "Board" }
-    within(".column", text: "To Do", match: :first) { assert_text "Someday" }
-    assert_equal [ sprint, statuses(:goal_todo) ], [ moved.reload.sprint, moved.status ]
-  end
-
-  test "no active sprint: the board offers no move to the backlog" do
-    task("Someday", :goal_todo)
-    visit "/app/projects/#{@project.id}/list"
-
-    assert_equal [ "Someday" ], rows("To Do")
+    assert_selector "[role=tab][aria-selected=true]", text: "add-labels"
+    assert_equal [ "In the change" ], rows("Work")
+    assert_empty rows("To Do")
     assert_no_button "Actions for GOAL-1"
-    assert_no_button "Move to backlog"
+    assert_no_text "Move to backlog"
+
+    click_link "Board", href: "/app/projects/#{@project.id}/board/changes/add-labels"
+    assert_current_path "/app/projects/#{@project.id}/board/changes/add-labels"
+    within(".column", text: "Work", match: :first) { assert_text "In the change" }
+
+    click_link "List", href: "/app/projects/#{@project.id}/list/changes/add-labels"
+    find("[role=tab]", text: "Other tasks").click
+    assert_current_path "/app/projects/#{@project.id}/list/other"
+    assert_equal [ "In no change" ], rows("To Do")
   end
 
-  test "a task created in the backlog during a sprint stays off the board" do
-    @project.sprints.create!(title: "Sprint 1", starts_on: Date.current, ends_on: 13.days.from_now, active: true)
-    visit "/app/projects/#{@project.id}/backlog"
+  test "the changes screen's move button shows its purpose and keeps its accessible name" do
+    login = @project.project_changes.create!(name: "fix-login")
+    @project.project_changes.create!(name: "export-csv")
+    @project.tasks.create!(title: "Someday", creator: @user, change: login)
+    visit "/app/projects/#{@project.id}/changes"
 
-    fill_in "New backlog task", with: "Idea"
-    click_button "Create"
-
-    within(".backlog") { assert_text "Idea" }
-    idea = Task.find_by!(title: "Idea")
-    assert_equal [ nil, statuses(:goal_todo) ], [ idea.sprint, idea.status ]
-  end
-
-  test "the backlog's move button shows its purpose and keeps its accessible name" do
-    @project.sprints.create!(title: "Sprint 1", starts_on: Date.current, ends_on: 13.days.from_now, active: true)
-    @project.tasks.create!(title: "Someday", creator: @user)
-    visit "/app/projects/#{@project.id}/backlog"
-
-    assert_selector "h1", text: "Backlog"
-    assert_selector "h1 .badge", text: "1"
     button = find_button("Move GOAL-1")
     assert_equal "Move", button.text
     assert_equal "Move GOAL-1", button["aria-label"]
 
     button.click
-    assert_button "Sprint 1"
-    assert_button "To Do"
-    assert_button "Done"
+    assert_button "export-csv"
+    assert_button "Other tasks"
   end
 end

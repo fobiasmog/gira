@@ -66,25 +66,72 @@ class ApiTokenAccessTest < ActionDispatch::IntegrationTest
     assert_equal "Changed", comment.reload.body
   end
 
-  test "foreign id with a token: a label and a sprint of another project of the owner are rejected" do
+  test "foreign id with a token: a label and a change of another project of the owner are rejected" do
     task = create_task(@goal)
     label = @side.labels.create!(title: "theirs")
-    sprint = @side.sprints.create!(title: "Theirs", starts_on: Date.current, ends_on: 1.week.from_now)
-    milestone = @side.milestones.create!(title: "Theirs")
+    change = @side.project_changes.create!(name: "theirs")
     headers = bearer("glnr_two_goal_read_write")
 
     put api_project_task_label_path(@goal, task), params: { label_id: label.id }, headers: headers, as: :json
     assert_response :unprocessable_content
-    put api_project_task_sprint_path(@goal, task), params: { sprint_id: sprint.id }, headers: headers, as: :json
-    assert_response :unprocessable_content
-    patch api_project_task_path(@goal, task), params: { milestone_id: milestone.id }, headers: headers, as: :json
+    put api_project_task_change_path(@goal, task), params: { change_id: change.id }, headers: headers, as: :json
     assert_response :unprocessable_content
     assert_no_difference -> { Task.count } do
       post api_project_tasks_path(@goal), params: { title: "T", label_id: label.id }, headers: headers, as: :json
-      post api_project_tasks_path(@goal), params: { title: "T", sprint_id: sprint.id }, headers: headers, as: :json
+      post api_project_tasks_path(@goal), params: { title: "T", change_id: change.id }, headers: headers, as: :json
+    end
+    [ [ :post, api_project_change_archival_path(@goal, change.id) ], [ :get, api_project_change_path(@goal, change.id) ],
+      [ :get, api_project_change_tasks_path(@goal, change.id) ], [ :get, api_project_board_path(@goal, change_id: change.id) ] ].each do |verb, path|
+      send(verb, path, headers:)
+      assert_response :not_found
     end
 
-    assert_equal [ nil, nil, nil ], task.reload.values_at(:label_id, :sprint_id, :milestone_id)
+    assert_equal [ nil, nil ], task.reload.values_at(:label_id, :change_id)
+    assert_not change.reload.archived?
+  end
+
+  # Spec api-tokens, "Changes" and "Changes with a read-only token".
+
+  test "a read-write token creates a change, puts a task into it, lists the changes and archives the change" do
+    headers = bearer("glnr_two_goal_read_write")
+    task = create_task(@goal)
+
+    post api_project_changes_path(@goal), params: { name: "fix-login" }, headers:, as: :json
+    assert_response :created
+    change = Change.find(response.parsed_body["id"])
+    put api_project_task_change_path(@goal, task.key), params: { change_id: change.id }, headers:, as: :json
+    assert_response :success
+    get api_project_changes_path(@goal), headers: headers
+    assert_equal [ "fix-login" ], response.parsed_body.map { |listed| listed["name"] }
+    post api_project_change_archival_path(@goal, "fix-login"), headers: headers
+    assert_response :success
+
+    assert change.reload.archived?
+    assert_equal change, task.reload.change
+  end
+
+  test "a read-only token lists changes and opens one, but cannot create, archive or fill one" do
+    headers = bearer("glnr_two_goal_read")
+    change = @goal.project_changes.create!(name: "fix-login")
+    task = create_task(@goal)
+
+    get api_project_changes_path(@goal), headers: headers
+    assert_equal [ 200, [ "fix-login" ] ], [ response.status, response.parsed_body.map { |listed| listed["name"] } ]
+    get api_project_change_path(@goal, "fix-login"), headers: headers
+    assert_response :success
+    get api_project_change_tasks_path(@goal, change), headers: headers
+    assert_response :success
+
+    assert_no_difference -> { Change.count } do
+      post api_project_changes_path(@goal), params: { name: "export-csv" }, headers:, as: :json
+    end
+    assert_equal [ 403, "insufficient_scope" ], [ response.status, response.parsed_body.dig("error", "code") ]
+    post api_project_change_archival_path(@goal, change), headers: headers
+    assert_response :forbidden
+    put api_project_task_change_path(@goal, task), params: { change_id: change.id }, headers:, as: :json
+    assert_response :forbidden
+    assert_not change.reload.archived?
+    assert_nil task.reload.change
   end
 
   # Access level
@@ -199,14 +246,9 @@ class ApiTokenAccessTest < ActionDispatch::IntegrationTest
     put api_project_task_label_path(@goal, task), params: { label_id: response.parsed_body["id"] }, headers: headers, as: :json
     assert_response :success
 
-    post api_project_sprints_path(@goal), params: { title: "S1", starts_on: Date.current, ends_on: 1.week.from_now, activate: true }, headers: headers, as: :json
+    post api_project_changes_path(@goal), params: { name: "s1" }, headers: headers, as: :json
     assert_response :created
-    put api_project_task_sprint_path(@goal, task), params: { sprint_id: response.parsed_body["id"] }, headers: headers, as: :json
-    assert_response :success
-
-    post api_project_milestones_path(@goal), params: { title: "M1" }, headers: headers, as: :json
-    assert_response :created
-    patch api_project_task_path(@goal, task), params: { milestone_id: response.parsed_body["id"] }, headers: headers, as: :json
+    put api_project_task_change_path(@goal, task), params: { change_id: response.parsed_body["id"] }, headers: headers, as: :json
     assert_response :success
 
     put api_project_task_placement_path(@goal, task), params: { status_id: statuses(:goal_work).id }, headers: headers, as: :json

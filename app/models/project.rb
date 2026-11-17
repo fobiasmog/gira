@@ -7,10 +7,9 @@ class Project < ApplicationRecord
   has_many :members, through: :memberships, source: :user
   has_many :statuses, -> { order(:position) }, dependent: :destroy, inverse_of: :project
   has_many :tasks, dependent: :destroy
-  # After tasks, which reference them, and before milestones, which they reference.
-  has_many :openspec_changes, dependent: :destroy
-  has_many :sprints, dependent: :destroy
-  has_many :milestones, dependent: :destroy
+  # After tasks, which reference them. Not `changes`, which is Active Model's
+  # dirty tracking.
+  has_many :project_changes, class_name: "Change", dependent: :destroy, inverse_of: :project
   has_many :labels, dependent: :destroy
   has_many :invitations, dependent: :destroy
   has_many :api_tokens, dependent: :delete_all
@@ -53,10 +52,6 @@ class Project < ApplicationRecord
 
   def first_status
     statuses.first
-  end
-
-  def active_sprint
-    sprints.kept.find_by(active: true)
   end
 
   # Ends a user's membership; tasks assigned to them in this project become

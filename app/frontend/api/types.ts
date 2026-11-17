@@ -1,10 +1,8 @@
 // JSON shapes returned by the API, mirroring app/serializers and the inline
-// JSON of app/controllers/api. Timestamps are ISO 8601 strings; dates
-// (starts_on, ends_on) are YYYY-MM-DD.
+// JSON of app/controllers/api. Timestamps are ISO 8601 strings.
 
 export type Id = number
 export type Timestamp = string
-export type DateString = string
 export type Language = "en" | "ru"
 
 export const CONTACT_SERVICES = ["fb", "vk", "tg", "ig", "slack"] as const
@@ -57,16 +55,18 @@ export interface TaskCard {
   status_id: Id
   position: number | null
   parent_id: Id | null
-  sprint_id: Id | null
-  milestone_id: Id | null
+  // The change the task belongs to (spec changes); a subtask's is its card's.
+  change_id: Id | null
+  change: ChangeReference | null
+  // Whether the task's mark is in its change's tasks.md: imports update it,
+  // and it stays in its change.
+  in_tasks_md: boolean
   label_id: Id | null
   assignee_id: Id | null
   deadline: Timestamp | null
   important: boolean
   completed_at: Timestamp | null
   archived_at: Timestamp | null
-  // The OpenSpec change whose import made the task (spec openspec-changes).
-  openspec_change: { id: Id; name: string } | null
   subtask_count: number
   subtask_done_count: number
   comment_count: number
@@ -82,14 +82,11 @@ export interface Subtask {
 
 export interface TaskDetail extends TaskCard {
   description: string | null
-  origin_task_id: Id | null
   created_at: Timestamp
   creator: UserCard | null
   assignee: UserCard | null
   status: Pick<Column, "id" | "title" | "done">
-  milestone: { id: Id; title: string } | null
   label: Label | null
-  sprint: { id: Id; title: string } | null
   subtasks: Subtask[]
 }
 
@@ -117,45 +114,41 @@ export interface Invitation {
   inviter_id: Id
 }
 
-export interface SprintSummary {
+export interface ChangeReference {
   id: Id
-  title: string
-  starts_on: DateString
-  ends_on: DateString
+  name: string
 }
 
-export interface Sprint extends SprintSummary {
-  active: boolean
-  archived_at: Timestamp | null
-  // by_status keys are column ids.
-  task_counts: { by_status: Record<string, number>; total: number }
-}
-
-// A task in a sprint's task list: carried_to names the sprint holding the
-// task's most recent carried-over copy.
-export interface SprintTaskCard extends TaskCard {
-  carried_to: { id: Id; title: string } | null
-}
-
-export interface Milestone {
-  id: Id
-  title: string
-  deleted_at: Timestamp | null
+// Root, non-archived tasks; by_status keys are column ids.
+export interface TaskCounts {
+  by_status: Record<string, number>
   total: number
-  done: number
 }
 
-export interface MilestoneDetail extends Milestone {
-  tasks: TaskCard[]
+// A change (spec changes): open while archived_at is null.
+export interface Change extends ChangeReference {
+  archived_at: Timestamp | null
+  task_counts: TaskCounts
 }
 
+// An opened change, with its last OpenSpec import (null until the first).
+export interface ChangeDetail extends Change {
+  imported_by: UserCard | null
+  imported_at: Timestamp | null
+  tasks_text: string | null
+  cards: TaskCard[]
+}
+
+// The board of one open change, or of the tasks in no change (change: null),
+// with the project's open changes, newest first.
 export interface Board {
   project: Project
   columns: Column[]
   tasks: TaskCard[]
   members: UserCard[]
   labels: Label[]
-  active_sprint: SprintSummary | null
+  change: ChangeReference | null
+  changes: Change[]
 }
 
 export type ApiTokenAccess = "read" | "read_write"

@@ -5,7 +5,7 @@ import ChoiceMenu, { type Choice } from "../ui/ChoiceMenu.vue"
 import AgentChip from "../AgentChip.vue"
 import UserAvatar from "../UserAvatar.vue"
 import StatusDot from "../board/StatusDot.vue"
-import type { Column, Label, Milestone, SprintSummary, TaskDetail, UserCard } from "../../api/types.ts"
+import type { ChangeReference, Column, Label, TaskDetail, UserCard } from "../../api/types.ts"
 import { language, t } from "../../i18n/index.ts"
 import { personName } from "../../i18n/people.ts"
 import { formatDate, fromDateTimeInput, toDateTimeInput } from "../../i18n/format.ts"
@@ -16,17 +16,17 @@ const props = defineProps<{
   task: TaskDetail
   columns: Column[]
   members: UserCard[]
-  milestones: Milestone[]
   labels: Label[]
-  sprints: SprintSummary[]
+  // The project's open changes.
+  changes: ChangeReference[]
 }>()
 const emit = defineEmits<{
   status: [columnId: number]
   complete: [complete: boolean]
-  update: [fields: { assignee_id?: number | null; deadline?: string | null; important?: boolean; milestone_id?: number | null }]
+  update: [fields: { assignee_id?: number | null; deadline?: string | null; important?: boolean }]
   label: [labelId: number | null]
   "create-label": [title: string]
-  sprint: [sprintId: number | null]
+  change: [changeId: number | null]
 }>()
 
 const statusChoices = computed<Choice<number>[]>(() => props.columns.map((column) => ({ value: column.id, label: column.title })))
@@ -34,19 +34,16 @@ const assigneeChoices = computed<Choice<number | null>[]>(() => [
   { value: null, label: t("task.unassigned") },
   ...props.members.map((member) => ({ value: member.id, label: personName(member) })),
 ])
-const milestoneChoices = computed<Choice<number | null>[]>(() => [
-  { value: null, label: t("task.noMilestone") },
-  ...props.milestones.map((milestone) => ({ value: milestone.id, label: milestone.title })),
-])
 const labelChoices = computed<Choice<number | null>[]>(() => [
   { value: null, label: t("task.noLabel") },
   ...props.labels.map((label) => ({ value: label.id, label: label.title })),
 ])
-const sprintChoices = computed<Choice<number | null>[]>(() => {
-  const choices = props.sprints.map((sprint) => ({ value: sprint.id, label: sprint.title }))
-  // The task's own sprint stays listed even when it is no longer open.
-  if (props.task.sprint && !choices.some((choice) => choice.value === props.task.sprint!.id)) choices.push({ value: props.task.sprint.id, label: props.task.sprint.title })
-  return [{ value: null, label: t("task.noSprint") }, ...choices]
+const changeChoices = computed<Choice<number | null>[]>(() => {
+  const choices = props.changes.map((change) => ({ value: change.id, label: change.name }))
+  // The task's own change stays listed even when it is archived.
+  const own = props.task.change
+  if (own && !choices.some((choice) => choice.value === own.id)) choices.push({ value: own.id, label: own.name })
+  return [{ value: null, label: t("task.noChange") }, ...choices]
 })
 
 const statusColumn = computed(() => props.columns.find((column) => column.id === props.task.status_id) ?? null)
@@ -122,13 +119,6 @@ function createLabel(close: () => void) {
       </dd>
     </div>
 
-    <div class="details__row">
-      <dt>{{ t("task.milestone") }}</dt>
-      <dd>
-        <ChoiceMenu :label="t('task.milestone')" :choices="milestoneChoices" :selected="task.milestone_id" @choose="emit('update', { milestone_id: $event })" />
-      </dd>
-    </div>
-
     <div v-if="!task.parent_id" class="details__row">
       <dt>{{ t("task.label") }}</dt>
       <dd>
@@ -148,10 +138,12 @@ function createLabel(close: () => void) {
       </dd>
     </div>
 
+    <!-- A card of tasks.md stays in its change (spec changes, "Tasks in a change"). -->
     <div v-if="!task.parent_id" class="details__row">
-      <dt>{{ t("task.sprint") }}</dt>
-      <dd>
-        <ChoiceMenu :label="t('task.sprint')" :choices="sprintChoices" :selected="task.sprint_id" @choose="emit('sprint', $event)" />
+      <dt>{{ t("task.inChange") }}</dt>
+      <dd class="details__change">
+        <ChoiceMenu :label="t('task.inChange')" :choices="changeChoices" :selected="task.change_id" :disabled="task.in_tasks_md" @choose="emit('change', $event)" />
+        <p v-if="task.in_tasks_md" class="details__hint">{{ t("task.changeFixed") }}</p>
       </dd>
     </div>
 
@@ -190,6 +182,8 @@ function createLabel(close: () => void) {
 .important-toggle { inline-size: 100%; justify-content: flex-start; padding-inline: var(--space-3); box-shadow: none; }
 .important-toggle[aria-pressed="true"] { border-color: var(--color-important); background: var(--color-overdue-bg); color: var(--color-overdue); }
 
+.details__change { display: grid; gap: var(--space-1); }
+.details__hint { margin: 0; color: var(--color-muted); font-size: var(--text-xs); }
 .details__creator { margin-block-start: var(--space-4); color: var(--color-muted); font-size: var(--text-xs); }
 .new-label { padding: var(--space-1) var(--space-2); }
 </style>

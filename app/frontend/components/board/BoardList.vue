@@ -2,22 +2,18 @@
 import { computed } from "vue"
 import { storeToRefs } from "pinia"
 import AppIcon from "../ui/AppIcon.vue"
-import AppMenu from "../ui/AppMenu.vue"
 import TaskRow from "./TaskRow.vue"
 import StatusDot from "./StatusDot.vue"
-import type { TaskCard } from "../../api/types.ts"
 import { useDragSort, type DragMove } from "../../composables/useDragSort.ts"
 import { useBoardMove } from "../../composables/useBoardMove.ts"
 import { useKeyboardMoves } from "../../composables/useKeyboardMoves.ts"
 import { useBoardStore } from "../../stores/board.ts"
-import { useUiStore } from "../../stores/ui.ts"
 import { t, tc } from "../../i18n/index.ts"
 
 // The list layout: the board's tasks as rows grouped by column.
 const props = defineProps<{ projectId: number }>()
 const board = useBoardStore()
 const { columns } = storeToRefs(board)
-const ui = useUiStore()
 const runMove = useBoardMove()
 const { onTaskKey } = useKeyboardMoves()
 
@@ -31,15 +27,6 @@ const indicators = computed(() => new Map(columns.value.map((column) => [
   column.id,
   rowDrag.indicatorIn(column.id, board.tasksIn(column.id).map((task) => task.id)),
 ])))
-
-async function sendToBacklog(task: TaskCard) {
-  try {
-    await board.sendToBacklog(task.id)
-    ui.toast(t("board.sentToBacklog", { key: task.key }))
-  } catch (error) {
-    ui.fail(error)
-  }
-}
 </script>
 
 <template>
@@ -74,21 +61,6 @@ async function sendToBacklog(task: TaskCard) {
                 <span class="drag-handle" v-bind="rowDrag.handle(task.id, column.id, index)" :title="t('board.moveHandle', { key: task.key })" aria-hidden="true">
                   <AppIcon name="drag_indicator" :size="18" />
                 </span>
-              </template>
-              <template #actions>
-                <!-- Its only action takes the task out of the active sprint. -->
-                <AppMenu v-if="board.activeSprint" :label="t('board.taskActions', { key: task.key })" align="end">
-                  <template #trigger="{ id, expanded }">
-                    <button type="button" class="icon-button" :popovertarget="id" :aria-expanded="expanded" :aria-label="t('board.taskActions', { key: task.key })">
-                      <AppIcon name="more_vert" :size="20" />
-                    </button>
-                  </template>
-                  <template #default="{ close }">
-                    <button type="button" class="menu__item" @click="close(); sendToBacklog(task)">
-                      <AppIcon name="inbox" />{{ t("board.sendToBacklog") }}
-                    </button>
-                  </template>
-                </AppMenu>
               </template>
             </TaskRow>
           </li>

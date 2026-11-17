@@ -44,13 +44,14 @@ class McpToolCallsTest < McpIntegrationTest
   end
 
   test "explicit null" do
-    sprint = @goal.sprints.create!(title: "Week 1", starts_on: Date.current, ends_on: 1.week.from_now)
-    task = create_task(sprint: sprint)
+    change = @goal.project_changes.create!(name: "week-1")
+    task = create_task(change: change)
 
-    result = call_tool("setTaskSprint", { project_id: @goal.id, task_id: task.id, sprint_id: nil })
+    result = call_tool("setTaskChange", { project_id: @goal.id, task_id: task.id, change_id: nil })
 
     assert_not result["isError"], text(result)
-    assert_nil task.reload.sprint
+    assert_nil task.reload.change
+    assert_equal [ "PUT /api/projects/#{@goal.id}/tasks/#{task.id}/change" ], tool_requests
   end
 
   test "task key as id" do
@@ -65,10 +66,10 @@ class McpToolCallsTest < McpIntegrationTest
   test "path parameters are URL-encoded and query parameters are sent only when given" do
     call_tool("showTask", { project_id: @goal.id, id: "GOAL-1" })
     call_tool("listTasks", { project_id: @goal.id })
-    call_tool("listTasks", { project_id: @goal.id, view: "backlog" })
+    call_tool("listTasks", { project_id: @goal.id, view: "archived" })
 
     assert_equal [ "GET /api/projects/#{@goal.id}/tasks/GOAL-1", "GET /api/projects/#{@goal.id}/tasks",
-                   "GET /api/projects/#{@goal.id}/tasks?view=backlog" ], tool_requests
+                   "GET /api/projects/#{@goal.id}/tasks?view=archived" ], tool_requests
   end
 
   test "missing required argument" do

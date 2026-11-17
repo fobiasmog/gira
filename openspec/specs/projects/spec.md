@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Lets users create shared projects that group a board, tasks, sprints, milestones and labels, and controls who can see and change them.
+Lets users create shared projects that group a board, tasks, changes and labels, and controls who can see and change them.
 
 ## Requirements
 
@@ -28,16 +28,20 @@ The system SHALL list only the non-archived projects the user is a member of. Ev
 - **WHEN** a user requests any data of a project they do not belong to
 - **THEN** the response is HTTP 404 with the same body as for a non-existent project
 
-### Requirement: Project board snapshot
-The system SHALL return, for a project the user belongs to, its columns, the root tasks currently shown on the board, members, labels, the active sprint if any, and per-task counts of subtasks and comments, in a single response.
+### Requirement: Board snapshot
+The system SHALL return, for a project the user belongs to and for one of its open changes or for no change, in a single response: its columns; the root tasks of that board (spec `project-board`, "Board of a change"); members; labels; the change shown, or `null` for the board of other tasks; the project's open changes, newest first, each with its task counts (spec `changes`); and per-task counts of subtasks and comments.
 
-#### Scenario: Snapshot without sprints
-- **WHEN** a member requests the board snapshot of a project with no active sprint
-- **THEN** the response contains all root, non-archived tasks that are placed on a column and do not belong to any sprint
+#### Scenario: Snapshot of a change
+- **WHEN** a member requests the board snapshot of TEST for the open change `add-labels`
+- **THEN** the board tasks are exactly the root, non-archived tasks of `add-labels`, the change shown is `add-labels`, and the open changes of TEST are listed
 
-#### Scenario: Snapshot with an active sprint
-- **WHEN** a member requests the board snapshot of a project with an active sprint
-- **THEN** the board tasks are exactly the root, non-archived tasks of the active sprint
+#### Scenario: Snapshot without a change
+- **WHEN** a member requests the board snapshot of TEST without naming a change
+- **THEN** the response contains all root, non-archived tasks that belong to no change, the change shown is `null`, and the open changes of TEST are listed
+
+#### Scenario: No open changes
+- **WHEN** a member requests the board snapshot of a project without open changes
+- **THEN** the list of open changes is empty and the tasks in no change are returned
 
 ### Requirement: Project settings are owner-only
 Only the project owner SHALL be able to rename the project, change its short name, or archive it. Archiving SHALL hide the project and its content from all members while keeping the data recoverable by operators.

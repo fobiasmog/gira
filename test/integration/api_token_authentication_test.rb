@@ -169,27 +169,22 @@ class ApiTokenAuthenticationTest < ForgeryProtectedIntegrationTest
     api/projects#index
     api/projects#show
     api/projects/boards#show
+    api/projects/changes#create
+    api/projects/changes#index
+    api/projects/changes#show
+    api/projects/changes/archivals#create
+    api/projects/changes/tasks#index
     api/projects/labels#create
     api/projects/labels#index
     api/projects/members#index
-    api/projects/milestones#create
-    api/projects/milestones#destroy
-    api/projects/milestones#index
-    api/projects/milestones#show
-    api/projects/milestones/recoveries#create
     api/projects/openspec_changes#create
-    api/projects/openspec_changes#show
-    api/projects/sprints#create
-    api/projects/sprints#index
-    api/projects/sprints/activations#create
-    api/projects/sprints/archivals#create
-    api/projects/sprints/tasks#index
     api/projects/statuses#index
     api/projects/tasks#create
     api/projects/tasks#destroy
     api/projects/tasks#index
     api/projects/tasks#show
     api/projects/tasks#update
+    api/projects/tasks/changes#update
     api/projects/tasks/comments#create
     api/projects/tasks/comments#index
     api/projects/tasks/completions#destroy
@@ -197,7 +192,6 @@ class ApiTokenAuthenticationTest < ForgeryProtectedIntegrationTest
     api/projects/tasks/labels#destroy
     api/projects/tasks/labels#update
     api/projects/tasks/placements#update
-    api/projects/tasks/sprints#update
     api/projects/tasks/subtasks#create
     api/projects/tasks/subtasks#index
     files#show
