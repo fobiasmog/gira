@@ -126,13 +126,13 @@ class AgentsAtWorkTest < ActionDispatch::IntegrationTest
     assert_equal [ first.number, second.number ], assigned(@fish_token).map { |card| card["number"] }
   end
 
-  test "backlog and sprint: a person's tasks are listed whatever their sprint" do
-    sprint = @goal.sprints.create!(title: "S1", starts_on: Date.current, ends_on: 1.week.from_now, active: true)
-    in_backlog = task("In the backlog", assignee: users(:two))
-    in_sprint = task("In the sprint", assignee: users(:two), sprint: sprint)
+  test "in a change and in none: a person's tasks are listed whatever their change" do
+    change = @goal.project_changes.create!(name: "fix-login")
+    in_none = task("In no change", assignee: users(:two))
+    in_change = task("In the change", assignee: users(:two), change: change)
     sign_in_as users(:two)
 
-    assert_equal [ in_backlog.id, in_sprint.id ], assigned.map { |card| card["id"] }
+    assert_equal [ in_none.id, in_change.id ], assigned.map { |card| card["id"] }
   end
 
   test "the view is per project and reaches only the token's projects" do

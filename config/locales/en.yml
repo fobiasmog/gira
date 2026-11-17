@@ -124,7 +124,7 @@ en:
         read: Read only
         read_hint: See projects, tasks, comments and members.
         read_write: Read and write
-        read_write_hint: Also create and change tasks, comments, sprints and milestones.
+        read_write_hint: Also create and change tasks, comments and changes.
         approve: Approve
         deny: Deny
         disconnect_hint: You can disconnect it at any time in Settings → Connected apps. Changing your password disconnects every app.
@@ -208,8 +208,8 @@ en:
       archived: is archived
       last_column: The last column cannot be deleted
       subtask_placement: Subtasks are not placed on the board
-      before_start: must not be earlier than the start date
       subtask: cannot be set on a subtask
+      in_tasks_md: is fixed, because the task is in its change's tasks.md
       too_many: "are limited to %{count} files"
       file_too_large: "%{filename} is too large"
       file_content_type_not_allowed: "%{filename} is not an allowed file type"

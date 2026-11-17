@@ -123,8 +123,8 @@ A tool call SHALL send only the arguments it was given. A body argument given as
 - **THEN** the task's title changes and all its other fields keep their values
 
 #### Scenario: Explicit null
-- **WHEN** a client calls `setTaskSprint` with `sprint_id` set to `null`
-- **THEN** the task is taken out of its sprint
+- **WHEN** a client calls `setTaskChange` with `change_id` set to `null`
+- **THEN** the task is taken out of its change
 
 #### Scenario: Task key as id
 - **WHEN** a client calls `showTask` with the id `GOAL-12`

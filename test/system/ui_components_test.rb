@@ -10,8 +10,8 @@ class UiComponentsTest < ApplicationSystemTestCase
   end
 
   test "Escape closes a dialog and returns focus to the button that opened it" do
-    click_button "New sprint"
-    assert_selector "dialog[open]", text: "Sprint name"
+    click_button "New change"
+    assert_selector "dialog[open]", text: "Change name"
     assert_equal "dialog", evaluate_script("document.activeElement.closest('dialog')?.tagName.toLowerCase()"),
       "focus moves into the dialog"
     assert evaluate_script(<<~JS), "the page behind the dialog is covered by the modal backdrop"
@@ -24,11 +24,11 @@ class UiComponentsTest < ApplicationSystemTestCase
     find("dialog[open]").send_keys(:escape)
 
     assert_no_selector "dialog[open]"
-    assert_equal "New sprint", evaluate_script("document.activeElement.textContent.trim()")
+    assert_equal "New change", evaluate_script("document.activeElement.textContent.trim()")
   end
 
   test "a backdrop click closes the dialog" do
-    click_button "New sprint"
+    click_button "New change"
     assert_selector "dialog[open]"
 
     page.driver.browser.action.move_to_location(5, 5).click.perform

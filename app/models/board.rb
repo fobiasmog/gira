@@ -12,8 +12,6 @@ class Board
     end
   end
 
-  KEEP_SPRINT = Object.new.freeze
-
   def initialize(project)
     @project = project
   end
@@ -43,7 +41,7 @@ class Board
   end
 
   # The column's tasks move, with all their data, to the end of the first
-  # remaining column, each staying in its sprint; moving into the done column
+  # remaining column, each staying in its change; moving into the done column
   # completes them. The last remaining column cannot be deleted.
   def delete_column(status)
     locked do
@@ -62,10 +60,9 @@ class Board
     end
   end
 
-  # Moves a root task to a position in a column (which is required), and into
-  # another sprint or none when sprint_id is given. Positions stay contiguous
-  # in both affected lists.
-  def place(task, status_id:, position:, sprint_id: KEEP_SPRINT)
+  # Moves a root task to a position in a column (which is required), within
+  # its change. Positions stay contiguous in both affected columns.
+  def place(task, status_id:, position:)
     locked do
       task.lock!
       if task.parent_id
@@ -74,10 +71,9 @@ class Board
       end
 
       task.status_id = status_id
-      task.sprint_id = sprint_id unless sprint_id.equal?(KEEP_SPRINT)
       raise Error, task unless task.save
 
-      siblings = Task.where(project_id: task.project_id, status_id: task.status_id, sprint_id: task.sprint_id, parent_id: nil).kept
+      siblings = Task.where(project_id: task.project_id, status_id: task.status_id, change_id: task.change_id, parent_id: nil).kept
       task.insert_at(clamp(position, siblings.count))
       task.reload
     end

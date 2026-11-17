@@ -13,10 +13,9 @@ import CommentForm from "../components/task/CommentForm.vue"
 import StatusDot from "../components/board/StatusDot.vue"
 import { tasksApi, type TaskFields } from "../api/tasks.ts"
 import { labelsApi } from "../api/labels.ts"
-import { milestonesApi } from "../api/milestones.ts"
-import { sprintsApi } from "../api/sprints.ts"
-import type { Comment, Milestone, Sprint, Subtask, TaskCard, TaskDetail } from "../api/types.ts"
-import { useBoardStore } from "../stores/board.ts"
+import { changesApi } from "../api/changes.ts"
+import type { Change, Comment, Subtask, TaskCard, TaskDetail } from "../api/types.ts"
+import { OTHER_TAB, useBoardStore } from "../stores/board.ts"
 import { useMeStore } from "../stores/me.ts"
 import { useUiStore } from "../stores/ui.ts"
 import { toneOf } from "../styles/tones.ts"
@@ -31,8 +30,7 @@ const { profile } = storeToRefs(useMeStore())
 
 const task = ref<TaskDetail | null>(null)
 const comments = ref<Comment[]>([])
-const milestones = ref<Milestone[]>([])
-const sprints = ref<Sprint[]>([])
+const changes = ref<Change[]>([])
 const editingTitle = ref(false)
 const confirmingArchive = ref(false)
 
@@ -44,14 +42,14 @@ watch(() => [props.projectId, props.taskRef] as const, async ([projectId, taskRe
     await router.replace({ name: "archived-task", params: { pid: projectId, tid: loaded.id } })
     return
   }
+  // The board store has the columns, members and labels.
   const rest = await ui.load(Promise.all([
     tasksApi.comments(projectId, loaded.id),
-    milestonesApi.list(projectId),
-    sprintsApi.list(projectId, "available"),
-    board.projectId === projectId ? Promise.resolve() : board.load(projectId),
+    changesApi.list(projectId),
+    board.projectId === projectId ? Promise.resolve() : board.load(projectId, OTHER_TAB),
   ]))
   if (!rest) return
-  ;[comments.value, milestones.value, sprints.value] = rest
+  ;[comments.value, changes.value] = rest
   task.value = loaded
 }, { immediate: true })
 
@@ -119,8 +117,8 @@ const createLabel = (title: string) => run(async () => {
   await tasksApi.setLabel(props.projectId, id(), label.id)
   await refresh()
 })
-const setSprint = (sprintId: number | null) => run(async () => {
-  await tasksApi.setSprint(props.projectId, id(), sprintId)
+const setChange = (changeId: number | null) => run(async () => {
+  await tasksApi.setChange(props.projectId, id(), changeId)
   await refresh()
 })
 const addSubtask = (title: string) => run(async () => {
@@ -236,15 +234,14 @@ async function archive() {
         :task="task"
         :columns="columns"
         :members="members"
-        :milestones="milestones"
         :labels="labels"
-        :sprints="sprints"
+        :changes="changes"
         @status="setStatus"
         @complete="setComplete"
         @update="update"
         @label="setLabel"
         @create-label="createLabel"
-        @sprint="setSprint"
+        @change="setChange"
       />
       <hr class="task-page__rule">
       <button type="button" class="button button--text task-page__archive" @click="confirmingArchive = true">

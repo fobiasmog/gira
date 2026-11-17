@@ -14,8 +14,8 @@ class BoardTest < ActiveSupport::TestCase
     @project.tasks.create!(title: title, creator: users(:one), status: status, **attributes)
   end
 
-  def column(status, sprint: nil)
-    @project.tasks.kept.roots.where(status: status, sprint: sprint).order(:position).pluck(:title, :position)
+  def column(status, change: nil)
+    @project.tasks.kept.roots.where(status: status, change: change).order(:position).pluck(:title, :position)
   end
 
   test "new project board" do
@@ -57,23 +57,23 @@ class BoardTest < ActiveSupport::TestCase
     assert_raises(ActiveRecord::RecordInvalid) { @board.add_column(title: "") }
   end
 
-  test "delete a column with tasks: they go to the end of the first column intact, in their sprints" do
-    sprint = @project.sprints.create!(title: "S1", starts_on: Date.current, ends_on: 1.week.from_now, active: true)
+  test "delete a column with tasks: they go to the end of the first column intact, in their changes" do
+    change = @project.project_changes.create!(name: "add-labels")
     create_task("waiting")
-    create_task("sprint waiting", sprint: sprint)
+    create_task("change waiting", change: change)
     tasks = 2.times.map { |i| create_task("T#{i}", status: @work, description: "notes #{i}", important: true) }
-    in_sprint = create_task("T2", status: @work, description: "notes 2", important: true, sprint: sprint)
+    in_change = create_task("T2", status: @work, description: "notes 2", important: true, change: change)
 
     @board.delete_column(@work)
 
     assert_equal [ "To Do", "Done" ], titles
     tasks.each(&:reload)
-    in_sprint.reload
-    assert [ *tasks, in_sprint ].all? { |task| task.status == @todo && task.important && task.completed_at.nil? }
-    assert_equal [ "notes 0", "notes 1", "notes 2" ], [ *tasks, in_sprint ].map(&:description)
-    assert_equal sprint, in_sprint.sprint
+    in_change.reload
+    assert [ *tasks, in_change ].all? { |task| task.status == @todo && task.important && task.completed_at.nil? }
+    assert_equal [ "notes 0", "notes 1", "notes 2" ], [ *tasks, in_change ].map(&:description)
+    assert_equal change, in_change.change
     assert_equal [ [ "waiting", 0 ], [ "T0", 1 ], [ "T1", 2 ] ], column(@todo)
-    assert_equal [ [ "sprint waiting", 0 ], [ "T2", 1 ] ], column(@todo, sprint: sprint)
+    assert_equal [ [ "change waiting", 0 ], [ "T2", 1 ] ], column(@todo, change: change)
   end
 
   test "delete the first column: its tasks go to the end of the next one" do
@@ -159,40 +159,33 @@ class BoardTest < ActiveSupport::TestCase
     assert_equal [ @todo.id, 1 ], [ task.reload.status_id, task.position ]
   end
 
-  test "placement with a sprint change: both lists stay contiguous" do
-    sprint = @project.sprints.create!(title: "S1", starts_on: Date.current, ends_on: 1.week.from_now, active: true)
-    backlog = 3.times.map { |i| create_task("backlog#{i}") }
-    2.times { |i| create_task("sprint#{i}", status: @work, sprint: sprint) }
+  test "placement within a change orders only that change's tasks" do
+    change = @project.project_changes.create!(name: "add-labels")
+    other = 2.times.map { |i| create_task("other#{i}", status: @work) }
+    tasks = 3.times.map { |i| create_task("change#{i}", change: change) }
 
-    @board.place(backlog[1], status_id: @work.id, position: 0, sprint_id: sprint.id)
+    @board.place(tasks[2], status_id: @work.id, position: 0)
 
-    assert_equal sprint, backlog[1].reload.sprint
-    assert_equal [ [ "backlog1", 0 ], [ "sprint0", 1 ], [ "sprint1", 2 ] ], column(@work, sprint: sprint)
-    assert_equal [ [ "backlog0", 0 ], [ "backlog2", 1 ] ], column(@todo)
+    assert_equal [ @work, change ], [ tasks[2].reload.status, tasks[2].change ]
+    assert_equal [ [ "change2", 0 ] ], column(@work, change: change)
+    assert_equal [ [ "change0", 0 ], [ "change1", 1 ] ], column(@todo, change: change)
+    assert_equal [ [ "other0", 0 ], [ "other1", 1 ] ], column(@work)
+    assert_equal [ 0, 1 ], other.map { |task| task.reload.position }
   end
 
-  test "changing the sprint keeps the column; both lists stay contiguous" do
-    s1 = @project.sprints.create!(title: "S1", starts_on: Date.current, ends_on: 1.week.from_now)
-    s2 = @project.sprints.create!(title: "S2", starts_on: Date.current, ends_on: 1.week.from_now)
-    tasks = 3.times.map { |i| create_task("s1-#{i}", status: @work, sprint: s1) }
-    create_task("s2-0", status: @work, sprint: s2)
+  test "changing the change keeps the column; both lists stay contiguous" do
+    c1 = @project.project_changes.create!(name: "c1")
+    c2 = @project.project_changes.create!(name: "c2")
+    tasks = 3.times.map { |i| create_task("c1-#{i}", status: @work, change: c1) }
+    create_task("c2-0", status: @work, change: c2)
 
-    # Freshly loaded each time, as the sprint endpoint does.
-    Task.find(tasks[0].id).update!(sprint: s2)
-    Task.find(tasks[1].id).update!(sprint: nil)
+    # Freshly loaded each time, as the change endpoint does.
+    Task.find(tasks[0].id).update!(change: c2)
+    Task.find(tasks[1].id).update!(change: nil)
 
-    assert_equal [ [ "s1-2", 0 ] ], column(@work, sprint: s1)
-    assert_equal [ [ "s2-0", 0 ], [ "s1-0", 1 ] ], column(@work, sprint: s2)
-    assert_equal [ [ "s1-1", 0 ] ], column(@work)
-  end
-
-  test "placement without sprint_id keeps the sprint" do
-    sprint = @project.sprints.create!(title: "S1", starts_on: Date.current, ends_on: 1.week.from_now)
-    task = create_task("t", sprint: sprint)
-
-    @board.place(task, status_id: @work.id, position: 0)
-
-    assert_equal [ @work, sprint ], [ task.reload.status, task.sprint ]
+    assert_equal [ [ "c1-2", 0 ] ], column(@work, change: c1)
+    assert_equal [ [ "c2-0", 0 ], [ "c1-0", 1 ] ], column(@work, change: c2)
+    assert_equal [ [ "c1-1", 0 ] ], column(@work)
   end
 
   test "column from another project is rejected and the task stays" do

@@ -41,7 +41,6 @@ class TaskPageTest < ApplicationSystemTestCase
     eventually { @task.reload.status == statuses(:goal_work) }
     find("button[aria-label^='Change Status:']").click
     assert_button "Done"
-    assert_no_button "Backlog" # every task is in a column; the backlog is a matter of sprints
     click_button "To Do"
     eventually { @task.reload.status == statuses(:goal_todo) }
 
@@ -61,14 +60,13 @@ class TaskPageTest < ApplicationSystemTestCase
     eventually { @task.reload.important }
   end
 
-  test "edit the milestone, label and sprint" do
-    milestone = @project.milestones.create!(title: "Version 2")
-    sprint = @project.sprints.create!(title: "Sprint 7", starts_on: Date.current, ends_on: 2.weeks.from_now.to_date)
+  # Spec changes, "Tasks in a change"; spec web-client, "Screens" (task details).
+  test "edit the label and the change; there is no milestone" do
+    change = @project.project_changes.create!(name: "export-csv")
+    @project.project_changes.create!(name: "old-work").archive!
     @project.labels.create!(title: "Backend")
     visit_task
-
-    choose "Milestone", "Version 2"
-    eventually { @task.reload.milestone == milestone }
+    assert_no_text "Milestone"
 
     choose "Label", "Backend"
     eventually { @task.reload.label&.title == "Backend" }
@@ -79,10 +77,21 @@ class TaskPageTest < ApplicationSystemTestCase
     choose "Label", "No label"
     eventually { @task.reload.label.nil? }
 
-    choose "Sprint", "Sprint 7"
-    eventually { @task.reload.sprint == sprint }
-    choose "Sprint", "No sprint"
-    eventually { @task.reload.sprint.nil? }
+    find("button[aria-label^='Change Change:']").click
+    assert_no_button "old-work"
+    click_button "export-csv"
+    eventually { @task.reload.change == change }
+    assert_selector "button[aria-label='Change Change: export-csv']"
+    choose "Change", "No change"
+    eventually { @task.reload.change.nil? }
+  end
+
+  test "a card of tasks.md cannot leave its change, and the page says why" do
+    change = Change::Import.new(project: @project, user: users(:one), name: "add-labels", artifacts: { "tasks" => "## 1. Model\n- [ ] 1.1 Table\n" }).run!.change
+    visit_task(change.tasks.roots.first)
+
+    assert_selector "button[aria-label='Change Change: add-labels'][disabled]"
+    assert_text "This card is in its change's tasks.md, so it stays in that change."
   end
 
   test "add and complete subtasks" do

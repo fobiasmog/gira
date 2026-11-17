@@ -11,9 +11,11 @@ class TaskSerializer
     task_ids.index_with { |id| Counts.new(subtasks: subtasks[id] || 0, subtasks_done: done[id] || 0, comments: comments[id] || 0) }
   end
 
+  # Projects and changes preloaded, so a list costs the same few queries
+  # however long it is.
   def self.cards(tasks)
     tasks = tasks.to_a
-    ActiveRecord::Associations::Preloader.new(records: tasks, associations: :openspec_change).call
+    ActiveRecord::Associations::Preloader.new(records: tasks, associations: %i[project change]).call
     counts = counts_for(tasks.map(&:id))
     tasks.map { |task| new(task, counts: counts[task.id]).card }
   end
@@ -32,15 +34,15 @@ class TaskSerializer
       status_id: @task.status_id,
       position: @task.position,
       parent_id: @task.parent_id,
-      sprint_id: @task.sprint_id,
-      milestone_id: @task.milestone_id,
+      change_id: @task.change_id,
+      change: @task.change&.slice(:id, :name),
+      in_tasks_md: @task.in_tasks_md,
       label_id: @task.label_id,
       assignee_id: @task.assignee_id,
       deadline: @task.deadline,
       important: @task.important,
       completed_at: @task.completed_at,
       archived_at: @task.archived_at,
-      openspec_change: @task.openspec_change&.slice(:id, :name),
       subtask_count: @counts.subtasks,
       subtask_done_count: @counts.subtasks_done,
       comment_count: @counts.comments
@@ -50,14 +52,11 @@ class TaskSerializer
   def detail
     card.merge(
       description: @task.description,
-      origin_task_id: @task.origin_task_id,
       created_at: @task.created_at,
       creator: user(@task.creator),
       assignee: user(@task.assignee),
       status: @task.status&.slice(:id, :title, :done),
-      milestone: @task.milestone&.slice(:id, :title),
       label: @task.label&.slice(:id, :title),
-      sprint: @task.sprint&.slice(:id, :title),
       subtasks: @task.subtasks.includes(:status).map { |subtask| subtask_json(subtask) }
     )
   end

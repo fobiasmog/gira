@@ -7,32 +7,31 @@ export interface TaskFields {
   deadline?: string | null
   important?: boolean
   assignee_id?: Id | null
-  milestone_id?: Id | null
 }
 
-// Without status_id the task goes to the first column. sprint_id, when
-// present, wins (null: no sprint); when absent, a task created on a column
-// joins the active sprint and any other task joins no sprint.
+// Without status_id the task goes to the first column, and without change_id
+// (or with null) into no change.
 export interface NewTask extends TaskFields {
   title: string
   status_id?: Id
   label_id?: Id | null
-  sprint_id?: Id | null
+  change_id?: Id | null
 }
 
-// sprint_id, when present, also moves the task into that sprint (null: none).
+// Within the task's change.
 export interface Placement {
   status_id: Id
   position: number
-  sprint_id?: Id | null
 }
 
-export type TaskView = "board" | "backlog" | "backlog_done" | "archived"
+export type TaskView = "board" | "archived"
 
 const base = (projectId: Id) => `/projects/${projectId}/tasks`
 
 export const tasksApi = {
-  board: (projectId: Id) => api.get<Board>(`/projects/${projectId}/board`),
+  // The board of an open change, named by its id or name, or of the tasks in
+  // no change (null).
+  board: (projectId: Id, change: Id | string | null) => api.get<Board>(`/projects/${projectId}/board`, { change_id: change }),
   list: (projectId: Id, view: TaskView) => api.get<TaskCard[]>(base(projectId), { view }),
   show: (projectId: Id, ref: string | Id) => api.get<TaskDetail>(`${base(projectId)}/${encodeURIComponent(ref)}`),
   create: (projectId: Id, fields: NewTask) => api.post<TaskDetail>(base(projectId), fields),
@@ -43,7 +42,8 @@ export const tasksApi = {
     labelId === null
       ? api.delete<TaskCard>(`${base(projectId)}/${id}/label`)
       : api.patch<TaskCard>(`${base(projectId)}/${id}/label`, { label_id: labelId }),
-  setSprint: (projectId: Id, id: Id, sprintId: Id | null) => api.patch<TaskCard>(`${base(projectId)}/${id}/sprint`, { sprint_id: sprintId }),
+  // Into an open change, or out of its change (null); it keeps its column.
+  setChange: (projectId: Id, id: Id, changeId: Id | null) => api.patch<TaskCard>(`${base(projectId)}/${id}/change`, { change_id: changeId }),
   addSubtask: (projectId: Id, id: Id, title: string) => api.post<TaskCard>(`${base(projectId)}/${id}/subtasks`, { title }),
   setComplete: (projectId: Id, id: Id, complete: boolean) =>
     complete

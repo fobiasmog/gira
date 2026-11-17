@@ -9,7 +9,7 @@ import { personName } from "../../i18n/people.ts"
 import { formatDateTime, formatRelativeDay } from "../../i18n/format.ts"
 import { toneOf } from "../../styles/tones.ts"
 
-// One task as a list row (list layout, backlog, sprints, milestone, archive).
+// One task as a list row (list layout, changes screen, archive).
 // column, when given, is shown next to the title.
 const props = defineProps<{
   task: TaskCard

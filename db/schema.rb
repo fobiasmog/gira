@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_16_090100) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_17_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -91,6 +91,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_090100) do
     t.check_constraint "project_id IS NOT NULL AND oauth_access_token_id IS NULL AND issuer_id IS NULL AND channels IS NULL OR project_id IS NULL AND oauth_access_token_id IS NOT NULL AND issuer_id IS NULL AND channels IS NULL OR project_id IS NULL AND oauth_access_token_id IS NULL AND issuer_id IS NOT NULL AND channels IS NOT NULL AND (channels::text = ANY (ARRAY['api'::character varying, 'mcp'::character varying, 'api_mcp'::character varying]::text[]))", name: "api_tokens_kind"
   end
 
+  create_table "changes", force: :cascade do |t|
+    t.bigint "project_id", null: false
+    t.string "name", null: false
+    t.datetime "archived_at"
+    t.text "tasks_text"
+    t.bigint "imported_by_id"
+    t.datetime "imported_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["imported_by_id"], name: "index_changes_on_imported_by_id"
+    t.index ["project_id", "name"], name: "index_changes_on_project_id_and_name_open", unique: true, where: "(archived_at IS NULL)"
+    t.index ["project_id"], name: "index_changes_on_project_id"
+  end
+
   create_table "comments", force: :cascade do |t|
     t.bigint "task_id", null: false
     t.bigint "author_id", null: false
@@ -132,15 +146,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_090100) do
     t.datetime "updated_at", null: false
     t.index ["project_id", "user_id"], name: "index_memberships_on_project_id_and_user_id", unique: true
     t.index ["user_id"], name: "index_memberships_on_user_id"
-  end
-
-  create_table "milestones", force: :cascade do |t|
-    t.bigint "project_id", null: false
-    t.string "title", null: false
-    t.datetime "deleted_at"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["project_id"], name: "index_milestones_on_project_id"
   end
 
   create_table "oauth_access_grants", force: :cascade do |t|
@@ -189,20 +194,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_090100) do
     t.datetime "first_authorized_at"
     t.index ["uid"], name: "index_oauth_applications_on_uid", unique: true
     t.check_constraint "registration::text = ANY (ARRAY['cimd'::character varying, 'dcr'::character varying]::text[])", name: "oauth_applications_registration"
-  end
-
-  create_table "openspec_changes", force: :cascade do |t|
-    t.bigint "project_id", null: false
-    t.string "name", null: false
-    t.bigint "milestone_id", null: false
-    t.text "tasks_text", default: "", null: false
-    t.bigint "imported_by_id", null: false
-    t.datetime "imported_at", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["imported_by_id"], name: "index_openspec_changes_on_imported_by_id"
-    t.index ["milestone_id"], name: "index_openspec_changes_on_milestone_id"
-    t.index ["project_id", "name"], name: "index_openspec_changes_on_project_id_and_name", unique: true
   end
 
   create_table "projects", force: :cascade do |t|
@@ -385,19 +376,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_090100) do
     t.index ["key"], name: "index_solid_queue_semaphores_on_key", unique: true
   end
 
-  create_table "sprints", force: :cascade do |t|
-    t.bigint "project_id", null: false
-    t.string "title", null: false
-    t.date "starts_on", null: false
-    t.date "ends_on", null: false
-    t.boolean "active", default: false, null: false
-    t.datetime "archived_at"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["project_id"], name: "index_sprints_on_project_id"
-    t.index ["project_id"], name: "index_sprints_one_active_per_project", unique: true, where: "active"
-  end
-
   create_table "statuses", force: :cascade do |t|
     t.bigint "project_id", null: false
     t.string "title", null: false
@@ -420,26 +398,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_090100) do
     t.bigint "status_id", null: false
     t.integer "position"
     t.bigint "parent_id"
-    t.bigint "sprint_id"
-    t.bigint "milestone_id"
     t.bigint "label_id"
-    t.bigint "origin_task_id"
     t.datetime "deadline"
     t.boolean "important", default: false, null: false
     t.datetime "completed_at"
     t.datetime "archived_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "openspec_change_id"
+    t.bigint "change_id"
+    t.boolean "in_tasks_md", default: false, null: false
     t.index ["assignee_id"], name: "index_tasks_on_assignee_id"
+    t.index ["change_id"], name: "index_tasks_on_change_id"
     t.index ["creator_id"], name: "index_tasks_on_creator_id"
     t.index ["label_id"], name: "index_tasks_on_label_id"
-    t.index ["milestone_id"], name: "index_tasks_on_milestone_id"
-    t.index ["openspec_change_id"], name: "index_tasks_on_openspec_change_id"
-    t.index ["origin_task_id"], name: "index_tasks_on_origin_task_id"
     t.index ["parent_id"], name: "index_tasks_on_parent_id"
     t.index ["project_id", "number"], name: "index_tasks_on_project_id_and_number", unique: true
-    t.index ["sprint_id"], name: "index_tasks_on_sprint_id"
     t.index ["status_id"], name: "index_tasks_on_status_id"
   end
 
@@ -468,6 +441,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_090100) do
   add_foreign_key "api_tokens", "projects"
   add_foreign_key "api_tokens", "users"
   add_foreign_key "api_tokens", "users", column: "issuer_id"
+  add_foreign_key "changes", "projects"
+  add_foreign_key "changes", "users", column: "imported_by_id"
   add_foreign_key "comments", "tasks"
   add_foreign_key "comments", "users", column: "author_id"
   add_foreign_key "invitations", "projects"
@@ -475,14 +450,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_090100) do
   add_foreign_key "labels", "projects"
   add_foreign_key "memberships", "projects"
   add_foreign_key "memberships", "users"
-  add_foreign_key "milestones", "projects"
   add_foreign_key "oauth_access_grants", "oauth_applications", column: "application_id", on_delete: :cascade
   add_foreign_key "oauth_access_grants", "users", column: "resource_owner_id", on_delete: :cascade
   add_foreign_key "oauth_access_tokens", "oauth_applications", column: "application_id", on_delete: :cascade
   add_foreign_key "oauth_access_tokens", "users", column: "resource_owner_id", on_delete: :cascade
-  add_foreign_key "openspec_changes", "milestones"
-  add_foreign_key "openspec_changes", "projects"
-  add_foreign_key "openspec_changes", "users", column: "imported_by_id"
   add_foreign_key "projects", "users", column: "owner_id"
   add_foreign_key "sessions", "users"
   add_foreign_key "solid_queue_batch_executions", "solid_queue_batches", column: "batch_id", on_delete: :cascade
@@ -493,15 +464,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_090100) do
   add_foreign_key "solid_queue_ready_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
-  add_foreign_key "sprints", "projects"
   add_foreign_key "statuses", "projects"
+  add_foreign_key "tasks", "changes"
   add_foreign_key "tasks", "labels", on_delete: :nullify
-  add_foreign_key "tasks", "milestones"
-  add_foreign_key "tasks", "openspec_changes"
   add_foreign_key "tasks", "projects"
-  add_foreign_key "tasks", "sprints"
   add_foreign_key "tasks", "statuses"
-  add_foreign_key "tasks", "tasks", column: "origin_task_id", on_delete: :nullify
   add_foreign_key "tasks", "tasks", column: "parent_id"
   add_foreign_key "tasks", "users", column: "assignee_id"
   add_foreign_key "tasks", "users", column: "creator_id"

@@ -63,13 +63,15 @@ curl -H "Authorization: Bearer glnr_..." http://localhost:3000/api/projects
 Endpoints available to tokens, all under `/api`:
 
 - `GET /me`; `GET /projects` (only the token's project); `GET /projects/:id`;
-  `GET /projects/:id/board`; `GET /projects/:id/statuses` (the board's
+  `GET /projects/:id/board` (with `change_id` for a change's board, without it
+  for the tasks in no change); `GET /projects/:id/statuses` (the board's
   columns); `GET /projects/:id/members`;
 - tasks: `/projects/:id/tasks` (list, show, create, update, archive with
-  DELETE), and per task `placement`, `subtasks`, `completion`, `label`, `sprint`
+  DELETE), and per task `placement`, `subtasks`, `completion`, `label`, `change`
   and `comments`; `PATCH`/`DELETE /comments/:id` for your own comments;
-- labels, milestones (with `recovery`), and sprints (with `activation`,
-  `archival` and `tasks`) under `/projects/:id`;
+- labels, and changes (list, create, show, with `archival` and `tasks`) under
+  `/projects/:id`, where a change in a path is its id or an open change's
+  name; importing OpenSpec changes with `POST /projects/:id/openspec_changes`;
 - downloads of attachments and avatars from the `/files/...` URLs in responses.
 
 Everything else (projects, members, invitations, changing columns, your
@@ -169,30 +171,48 @@ The agent domain must accept no mail. Publish a null MX record for it:
 agents.goalner.com.  MX  0 .
 ```
 
+## Changes
+
+Work in a project is grouped into changes. A change is one piece of work,
+named as its OpenSpec change is (such as `add-labels`), with its own tasks and
+its own board. A project holds any number of open changes; none of them is
+"active". The board shows one change at a time, picked from a row of tabs,
+plus an **Other tasks** tab for the tasks in no change. The **Changes** screen
+lists the open changes with their tasks, adds and moves tasks, and creates and
+archives changes.
+
+Archive a change when its work is done. Its tasks stay with it and leave the
+board, whether they are done or not, and a new change may take its name.
+
 ## OpenSpec changes
 
-Agents that plan with [OpenSpec](https://github.com/Fission-AI/OpenSpec) put
-a change on the board by pushing its `tasks.md` to Goalner. Goalner never
-reads the repository: an agent, script or person sends the text, and saves
-what comes back.
+Agents that plan with [OpenSpec](https://github.com/Fission-AI/OpenSpec) fill
+a change by pushing its `tasks.md` to Goalner. Goalner never reads the
+repository: an agent, script or person sends the text, and saves what comes
+back.
 
 | In `tasks.md`                     | In Goalner                                                     |
 |-----------------------------------|----------------------------------------------------------------|
-| the change, such as `add-labels`  | a milestone titled `add-labels`, which counts its cards         |
-| a `## 1. Model` section           | a card `add-labels: 1. Model`, in the active sprint if there is one |
+| the change, such as `add-labels`  | the project's open change `add-labels`, created if there is none |
+| a `## 1. Model` section           | a card `add-labels: 1. Model` in that change                   |
 | a `- [ ] 1.1 Add the table` item  | a subtask of that card; its extra lines become the description |
 | items before the first section    | a card `add-labels: Tasks`                                     |
 
+The cards stay in their change: they cannot be moved to another change or
+out of it, since `tasks.md` owns them. Tasks added to the change by hand are
+left alone by imports.
+
 Import with `POST /api/projects/{project_id}/openspec_changes`, or with the
-MCP tool `importOpenspecChange`, and write the returned `tasks` back into the
-file:
+MCP tool `importOpenspecChange`, and write the returned `tasks_text` back into
+the file. The first import of a name creates the change (201); an import into
+an open change answers 200:
 
 ```sh
 curl --fail-with-body -sS -o import.json -X POST \
   -H "Authorization: Bearer glnr_..." -H "Content-Type: application/json" \
   -d "$(jq -n --rawfile tasks openspec/changes/add-labels/tasks.md '{name: "add-labels", artifacts: {tasks: $tasks}}')" \
   http://localhost:3000/api/projects/1/openspec_changes \
-  && jq -r .tasks import.json > openspec/changes/add-labels/tasks.md
+  && jq -r .tasks_text import.json > openspec/changes/add-labels/tasks.md
 ```
 
 The returned text is the file as sent, with each heading and item ending in
@@ -212,39 +232,43 @@ items by their marks:
 - renumbering, rewording or moving an item keeps its task, assignee and
   comments. The text wins over titles and descriptions edited in Goalner;
 - unmarked sections and items get new cards and subtasks;
-- a task whose mark is gone from the text is archived;
+- a task whose mark is gone from the text is archived. Tasks of the change
+  that were never marked, such as those added by hand, are left alone;
+- a mark may name a task added to the change by hand: that task becomes the
+  section's card or the item's subtask, and imports update it from then on;
 - a checked item completes its subtask, and a subtask done in Goalner comes
   back checked. An import never reopens anything;
 - an import whose text has no marks at all, for a change that already has
-  tasks, is refused with 409 `keys_missing`, so that a lost write-back cannot
-  duplicate the change. The 409 carries the marked text to save.
+  cards from `tasks.md`, is refused with 409 `keys_missing`, so that a lost
+  write-back cannot duplicate the change. The 409 carries the marked text to
+  save;
+- the marks of an archived change are refused: its name may be taken by a new
+  change, which starts without marks.
 
 An agent works through a change like this:
 
-1. Import the change and save the returned text into `tasks.md`.
-2. Take a card assigned to it (`listTasks` with `view=assigned`), assign it to
+1. Create the change (`createChange`), or let the first import create it.
+2. Import the change and save the returned `tasks_text` into `tasks.md`.
+3. Take a card assigned to it (`listTasks` with `view=assigned`), assign it to
    itself if needed, and move it to the work column.
-3. For each item, do the work, complete its subtask (`completeSubtask` takes
+4. For each item, do the work, complete its subtask (`completeSubtask` takes
    the key from the mark, such as `GOAL-21`), check its box and commit.
-4. Move the card to the done column, and import again.
+5. Move the card to the done column, and import again.
+6. When the change is done, archive it (`archiveChange`).
 
 Every request that names a task takes its key as well as its id.
 
-`GET /api/projects/{project_id}/openspec_changes/{name}` (`showOpenspecChange`)
-returns the marked text with the current checkboxes, and the change's cards.
+`GET /api/projects/{project_id}/changes/{change}` (`showChange`, with the
+change's id or name) returns the marked text with the current checkboxes, and
+the change's cards.
 
 Limits and known gaps:
 
 - at most 100,000 characters, 50 sections and 500 items per change. Titles
   longer than 255 characters are cut at a word boundary with `…`, and the
   whole line opens the description;
-- carrying a sprint over copies cards as any task: the copy has no checklist
-  and no link to the change, and the original keeps both. Archiving a sprint
-  with unfinished OpenSpec cards warns about it on the sprints screen;
-- a carried-over card counts twice in its milestone, as any carried-over task
-  does;
-- only `tasks.md` is imported: no proposal, design or specs, and no state for
-  the change yet.
+- only `tasks.md` is imported: no proposal, design or specs, and no idea,
+  thread or phase for the change yet.
 
 This repository is developed this way: its own OpenSpec changes go on a
 Goalner board, and agents work their cards through MCP.

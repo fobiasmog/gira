@@ -32,7 +32,7 @@ class McpToolBuilderTest < McpIntegrationTest
     names = listed_tools.keys
 
     assert_equal json_operation_ids.sort, names.sort
-    assert_equal 37, names.size
+    assert_equal 31, names.size
     assert_not_includes names, "downloadFile"
     assert_not_includes names, "downloadFilePreview"
   end
@@ -47,7 +47,7 @@ class McpToolBuilderTest < McpIntegrationTest
     assert_includes body_fields, "description"
     assert_includes body_fields, "status_id"
     assert_equal "Create a task", tool["title"]
-    assert_match(/\ACreate a task\n\nA task created with a column/, tool["description"])
+    assert_match(/\ACreate a task\n\nA task goes into the change named by `change_id`/, tool["description"])
     assert tool["description"].end_with?("POST /api/projects/{project_id}/tasks")
   end
 
