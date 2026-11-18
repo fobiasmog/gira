@@ -6,9 +6,11 @@ import AppMenu from "../components/ui/AppMenu.vue"
 import TaskRow from "../components/board/TaskRow.vue"
 import ArchiveChangeDialog from "../components/changes/ArchiveChangeDialog.vue"
 import NewChangeDialog from "../components/changes/NewChangeDialog.vue"
+import PhasePill from "../components/changes/PhasePill.vue"
+import WaitingMarker from "../components/changes/WaitingMarker.vue"
 import type { Change, TaskCard } from "../api/types.ts"
 import { countsProgress, unfinished } from "../composables/changes.ts"
-import { boardLocation } from "../router/routes.ts"
+import { boardLocation, changeLocation } from "../router/routes.ts"
 import { OTHER_TAB, useBoardStore } from "../stores/board.ts"
 import { useChangesStore } from "../stores/changes.ts"
 import { useUiStore } from "../stores/ui.ts"
@@ -17,7 +19,9 @@ import { formatDate } from "../i18n/format.ts"
 
 // The changes screen (spec web-client, "Changes screen"): each open change is
 // a section listing its tasks, which can be added and moved between changes
-// and out of them; archived changes are listed below.
+// and out of them; archived changes are listed below, collapsed. Each name
+// links to the change's page, and each header shows the change's phase and
+// whether it is waiting for people.
 const props = defineProps<{ projectId: number }>()
 const store = useChangesStore()
 const { open, archived } = storeToRefs(store)
@@ -25,9 +29,10 @@ const board = useBoardStore()
 const ui = useUiStore()
 const loaded = ref(false)
 
-// Sections the viewer closed or opened again; open changes start open.
+// Sections the viewer closed or opened again; open changes start open,
+// archived ones closed.
 const toggled = ref(new Map<number, boolean>())
-const isOpen = (change: Change) => toggled.value.get(change.id) ?? true
+const isOpen = (change: Change) => toggled.value.get(change.id) ?? change.archived_at === null
 
 // The board store has the columns, members and labels rows show.
 watch(() => props.projectId, async (id) => {
@@ -55,10 +60,6 @@ function toggle(change: Change) {
   const opened = !isOpen(change)
   toggled.value.set(change.id, opened)
   if (opened) loadTasks(change)
-}
-
-function onArchivedToggle(change: Change, event: Event) {
-  if ((event.target as HTMLDetailsElement).open) loadTasks(change)
 }
 
 // Task counts per column, in board order.
@@ -109,7 +110,7 @@ async function moveTask(task: TaskCard, target: Change | null) {
 }
 
 const creating = ref(false)
-const createChange = (name: string) => store.create(props.projectId, name)
+const createChange = (name: string, idea: string) => store.create(props.projectId, name, idea)
 
 // Archive dialog.
 const archiving = ref<Change | null>(null)
@@ -136,17 +137,22 @@ async function archive() {
       <li v-for="change in open" :key="change.id" class="change panel">
         <header class="change__header">
           <div class="row row--wrap">
-            <h2 class="grow">
+            <h2 class="change__title">
               <button
                 type="button"
-                class="change__toggle"
+                class="icon-button change__toggle"
                 :aria-expanded="isOpen(change)"
                 :aria-controls="`change-${change.id}-tasks`"
+                :aria-label="t('changes.tasksOf', { name: change.name })"
                 @click="toggle(change)"
               >
-                <AppIcon name="chevron_right" :size="20" class="change__chevron" />{{ change.name }}
+                <AppIcon name="chevron_right" :size="20" class="change__chevron" />
               </button>
+              <RouterLink :to="changeLocation(projectId, change)" class="change__name">{{ change.name }}</RouterLink>
             </h2>
+            <PhasePill :phase="change.phase" />
+            <WaitingMarker v-if="change.waiting_for_people" />
+            <span class="grow" />
             <RouterLink :to="boardLocation(projectId, 'kanban', { kind: 'change', name: change.name })" class="button button--secondary">
               <AppIcon name="view_kanban" :size="20" />{{ t("navigation.board") }}
             </RouterLink>
@@ -223,14 +229,27 @@ async function archive() {
     <details v-if="archived.length" class="archived">
       <summary>{{ t("changes.archivedChanges") }} ({{ archived.length }})</summary>
       <ul role="list" class="stack archived__list">
-        <li v-for="change in archived" :key="change.id">
-          <details class="archived-change" @toggle="onArchivedToggle(change, $event)">
-            <summary>
-              <strong>{{ change.name }}</strong>
-              <span class="small muted">
-                {{ t("changes.archivedOn", { date: formatDate(language, change.archived_at!) }) }} · {{ tc("changes.total", change.task_counts.total) }}
-              </span>
-            </summary>
+        <li v-for="change in archived" :key="change.id" class="archived-change">
+          <div class="row row--wrap">
+            <h3 class="change__title">
+              <button
+                type="button"
+                class="icon-button change__toggle"
+                :aria-expanded="isOpen(change)"
+                :aria-controls="`change-${change.id}-tasks`"
+                :aria-label="t('changes.tasksOf', { name: change.name })"
+                @click="toggle(change)"
+              >
+                <AppIcon name="chevron_right" :size="20" class="change__chevron" />
+              </button>
+              <RouterLink :to="changeLocation(projectId, change)" class="change__name">{{ change.name }}</RouterLink>
+            </h3>
+            <PhasePill :phase="change.phase" />
+            <span class="small muted">
+              {{ t("changes.archivedOn", { date: formatDate(language, change.archived_at!) }) }} · {{ tc("changes.total", change.task_counts.total) }}
+            </span>
+          </div>
+          <div v-show="isOpen(change)" :id="`change-${change.id}-tasks`">
             <template v-if="store.tasks.get(change.id)">
               <ol v-if="store.tasks.get(change.id)!.length" role="list" class="row-list">
                 <li v-for="task in store.tasks.get(change.id)" :key="task.id" :class="{ 'change-task--done': isDone(task) }">
@@ -244,7 +263,7 @@ async function archive() {
               <p v-else class="small muted">{{ t("changes.noTasks") }}</p>
             </template>
             <p v-else class="small muted">{{ t("common.loading") }}</p>
-          </details>
+          </div>
         </li>
       </ul>
     </details>
@@ -266,21 +285,15 @@ async function archive() {
 
 .change__header { display: grid; gap: var(--space-2); }
 
-/* The section's disclosure button carries the heading's text. */
-.change__toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-block-size: var(--target-size);
-  padding: 0 var(--space-1) 0 0;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: none;
-  font-weight: inherit;
-  text-align: start;
-  overflow-wrap: anywhere;
+/* The disclosure button, then the name linking to the change's page. */
+.change__title { display: inline-flex; align-items: center; gap: var(--space-1); min-inline-size: 0; overflow-wrap: anywhere; }
+.change__toggle { flex: none; }
 
-  &:hover { color: var(--color-primary); }
+.change__name {
+  color: var(--color-text);
+  text-decoration: none;
+
+  &:hover { color: var(--color-primary); text-decoration: underline; }
 }
 
 .change__chevron { color: var(--color-muted); transition: rotate 0.15s; }
@@ -296,6 +309,6 @@ async function archive() {
 
 .archived summary { cursor: pointer; font-weight: 500; }
 .archived__list { margin-block-start: var(--space-3); }
-.archived-change summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); font-weight: 400; }
+.archived-change .change__title { font-size: var(--text-md); font-weight: 500; }
 .archived-change .row-list { margin-block-start: var(--space-2); }
 </style>

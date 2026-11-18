@@ -1,4 +1,4 @@
-import type { Column, Id, TaskCard, TaskCounts } from "../api/types.ts"
+import type { ChangeEvent, ChangePhase, ChosenPhase, Column, Comment, Id, TaskCard, TaskCounts } from "../api/types.ts"
 
 // How far a change has come: its cards in the done column, of all its cards.
 export interface ChangeProgress {
@@ -39,4 +39,26 @@ export function typedChangeName(value: string): string {
       return lower.length === letter.length ? lower : letter
     })
     .replace(/\s/g, "-")
+}
+
+// The phase a member chooses to keep a change where it is: Done is reported
+// while the change is in Implementing (spec changes, "Phase of a change").
+export function chosenPhase(phase: ChangePhase): ChosenPhase {
+  return phase === "done" ? "implementing" : phase
+}
+
+// One entry of a change's thread: a comment, or a line of its history.
+export type ThreadEntry =
+  | { kind: "comment"; at: number; comment: Comment }
+  | { kind: "event"; at: number; event: ChangeEvent }
+
+// Comments and history lines merged by time, oldest first (spec web-client,
+// "Change page"). At the same time a history line comes first: a move is
+// made before the question asked with it.
+export function threadEntries(comments: Comment[], history: ChangeEvent[]): ThreadEntry[] {
+  const entries: ThreadEntry[] = [
+    ...history.map((event) => ({ kind: "event" as const, at: Date.parse(event.created_at), event })),
+    ...comments.map((comment) => ({ kind: "comment" as const, at: Date.parse(comment.created_at), comment })),
+  ]
+  return entries.sort((a, b) => a.at - b.at)
 }

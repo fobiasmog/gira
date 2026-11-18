@@ -173,8 +173,8 @@ export const useBoardStore = defineStore("board", () => {
     return task
   }
 
-  async function createChange(name: string): Promise<Change> {
-    const created = await changesApi.create(requireProject(), name)
+  async function createChange(name: string, idea = ""): Promise<Change> {
+    const created = await changesApi.create(requireProject(), name, idea)
     changes.value = [created, ...changes.value]
     return created
   }

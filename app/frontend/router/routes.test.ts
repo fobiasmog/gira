@@ -1,7 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { createMemoryHistory, createRouter } from "vue-router"
-import { boardLocation, parseId, routes } from "./routes.ts"
+import { boardLocation, changeLocation, parseId, routes } from "./routes.ts"
 import { projectSections, sectionOf } from "./sections.ts"
 
 test("parseId accepts positive integers only", () => {
@@ -31,6 +31,7 @@ test("a route's section", () => {
     assert.equal(sectionOf(name)?.name, "board", name)
   }
   assert.equal(sectionOf("changes")?.name, "changes")
+  assert.equal(sectionOf("change")?.name, "changes")
   assert.equal(sectionOf("archived-task")?.name, "archive")
   assert.equal(sectionOf("dashboard"), null)
   assert.equal(sectionOf(undefined), null)
@@ -60,4 +61,21 @@ test("a board address gives the page its layout and tab", () => {
   assert.deepEqual(props("/projects/3/board"), { projectId: 3, layout: "kanban", tab: { kind: "default" } })
   assert.deepEqual(props("/projects/3/list/other"), { projectId: 3, layout: "list", tab: { kind: "other" } })
   assert.deepEqual(props("/projects/3/board/changes/export-csv"), { projectId: 3, layout: "kanban", tab: { kind: "change", name: "export-csv" } })
+})
+
+test("a change's page: an open change by name, an archived one by id, and the page gets the project and the change", () => {
+  const router = createRouter({ history: createMemoryHistory(), routes })
+  const href = (location: Parameters<typeof router.resolve>[0]) => router.resolve(location).href
+  const props = (path: string) => {
+    const route = router.resolve(path)
+    const record = route.matched.at(-1)!
+    return { name: route.name, props: (record.props.default as (route: unknown) => Record<string, unknown>)(route) }
+  }
+
+  assert.equal(href(changeLocation(3, { id: 12, name: "export-csv", archived_at: null })), "/projects/3/changes/export-csv")
+  assert.equal(href(changeLocation(3, { id: 12, name: "export-csv", archived_at: "2026-11-17T10:00:00Z" })), "/projects/3/changes/12")
+  assert.equal(href(changeLocation(3, { id: 12, name: "2026", archived_at: null })), "/projects/3/changes/12")
+  assert.deepEqual(props("/projects/3/changes/export-csv"), { name: "change", props: { projectId: 3, changeRef: "export-csv" } })
+  assert.deepEqual(props("/projects/3/changes/12"), { name: "change", props: { projectId: 3, changeRef: "12" } })
+  assert.equal(router.resolve("/projects/3/changes").name, "changes")
 })

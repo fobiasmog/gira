@@ -69,9 +69,10 @@ Endpoints available to tokens, all under `/api`:
 - tasks: `/projects/:id/tasks` (list, show, create, update, archive with
   DELETE), and per task `placement`, `subtasks`, `completion`, `label`, `change`
   and `comments`; `PATCH`/`DELETE /comments/:id` for your own comments;
-- labels, and changes (list, create, show, with `archival` and `tasks`) under
-  `/projects/:id`, where a change in a path is its id or an open change's
-  name; importing OpenSpec changes with `POST /projects/:id/openspec_changes`;
+- labels, and changes (list, create, show, update, with `archival`, `tasks`,
+  `comments` and `file?path=`) under `/projects/:id`, where a change in a path
+  is its id or an open change's name; importing OpenSpec changes with
+  `POST /projects/:id/openspec_changes`;
 - downloads of attachments and avatars from the `/files/...` URLs in responses.
 
 Everything else (projects, members, invitations, changing columns, your
@@ -181,15 +182,44 @@ plus an **Other tasks** tab for the tasks in no change. The **Changes** screen
 lists the open changes with their tasks, adds and moves tasks, and creates and
 archives changes.
 
+A change starts from an **idea**: Markdown that says what the work is, given
+in the **New change** dialog (or as `idea` to `createChange`). It can be
+edited while the change is in Idea, and is fixed once exploring starts, so
+that later corrections go into the thread, where an agent sees them as new
+input.
+
+A change is in one **phase**: Idea, Exploring, Proposed, Implementing or Done.
+A new change starts in Idea. Agents move it with `updateChange`
+(`PATCH /api/projects/{project_id}/changes/{change}` with `phase`), and
+members can move it to any phase but Done from the phase menu on its page.
+Importing it moves a change in Idea or Exploring to Proposed. Done is never
+set: Goalner reports it while every card of a change in Implementing is in
+the done column.
+
+Each change has a **thread** of comments, oldest first, with the same Markdown
+and attachments as task comments (`listChangeComments`,
+`createChangeComment`). Agents ask their questions there, and people answer
+there. While the newest comment of the thread was written by an agent, the
+change is **waiting for you**: its board tab and its header on the Changes
+screen show a dot. The change's **history** records every phase move and
+import with who made it and when, and its page shows these lines among the
+comments.
+
+Every change has a page, linked from its name in the board summary and on the
+Changes screen: its phases and phase menu, its idea, its thread, and the
+OpenSpec files of its last import, each shown formatted or as its source.
+
 Archive a change when its work is done. Its tasks stay with it and leave the
-board, whether they are done or not, and a new change may take its name.
+board, whether they are done or not, and a new change may take its name. An
+archived change keeps its page, read-only, at an address with its id.
 
 ## OpenSpec changes
 
 Agents that plan with [OpenSpec](https://github.com/Fission-AI/OpenSpec) fill
-a change by pushing its `tasks.md` to Goalner. Goalner never reads the
-repository: an agent, script or person sends the text, and saves what comes
-back.
+a change by pushing every file of its folder to Goalner: `tasks.md` becomes
+cards, and the proposal, the design and the delta specs are stored for people
+to review on the change's page. Goalner never reads the repository: an agent,
+script or person sends the text, and saves what comes back.
 
 | In `tasks.md`                     | In Goalner                                                     |
 |-----------------------------------|----------------------------------------------------------------|
@@ -204,16 +234,35 @@ left alone by imports.
 
 Import with `POST /api/projects/{project_id}/openspec_changes`, or with the
 MCP tool `importOpenspecChange`, and write the returned `tasks_text` back into
-the file. The first import of a name creates the change (201); an import into
-an open change answers 200:
+the file. Send `tasks.md` as `tasks`, and, when they exist, `proposal.md` as
+`proposal`, `design.md` as `design`, and each `specs/<capability>/spec.md`
+under `specs`, keyed by its capability path (`export`, `identity/user-auth`).
+The first import of a name creates the change (201), in Proposed; an import
+into an open change answers 200, and moves a change in Idea or Exploring to
+Proposed:
 
 ```sh
-curl --fail-with-body -sS -o import.json -X POST \
-  -H "Authorization: Bearer glnr_..." -H "Content-Type: application/json" \
-  -d "$(jq -n --rawfile tasks openspec/changes/add-labels/tasks.md '{name: "add-labels", artifacts: {tasks: $tasks}}')" \
-  http://localhost:3000/api/projects/1/openspec_changes \
-  && jq -r .tasks_text import.json > openspec/changes/add-labels/tasks.md
+dir=openspec/changes/add-labels
+artifacts=$(jq -n --rawfile tasks "$dir/tasks.md" '{tasks: $tasks}')
+for name in proposal design; do
+  if [ -f "$dir/$name.md" ]; then
+    artifacts=$(jq --arg name "$name" --rawfile text "$dir/$name.md" '.[$name] = $text' <<<"$artifacts")
+  fi
+done
+for file in $(cd "$dir" && find specs -name spec.md 2>/dev/null); do
+  capability=${file#specs/}; capability=${capability%/spec.md}
+  artifacts=$(jq --arg key "$capability" --rawfile text "$dir/$file" '.specs[$key] = $text' <<<"$artifacts")
+done
+jq -n --arg name add-labels --argjson artifacts "$artifacts" '{name: $name, artifacts: $artifacts}' |
+  curl --fail-with-body -sS -o import.json -X POST --data-binary @- \
+    -H "Authorization: Bearer glnr_..." -H "Content-Type: application/json" \
+    http://localhost:3000/api/projects/1/openspec_changes \
+  && jq -r .tasks_text import.json > "$dir/tasks.md"
 ```
+
+The response lists the paths of the stored files but not their text; read one
+with `showChangeFile` (`GET /api/projects/{project_id}/changes/{change}/file?path=proposal.md`).
+A file that the last import did not send no longer belongs to the change.
 
 The returned text is the file as sent, with each heading and item ending in
 its task's key and each item done in Goalner checked:
@@ -247,28 +296,44 @@ items by their marks:
 
 An agent works through a change like this:
 
-1. Create the change (`createChange`), or let the first import create it.
-2. Import the change and save the returned `tasks_text` into `tasks.md`.
-3. Take a card assigned to it (`listTasks` with `view=assigned`), assign it to
-   itself if needed, and move it to the work column.
-4. For each item, do the work, complete its subtask (`completeSubtask` takes
+1. Read the change's idea (`showChange`) and its thread
+   (`listChangeComments`). A person creates the change with its idea; an agent
+   may create one too (`createChange`).
+2. Move the change to Exploring (`updateChange` with `phase: exploring`), and
+   explore. Ask questions in the thread (`createChangeComment`) and wait for
+   the answers there; post in the thread only to ask or to report a finished
+   step, since an agent's comment marks the change as waiting for people.
+3. Write the OpenSpec change, import every file of its folder, and save the
+   returned `tasks_text` into `tasks.md`. The change is now Proposed: people
+   review the files on its page and answer in the thread. Import again after
+   each revision.
+4. When told to implement it, move the change to Implementing
+   (`updateChange`). Take a card assigned to it (`listTasks` with
+   `view=assigned`), assign it to itself if needed, and move it to the work
+   column.
+5. For each item, do the work, complete its subtask (`completeSubtask` takes
    the key from the mark, such as `GOAL-21`), check its box and commit.
-5. Move the card to the done column, and import again.
-6. When the change is done, archive it (`archiveChange`).
+6. Move the card to the done column, and import again. Once every card is in
+   the done column, the change is reported Done.
+7. When the change is done, archive it (`archiveChange`).
 
 Every request that names a task takes its key as well as its id.
 
 `GET /api/projects/{project_id}/changes/{change}` (`showChange`, with the
-change's id or name) returns the marked text with the current checkboxes, and
-the change's cards.
+change's id or name) returns the change's idea, phase, history and file
+paths, the marked text with the current checkboxes, and the change's cards.
 
 Limits and known gaps:
 
 - at most 100,000 characters, 50 sections and 500 items per change. Titles
   longer than 255 characters are cut at a word boundary with `…`, and the
   whole line opens the description;
-- only `tasks.md` is imported: no proposal, design or specs, and no idea,
-  thread or phase for the change yet.
+- the proposal, the design and each spec take at most 100,000 characters, and
+  an import at most 50 specs;
+- the files are read-only in Goalner, and show the last import, not what is
+  committed: ask for changes in the thread;
+- tables and other Markdown outside the shared feature set lose their
+  structure when a file is shown formatted; its source shows it as imported.
 
 This repository is developed this way: its own OpenSpec changes go on a
 Goalner board, and agents work their cards through MCP.
