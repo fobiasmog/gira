@@ -126,16 +126,49 @@ export interface TaskCounts {
 }
 
 // A change (spec changes): open while archived_at is null.
+// The phases of a change, in order. Done is reported, never chosen.
+export const CHANGE_PHASES = ["idea", "exploring", "proposed", "implementing", "done"] as const
+export type ChangePhase = (typeof CHANGE_PHASES)[number]
+export type ChosenPhase = Exclude<ChangePhase, "done">
+
 export interface Change extends ChangeReference {
   archived_at: Timestamp | null
+  phase: ChangePhase
+  // The newest comment of its thread was written by an agent.
+  waiting_for_people: boolean
   task_counts: TaskCounts
 }
 
-// An opened change, with its last OpenSpec import (null until the first).
+// One line of a change's history: a phase move, or an import with the files
+// it brought, tasks.md included.
+export interface ChangeEvent {
+  kind: "phase" | "import"
+  actor: UserCard
+  phase: ChosenPhase | null
+  paths: string[] | null
+  created_at: Timestamp
+}
+
+// A file of a change's last import, as opening the change lists it.
+export interface ChangeFileEntry {
+  path: string
+  length: number
+}
+
+export interface ChangeFile {
+  path: string
+  text: string
+}
+
+// An opened change, with its idea, history, files and last OpenSpec import
+// (null until the first).
 export interface ChangeDetail extends Change {
+  idea: string | null
   imported_by: UserCard | null
   imported_at: Timestamp | null
   tasks_text: string | null
+  history: ChangeEvent[]
+  files: ChangeFileEntry[]
   cards: TaskCard[]
 }
 

@@ -199,6 +199,18 @@ ru:
               too_many: "Можно иметь не больше %{count} действующих API-токенов. Отзовите один, чтобы создать новый."
               too_many_for_agent: "У агента может быть не больше %{count} токенов. Отзовите один, чтобы выпустить новый."
               agent_deleted: Этот агент удалён. Восстановите его, чтобы выпускать токены.
+        change:
+          attributes:
+            base:
+              archived: Изменение в архиве менять нельзя
+            idea:
+              fixed: не меняется после начала исследования; напишите в обсуждении
+            phase:
+              inclusion: должна быть idea, exploring, proposed или implementing
+        comment:
+          attributes:
+            base:
+              task_or_change: Комментарий относится к задаче или к изменению
         task:
           attributes:
             base:

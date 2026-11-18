@@ -32,11 +32,15 @@ Comments SHALL be written as Markdown in a plain text field and displayed format
 - **THEN** the comment shows a clickable link and the word "note" in bold
 
 ### Requirement: One feature set for editing and display
-Every place that displays Markdown — descriptions, comments, archived tasks and announcements — SHALL support exactly the formatting the description editor supports. Markdown constructs outside that set, such as tables or images, SHALL NOT produce their HTML elements; their text content (cell text, image alt text) SHALL be kept as plain text.
+Every place that displays Markdown — descriptions, comments, archived tasks, announcements, the ideas of changes and the files of changes — SHALL support exactly the formatting the description editor supports. Markdown constructs outside that set, such as tables or images, SHALL NOT produce their HTML elements; their text content (cell text, image alt text) SHALL be kept as plain text.
 
 #### Scenario: Image syntax in a comment
 - **WHEN** a comment contains `![x](https://tracker.example/pixel.png)`
 - **THEN** no image element is created, nothing is requested from `tracker.example`, and the alt text "x" is shown as plain text
+
+#### Scenario: Table in a change file
+- **WHEN** the `design.md` of a change holds a table and is shown formatted
+- **THEN** no table element is created and the text of its cells is shown as plain text
 
 ### Requirement: Safe Markdown rendering
 Rendering Markdown SHALL NOT produce any element or attribute outside the supported formatting, and SHALL NOT run scripts or event handlers, whatever raw HTML the Markdown contains. Links SHALL be rendered only for `http`, `https` and `mailto` targets, SHALL open in a new tab, and SHALL carry `rel="noopener noreferrer nofollow"`. Links with any other target SHALL be shown as plain text.
@@ -50,8 +54,12 @@ Rendering Markdown SHALL NOT produce any element or attribute outside the suppor
 - **THEN** "click" is shown as plain text without a link
 
 ### Requirement: Read-only Markdown views
-Archived tasks and announcements SHALL display their Markdown content formatted, through the same renderer, without any editing controls.
+Archived tasks, announcements and the files of changes SHALL display their Markdown content formatted, through the same renderer, without any editing controls.
 
 #### Scenario: Archived task description
 - **WHEN** a member opens an archived task whose description contains a heading and a list
 - **THEN** the heading and list are shown formatted and cannot be edited
+
+#### Scenario: Proposal of a change
+- **WHEN** a member reads the `proposal.md` of a change on its page
+- **THEN** its headings and lists are shown formatted, and it cannot be edited
