@@ -239,7 +239,7 @@ export const en = {
     copyConfig: "Copy configuration",
     copied: "Copied",
     copyFailed: "Could not copy. Select the text and copy it yourself.",
-    mcpNote: "A Claude Code session started in a working copy where this command was run acts as {agent} there. Give each agent a working copy of its own.",
+    mcpNote: "Claude Code keeps this server for the repository the command is run in, its worktrees included: sessions there act as {agent}. To run several agents on one machine, see “Running agents” in the MCP guide.",
     stateFree: "Online · free",
     stateOn: "Online · on {change}",
     stateOnElsewhere: "Online · busy in another project",

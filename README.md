@@ -387,6 +387,71 @@ below.
 This repository is developed this way: its own OpenSpec changes go on a
 Goalner board, and agents work their cards through MCP.
 
+## Running agents
+
+Each agent of a project's pool is one Claude Code instance on a working copy
+of its own, with its own token, running the `goalner-worker` skill
+(`.claude/skills/goalner-worker/SKILL.md`) in a loop. On one machine, for
+each agent:
+
+1. On the project's **Agents** screen, create the agent with a read-write
+   token for **API and MCP**: the skill works through MCP, and its
+   compaction hook calls the API.
+2. Give it a git worktree of its own:
+
+   ```sh
+   git worktree add --detach ../goalner-fish main
+   ```
+
+3. Start Claude Code there with the agent's token, test databases of its own,
+   and only the MCP server of `.claude/goalner-worker.mcp.json`, which reads
+   the token from `GOALNER_TOKEN`:
+
+   ```sh
+   cd ../goalner-fish
+   GOALNER_TOKEN=glnr_... GOALNER_TEST_DB_SUFFIX=fish \
+     claude --strict-mcp-config --mcp-config .claude/goalner-worker.mcp.json
+   ```
+
+   `claude mcp add` does not work for this: Claude Code would keep the
+   server for the repository, and every worktree would share it.
+   `GOALNER_MCP_URL` and `GOALNER_URL` point the server and the hook at
+   another Goalner than `http://localhost:3100/mcp` and
+   `http://localhost:3000`.
+4. In that session, run `/loop 1m /goalner-worker TEST`.
+
+Run one instance per agent: two instances with one token are one agent to
+Goalner, and would take each other's requests.
+
+Each agent then:
+
+- learns which agent it is (`showProfile`), and stops if the token is a
+  person's;
+- every minute takes the next request for it (`claimRequest`). Each take is
+  its check-in, so an agent whose loop stops shows as offline after 3
+  minutes;
+- works on each change in a branch named after the change, created from a
+  base branch that it asks about in the thread when the idea does not say,
+  and commits there. It never pushes;
+- does the step: explores and asks, writes and imports the OpenSpec change,
+  replies, implements the cards, or archives the OpenSpec change;
+- finishes the request with a comment in the change's thread.
+
+When a change is **blocked**, its agent's context filled up: the skill's
+`PreCompact` hook (`bin/goalner-context-full`) told Goalner, and stopped
+Claude Code from compacting the session into a summary. On the change's
+page, choose **Release Fish**, then ask for the step again, such as
+**Continue implementing**: the next free agent takes it and continues from
+the change's files, cards, commits and thread. Clear or restart the blocked
+instance to make it a free agent again.
+
+When an agent's terminal is gone for good, release the agent on its change's
+page: its taken request is cancelled, and the change goes back to any free
+agent.
+
+The steps of "OpenSpec changes" above remain the manual way to drive an
+agent from its terminal.
+
 Goalner never sends to these addresses in any case: every mailer drops them.
 
 ## MCP server
@@ -466,6 +531,11 @@ claude mcp add --transport http goalner https://goalner.com/mcp --header "Author
 
 Tool calls are then the agent's: a task it creates has the agent as its
 creator. `listTasks` with the view `assigned` lists the agent's own work.
+
+Claude Code keeps a server added this way for the repository it was added
+in, git worktrees included, so every working copy of the repository acts as
+that one agent. To run several agents on one machine, give each its own
+session as in "Running agents" below.
 
 ### Connected apps
 

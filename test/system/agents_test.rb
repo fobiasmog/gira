@@ -58,7 +58,7 @@ class AgentsTest < ApplicationSystemTestCase
       config = JSON.parse(find_field("MCP client configuration").value)
       assert_equal [ Oauth.resource, "Bearer #{token}" ], [ config.dig("mcpServers", "goalner", "url"), config.dig("mcpServers", "goalner", "headers", "Authorization") ]
       assert_link "How to connect an MCP client", href: "/docs/mcp"
-      assert_text "acts as Fish there. Give each agent a working copy of its own."
+      assert_text "its worktrees included: sessions there act as Fish."
       assert_no_link "API reference" # an MCP-only token does not work at the API
 
       execute_script("navigator.clipboard.writeText = async (text) => { window.__copied = text }")
