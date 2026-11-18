@@ -9,15 +9,25 @@
 # only those are archived when their marks are gone. Tasks added to the
 # change by hand are left alone until a mark names them, which adopts them.
 #
+# The proposal, the design and the delta specs, when sent, become the
+# change's files, replacing those of the last import; the import is recorded
+# in the change's history, and a change in Idea or Exploring moves to
+# Proposed (add-change-conversation design.md, decisions 4 to 6).
+#
 # An import runs under the project's lock in one transaction, so it lands
 # completely or not at all. Refusals raise ActiveRecord::RecordInvalid,
 # naming the field and, for the text, the line; a re-import that carries no
 # mark at all raises KeysMissing.
 class Change::Import
-  ARTIFACTS = %w[tasks].freeze
+  ARTIFACTS = %w[tasks proposal design specs].freeze
+  # Artifacts stored as a file each, with the path they are stored at.
+  DOCUMENTS = { "proposal" => ChangeFile::PROPOSAL, "design" => ChangeFile::DESIGN }.freeze
   MAX_TEXT_LENGTH = 100_000
   MAX_SECTIONS = 50
   MAX_ITEMS = 500
+  MAX_SPECS = 50
+  # Phases an import moves on to Proposed.
+  BEFORE_PROPOSED = %w[idea exploring].freeze
 
   # The text carries no mark although tasks.md cards of the change are kept:
   # the client did not save the text the last import returned.
@@ -51,6 +61,8 @@ class Change::Import
       archive_unmatched!
       complete_items!
       @change.update!(tasks_text: @text.render(keys: keys_by_line, checked: done_lines))
+      store_files!
+      record!
       Result.new(change: @change, created:)
     end
   end
@@ -69,8 +81,38 @@ class Change::Import
       elsif artifacts["tasks"].length > MAX_TEXT_LENGTH
         change.errors.add(:tasks, :too_long, count: MAX_TEXT_LENGTH)
       end
+      DOCUMENTS.each_key { |key| validate_document(key, artifacts[key]) }
+      validate_specs(artifacts["specs"])
       @artifacts = artifacts
       refuse!
+    end
+
+    # A proposal or a design: a text, or null for none.
+    def validate_document(key, text)
+      if !text.nil? && !text.is_a?(String)
+        change.errors.add(key.to_sym, "must be a text")
+      elsif text && text.length > MAX_TEXT_LENGTH
+        # A message, not :too_long, which would read the attribute from Change.
+        change.errors.add(key.to_sym, I18n.t("errors.messages.too_long", count: MAX_TEXT_LENGTH))
+      end
+    end
+
+    # An object of capability path => text of its spec.md, or null for none.
+    # Each refused key is named.
+    def validate_specs(specs)
+      return if specs.nil?
+      return change.errors.add(:specs, "must be an object whose keys are capability paths") unless specs.is_a?(Hash)
+
+      change.errors.add(:specs, "has #{specs.size} specs; an import carries at most #{MAX_SPECS}") if specs.size > MAX_SPECS
+      specs.each do |capability, text|
+        if !ChangeFile.valid_capability?(capability)
+          change.errors.add(:specs, "#{capability}: is not a capability path; use lowercase letters and digits joined by single hyphens, separated by single slashes, such as identity/user-auth")
+        elsif !text.is_a?(String)
+          change.errors.add(:specs, "#{capability}: must be a text")
+        elsif text.length > MAX_TEXT_LENGTH
+          change.errors.add(:specs, "#{capability}: is too long (maximum is #{MAX_TEXT_LENGTH} characters)")
+        end
+      end
     end
 
     def validate_text!
@@ -120,8 +162,32 @@ class Change::Import
       change.tasks.kept.where(in_tasks_md: true)
     end
 
+    # A change the import creates starts in Proposed.
     def save_change!
+      change.phase = "proposed" if change.new_record?
       change.update!(imported_by: @user, imported_at: Time.current)
+    end
+
+    # path => text of each file sent, in the order of ChangeFile.in_order.
+    def files_sent
+      @files_sent ||= begin
+        documents = DOCUMENTS.filter_map { |key, path| [ path, @artifacts[key] ] unless @artifacts[key].nil? }
+        specs = (@artifacts["specs"] || {}).map { |capability, text| [ ChangeFile.spec_path(capability), text ] }.sort_by(&:first)
+        (documents + specs).to_h
+      end
+    end
+
+    # The files of a change are those of its last import.
+    def store_files!
+      change.files.where.not(path: files_sent.keys).delete_all
+      stored = change.files.where(path: files_sent.keys).index_by(&:path)
+      files_sent.each { |path, text| (stored[path] || change.files.build(path:)).update!(text:) }
+    end
+
+    # The import first, then the move it causes.
+    def record!
+      change.events.create!(kind: "import", actor: @user, paths: [ *files_sent.keys, ChangeFile::TASKS ])
+      change.move_to!("proposed", by: @user) if BEFORE_PROPOSED.include?(change.phase)
     end
 
     # Cards and subtasks in text order, so new ones are added in that order.

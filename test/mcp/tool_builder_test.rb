@@ -32,7 +32,7 @@ class McpToolBuilderTest < McpIntegrationTest
     names = listed_tools.keys
 
     assert_equal json_operation_ids.sort, names.sort
-    assert_equal 31, names.size
+    assert_equal 35, names.size
     assert_not_includes names, "downloadFile"
     assert_not_includes names, "downloadFilePreview"
   end

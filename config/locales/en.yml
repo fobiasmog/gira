@@ -228,6 +228,18 @@ en:
               too_many: "You can have at most %{count} active API tokens. Revoke one to create another."
               too_many_for_agent: "An agent can have at most %{count} tokens. Revoke one to issue another."
               agent_deleted: This agent is deleted. Restore it to issue tokens.
+        change:
+          attributes:
+            base:
+              archived: Archived changes cannot be changed
+            idea:
+              fixed: is fixed once exploring starts; write in the thread instead
+            phase:
+              inclusion: must be idea, exploring, proposed or implementing
+        comment:
+          attributes:
+            base:
+              task_or_change: A comment belongs to a task or to a change
         task:
           attributes:
             base:

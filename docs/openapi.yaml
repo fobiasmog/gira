@@ -22,12 +22,15 @@ info:
 
     Work is grouped into changes: a project holds many open changes at once,
     each with its own tasks and board, and a change is archived when it is
-    done. Agents that plan with OpenSpec push a change's `tasks.md` with
-    `POST /api/projects/{project_id}/openspec_changes`, which fills the
-    change of that name, and save the marked text it returns; see that
-    operation for the whole loop. Every request that names a task takes its
-    id or its key, such as `GOAL-12`, and every request that names a change
-    in its path takes its id or, for an open change, its name.
+    done. A change starts from an idea and moves through the phases Idea,
+    Exploring, Proposed, Implementing and Done. Its thread is where agents
+    ask and people answer, and its history records every phase move and
+    import. Agents that plan with OpenSpec push every file of a change's
+    folder with `POST /api/projects/{project_id}/openspec_changes`, which
+    fills the change of that name, and save the marked `tasks.md` text it
+    returns; see that operation for the whole loop. Every request that names
+    a task takes its id or its key, such as `GOAL-12`, and every request that
+    names a change in its path takes its id or, for an open change, its name.
 
     Errors use one JSON envelope: `{ "error": { "code", "message", "fields" } }`.
 
@@ -47,13 +50,13 @@ tags:
   - name: Subtasks
     description: Subtasks of a root task, and their completion.
   - name: Comments
-    description: Markdown comments on tasks, with file attachments.
+    description: Markdown comments on tasks and in the threads of changes, with file attachments.
   - name: Labels
     description: The project's labels.
   - name: Changes
-    description: Changes, the pieces of work of a project, each with its own tasks and board. Any number of them can be open; none is "active".
+    description: Changes, the pieces of work of a project, each with its idea, phase, thread, history, OpenSpec files, tasks and board. Any number of them can be open; none is "active".
   - name: OpenSpec
-    description: Importing an OpenSpec change's tasks.md into the change of that name, whose sections become cards and whose items become their subtasks.
+    description: Importing an OpenSpec change's files into the change of that name; the sections of its tasks.md become cards and its items their subtasks.
   - name: Files
     description: Downloads of the attachments and avatars linked from other responses.
 
@@ -799,11 +802,12 @@ paths:
       tags: [Changes]
       summary: Create a change
       description: |
-        An open change with no tasks. Name it as its OpenSpec change folder is
-        named. No two open changes of a project share a name, but a new change
-        may take the name of an archived one. Importing an OpenSpec change
-        (`importOpenspecChange`) creates its change too, so creating it first
-        is only needed to add tasks by hand before the first import.
+        An open change in the phase Idea, with no tasks. Name it as its
+        OpenSpec change folder is named, and say what the work is in `idea`.
+        No two open changes of a project share a name, but a new change may
+        take the name of an archived one. Importing an OpenSpec change
+        (`importOpenspecChange`) creates its change too, in the phase
+        Proposed and without an idea.
       requestBody:
         required: true
         content:
@@ -814,6 +818,8 @@ paths:
               properties:
                 name:
                   $ref: "#/components/schemas/ChangeName"
+                idea:
+                  $ref: "#/components/schemas/ChangeIdea"
       responses:
         "201":
           description: The change.
@@ -836,12 +842,15 @@ paths:
     get:
       operationId: showChange
       tags: [Changes]
-      summary: Show a change with its cards and its tasks.md
+      summary: Show a change with its idea, history, files, cards and tasks.md
       description: |
-        The change, its cards that are not archived, in column order, and the
-        `tasks.md` text its last import returned, in which every item whose
-        subtask is now done is checked. For a change never imported, the text,
-        importer and import time are `null`.
+        The change with its idea, its phase, whether it is waiting for people,
+        its history oldest first, the paths of its OpenSpec files (read one
+        with `showChangeFile`), its cards that are not archived, in column
+        order, and the `tasks.md` text its last import returned, in which
+        every item whose subtask is now done is checked. For a change never
+        imported, the text, importer and import time are `null`. Its thread is
+        listed by `listChangeComments`.
       parameters:
         - $ref: "#/components/parameters/ProjectId"
         - $ref: "#/components/parameters/ChangeIdAsId"
@@ -856,6 +865,50 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    patch:
+      operationId: updateChange
+      tags: [Changes]
+      summary: Move a change to another phase, or edit its idea
+      description: |
+        Send `phase`, `idea`, or both. Move the change as your work on it
+        moves: to `exploring` when you start exploring its idea, and to
+        `implementing` when you are told to implement it. Importing it moves
+        a change in Idea or Exploring to Proposed by itself. Any of `idea`,
+        `exploring`, `proposed` and `implementing` may be chosen, earlier ones
+        included; Done cannot be chosen, because Goalner reports it while all
+        the cards of a change in Implementing are in the done column. Each
+        move is recorded in the change's history with who made it; moving to
+        the phase the change is in records nothing.
+
+        The idea can only be changed while the change is in Idea: corrections
+        later go into its thread (`createChangeComment`). An archived change
+        cannot be changed. The API also accepts PUT.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/ChangeIdAsId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeUpdate"
+      responses:
+        "200":
+          description: The change, as `showChange` returns it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
         "429":
           $ref: "#/components/responses/RateLimited"
 
@@ -884,6 +937,119 @@ paths:
           $ref: "#/components/responses/InsufficientScope"
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/changes/{change_id}/file:
+    get:
+      operationId: showChangeFile
+      tags: [Changes]
+      summary: Read one OpenSpec file of a change
+      description: |
+        One file of the change's last import, exactly as it was sent:
+        `proposal.md`, `design.md` or `specs/<capability>/spec.md`, as
+        `showChange` lists them. A path that names no file of the change is
+        a 404. `tasks.md` is not a file here: it is the `tasks_text` of
+        `showChange`. Archived changes too.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/ChangeId"
+        - name: path
+          in: query
+          required: true
+          description: The file's path, such as `proposal.md` or `specs/export/spec.md`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The file.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeFile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/changes/{change_id}/comments:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ChangeId"
+    get:
+      operationId: listChangeComments
+      tags: [Comments]
+      summary: List a change's thread
+      description: |
+        The comments of the change's thread, oldest first, as a conversation
+        reads. Read it before you work on a change, and again when you wait
+        for an answer. Archived changes too.
+      responses:
+        "200":
+          description: The comments, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    post:
+      operationId: createChangeComment
+      tags: [Comments]
+      summary: Comment in a change's thread
+      description: |
+        Ask your questions about a change here, and report a step you have
+        finished; then wait for an answer in the thread. While the newest
+        comment of the thread was written by an agent, the change is shown as
+        waiting for people. The comment's author is the token's owner. Attach
+        up to 10 files of at most 10 MB each (PNG, JPEG, GIF, WebP, PDF, plain
+        text, CSV or ZIP) by sending `multipart/form-data`. Archived changes
+        cannot be commented on.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentBody"
+          multipart/form-data:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body:
+                  type: string
+                  minLength: 1
+                  maxLength: 10000
+                  description: Markdown.
+                attachments[]:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        "201":
+          description: The comment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
         "429":
           $ref: "#/components/responses/RateLimited"
 
@@ -920,13 +1086,27 @@ paths:
       tags: [OpenSpec]
       summary: Import an OpenSpec change
       description: |
-        Fills the project's open change of that name from the text of its
-        `tasks.md`, and creates the change when there is none: you may create
-        it first (`createChange`) or let the first import create it. Each `##`
-        section becomes a card titled `<change>: <section>`, and each checkbox
-        item a subtask of that card; items before the first section go on a
-        card `<change>: Tasks`. All of them belong to the change, so they show
-        on its board, and they stay in it.
+        Fills the project's open change of that name from the files of its
+        OpenSpec folder, and creates the change when there is none: you may
+        create it first (`createChange`) or let the first import create it.
+        Send every file of the folder: `tasks.md` as `tasks`, and, when they
+        exist, `proposal.md` as `proposal`, `design.md` as `design`, and each
+        `specs/<capability>/spec.md` under `specs`, keyed by its capability
+        path. They become the change's files, replacing those of the last
+        import, so that people can review them on the change's page; a file
+        you do not send no longer belongs to the change. The response lists
+        their paths but not their text (`showChangeFile` reads one).
+
+        Each `##` section of `tasks` becomes a card titled
+        `<change>: <section>`, and each checkbox item a subtask of that card;
+        items before the first section go on a card `<change>: Tasks`. All of
+        them belong to the change, so they show on its board, and they stay in
+        it.
+
+        An import into a change in Idea or Exploring moves it to Proposed, and
+        a change the import creates starts in Proposed. A change in
+        Implementing stays there. Every import is recorded in the change's
+        history.
 
         The response's `tasks_text` is the same text with every heading and
         item marked with its task's key, such as `<!-- goalner:GOAL-12 -->`,
@@ -937,21 +1117,30 @@ paths:
         which carries the marked text to save.
 
         How an agent works through a change:
-        1. Import the change, and save the returned `tasks_text` into `tasks.md`.
-        2. Take a card assigned to you (`listTasks` with `view=assigned`), and
-           work through its subtasks in order.
-        3. Complete each subtask (`completeSubtask`, with the key from its
+        1. Read the change's idea (`showChange`) and its thread
+           (`listChangeComments`).
+        2. Move it to Exploring (`updateChange` with `phase: exploring`), and
+           explore. Ask your questions in its thread (`createChangeComment`)
+           and wait for the answers there.
+        3. Write the OpenSpec change, import every file of its folder, and
+           save the returned `tasks_text` into `tasks.md`. The change is now
+           Proposed: wait in the thread until you are told to implement it.
+        4. Move it to Implementing (`updateChange`). Take a card assigned to
+           you (`listTasks` with `view=assigned`), and work through its
+           subtasks in order.
+        5. Complete each subtask (`completeSubtask`, with the key from its
            mark), check its box in `tasks.md`, and commit.
-        4. Move the card to the done column (`placeTask`).
-        5. Import again, and save the returned `tasks_text`.
-        6. When the change is done, archive it (`archiveChange`).
+        6. Move the card to the done column (`placeTask`).
+        7. Import again, and save the returned `tasks_text`.
+        8. When the change is done, archive it (`archiveChange`).
 
         A checked item completes its subtask, a subtask done in Goalner is
         checked in the returned text, and an import never reopens anything.
         Tasks whose marks are gone from the text are archived. Tasks added to
         the change by hand are left alone, unless a mark names one, which
         makes it that section's card or that item's subtask. The text is the
-        source of titles and descriptions; discuss in comments.
+        source of titles and descriptions; discuss in the change's thread or
+        in a task's comments.
 
         An import that creates the change answers 201, one into an open change
         200. The marks of an archived change are refused: its name may be
@@ -1483,9 +1672,23 @@ components:
         total:
           type: integer
 
+    ChangeIdea:
+      type: [string, "null"]
+      maxLength: 100000
+      description: Markdown that says what the work is, stored exactly as written. It can be changed only while the change is in Idea.
+
+    ChangePhase:
+      type: string
+      enum: [idea, exploring, proposed, implementing, done]
+      description: |
+        Where the change is: `idea`, `exploring`, `proposed`, `implementing`
+        or `done`, in that order. `done` is reported while the change is in
+        Implementing and all its cards, and at least one, are in the done
+        column; it cannot be chosen.
+
     ChangeFields:
       type: object
-      required: [id, name, archived_at, task_counts]
+      required: [id, name, archived_at, phase, waiting_for_people, task_counts]
       properties:
         id: { type: integer }
         name:
@@ -1495,6 +1698,11 @@ components:
           type: [string, "null"]
           format: date-time
           description: When the change was archived; `null` while it is open.
+        phase:
+          $ref: "#/components/schemas/ChangePhase"
+        waiting_for_people:
+          type: boolean
+          description: Whether the newest comment of the change's thread was written by an agent. Never true for an archived change.
         task_counts:
           $ref: "#/components/schemas/TaskCounts"
 
@@ -1505,12 +1713,34 @@ components:
       unevaluatedProperties: false
 
     ChangeDetail:
-      description: A change with its cards and its last OpenSpec import.
+      description: A change with its idea, history, files, cards and last OpenSpec import.
       allOf:
         - $ref: "#/components/schemas/ChangeFields"
         - type: object
-          required: [imported_by, imported_at, tasks_text, cards]
+          required: [idea, imported_by, imported_at, tasks_text, history, files, cards]
           properties:
+            idea:
+              $ref: "#/components/schemas/ChangeIdea"
+            history:
+              type: array
+              description: Every phase move and import of the change, oldest first.
+              items:
+                $ref: "#/components/schemas/ChangeEvent"
+            files:
+              type: array
+              description: |
+                The OpenSpec files of the change's last import, `proposal.md`
+                first, then `design.md`, then the spec files by path. Read one
+                with `showChangeFile`.
+              items:
+                type: object
+                additionalProperties: false
+                required: [path, length]
+                properties:
+                  path: { type: string }
+                  length:
+                    type: integer
+                    description: In characters.
             imported_by:
               description: Who imported the change last; `null` until the first import.
               oneOf:
@@ -1532,6 +1762,50 @@ components:
                 $ref: "#/components/schemas/TaskCard"
       unevaluatedProperties: false
 
+    ChangeUpdate:
+      type: object
+      properties:
+        phase:
+          type: string
+          enum: [idea, exploring, proposed, implementing]
+          description: The phase to move the change to.
+        idea:
+          $ref: "#/components/schemas/ChangeIdea"
+
+    ChangeEvent:
+      type: object
+      additionalProperties: false
+      required: [kind, actor, phase, paths, created_at]
+      properties:
+        kind:
+          type: string
+          enum: [phase, import]
+          description: A move to another phase, or an import.
+        actor:
+          $ref: "#/components/schemas/UserCard"
+        phase:
+          type: [string, "null"]
+          enum: [idea, exploring, proposed, implementing, null]
+          description: The phase moved to; `null` for an import.
+        paths:
+          type: [array, "null"]
+          description: The files the import brought, `tasks.md` included; `null` for a move.
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ChangeFile:
+      type: object
+      additionalProperties: false
+      required: [path, text]
+      properties:
+        path: { type: string }
+        text:
+          type: string
+          description: The file's text exactly as imported.
+
     OpenspecImport:
       type: object
       required: [name, artifacts]
@@ -1542,6 +1816,7 @@ components:
           type: object
           additionalProperties: false
           required: [tasks]
+          description: Every file of the change's folder, each as it is in the repository.
           properties:
             tasks:
               type: string
@@ -1550,6 +1825,26 @@ components:
                 The text of the change's `tasks.md` as it is in the repository,
                 with the marks of earlier imports. At most 50 sections and 500
                 items.
+            proposal:
+              type: string
+              maxLength: 100000
+              description: The text of the change's `proposal.md`.
+            design:
+              type: string
+              maxLength: 100000
+              description: The text of the change's `design.md`.
+            specs:
+              type: object
+              maxProperties: 50
+              description: |
+                The change's delta specs: each key is the path of a folder under
+                the change's `specs/`, such as `export` or `identity/user-auth`,
+                and its value the text of that folder's `spec.md`.
+              propertyNames:
+                pattern: "^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*$"
+              additionalProperties:
+                type: string
+                maxLength: 100000
 
     OpenspecKeysMissing:
       type: object

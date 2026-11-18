@@ -18,7 +18,7 @@ export const projectSections: ProjectSection[] = [
     icon: "view_kanban",
     also: ["board-other", "board-change", "board-list", "board-list-other", "board-list-change", "task"],
   },
-  { name: "changes", label: "navigation.changes", icon: "flag" },
+  { name: "changes", label: "navigation.changes", icon: "flag", also: ["change"] },
   { name: "members", label: "navigation.members", icon: "group" },
   { name: "agents", label: "navigation.agents", icon: "robot" },
   { name: "archive", label: "navigation.archive", icon: "archive", also: ["archived-task"] },

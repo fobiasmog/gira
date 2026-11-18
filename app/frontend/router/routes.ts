@@ -1,4 +1,5 @@
 import type { RouteLocationNormalized, RouteLocationRaw, RouteRecordRaw } from "vue-router"
+import type { Change } from "../api/types.ts"
 import type { BoardTab } from "../stores/board.ts"
 
 export function parseId(value: unknown): number | null {
@@ -43,6 +44,17 @@ export function boardLocation(projectId: number, layout: BoardLayout, tab: Board
   return { name, params: { pid: projectId } }
 }
 
+// A change's page (spec web-client, "Change page"): an open change by its
+// name, an archived one by its id, so that the address keeps showing the
+// same change. A name made only of digits would be read as an id, so such a
+// change goes by its id too.
+export function changeLocation(projectId: number, change: Pick<Change, "id" | "name" | "archived_at">): RouteLocationRaw {
+  const byName = change.archived_at === null && !/^\d+$/.test(change.name)
+  return { name: "change", params: { pid: projectId, change: byName ? change.name : String(change.id) } }
+}
+
+const changeProps = (route: RouteLocationNormalized) => ({ projectId: parseId(route.params.pid), changeRef: String(route.params.change) })
+
 export const routes: RouteRecordRaw[] = [
   { path: "/", name: "dashboard", component: () => import("../pages/DashboardPage.vue") },
   { path: "/projects", name: "projects", component: () => import("../pages/ProjectsPage.vue") },
@@ -51,6 +63,7 @@ export const routes: RouteRecordRaw[] = [
   ...boardRoutes("kanban"),
   ...boardRoutes("list"),
   { path: `/projects/:pid${id}/changes`, name: "changes", component: () => import("../pages/ChangesPage.vue"), props: ids },
+  { path: `/projects/:pid${id}/changes/:change`, name: "change", component: () => import("../pages/ChangePage.vue"), props: changeProps },
   { path: `/projects/:pid${id}/members`, name: "members", component: () => import("../pages/MembersPage.vue"), props: ids },
   { path: `/projects/:pid${id}/agents`, name: "agents", component: () => import("../pages/ProjectAgentsPage.vue"), props: ids },
   { path: `/projects/:pid${id}/settings`, name: "project-settings", component: () => import("../pages/ProjectSettingsPage.vue"), props: ids },

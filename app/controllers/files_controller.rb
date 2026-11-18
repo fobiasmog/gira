@@ -1,9 +1,9 @@
 # Delivers stored files only to users allowed to see them (design.md,
 # Decision 7): an avatar to its owner and to members of the projects the
-# request may reach, a comment attachment to members of the comment's project
-# (with an API token, only within the token's project). Anything else is a
-# 404. Files are always downloads (Content-Disposition: attachment) and never
-# sniffed by browsers.
+# request may reach, a comment attachment to members of the project of the
+# comment's task or change (with an API token, only within the token's
+# project). Anything else is a 404. Files are always downloads
+# (Content-Disposition: attachment) and never sniffed by browsers.
 class FilesController < ApplicationController
   include ApiTokenAuthentication
   allow_token_access only: :show
@@ -32,7 +32,7 @@ class FilesController < ApplicationController
         attachment.record_id == Current.user.id || Membership.where(project: Current.projects).exists?(user_id: attachment.record_id)
       in [ "Comment", "attachments" ]
         comment = attachment.record
-        comment.deleted_at.nil? && Current.projects.exists?(comment.task.project_id)
+        comment.deleted_at.nil? && Current.projects.exists?(comment.project_id)
       else
         false
       end

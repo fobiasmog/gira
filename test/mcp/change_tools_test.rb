@@ -1,13 +1,16 @@
 require_relative "support"
 
 # Changes, OpenSpec imports and task keys through MCP (spec changes; spec
-# openspec-changes, "Import a change"; spec tasks, "Name a task by id or key
-# in every task request"; replace-sprints-with-changes design.md, decision
-# 5). The tools come from docs/openapi.yaml with no MCP code of their own.
+# openspec-changes, "Import a change" and "Files of a change"; spec comments,
+# "Comment on a change"; spec tasks, "Name a task by id or key in every task
+# request"; replace-sprints-with-changes design.md, decision 5;
+# add-change-conversation design.md, decision 9). The tools come from
+# docs/openapi.yaml with no MCP code of their own.
 class McpChangeToolsTest < McpIntegrationTest
   TEXT = "## 1. Model\n\n- [ ] 1.1 Add the table\n- [ ] 1.2 Add the model\n"
-  CHANGE_TOOLS = %w[listChanges createChange showChange archiveChange listChangeTasks setTaskChange importOpenspecChange].freeze
-  READ_TOOLS = %w[listChanges showChange listChangeTasks].freeze
+  CHANGE_TOOLS = %w[listChanges createChange showChange updateChange archiveChange listChangeTasks setTaskChange importOpenspecChange
+    showChangeFile listChangeComments createChangeComment].freeze
+  READ_TOOLS = %w[listChanges showChange listChangeTasks showChangeFile listChangeComments].freeze
 
   def default_token
     "glnr_two_goal_read_write"
@@ -115,5 +118,55 @@ class McpChangeToolsTest < McpIntegrationTest
     end
 
     assert_empty api_requests - [ "GET /api/me" ]
+  end
+
+  # The conversation of a change (add-change-conversation, task 4.2)
+
+  test "the conversation tools take what agents send: a phase or an idea, a path, a comment body" do
+    tools = listed_tools
+
+    assert_equal %w[idea phase], tools.fetch("updateChange").dig("inputSchema", "properties").keys.without("project_id", "id").sort
+    assert_includes tools.fetch("showChangeFile").dig("inputSchema", "required"), "path"
+    assert_includes tools.fetch("createChangeComment").dig("inputSchema", "required"), "body"
+    assert_match(/Ask your questions about a change here/, tools.fetch("createChangeComment")["description"])
+    assert_match(/Send every file of the folder/, tools.fetch("importOpenspecChange")["description"])
+  end
+
+  test "an agent moves a change, asks in its thread, imports every file and reads one back" do
+    project = projects(:goal)
+    change = project.project_changes.create!(name: "export-csv", idea: "CSV for weekly reports")
+    fish = create_agent(project, name: "Fish")
+    token = issue_agent_token(fish, issuer: users(:one), channels: %w[mcp])
+
+    moved = body(call_tool("updateChange", { project_id: project.id, id: "export-csv", phase: "exploring" }, token:))
+    assert_equal [ "exploring", "CSV for weekly reports" ], moved.values_at("phase", "idea")
+    assert_equal [ [ "phase", "Fish", true, "exploring" ] ], moved["history"].map { [ it["kind"], it.dig("actor", "name"), it.dig("actor", "agent"), it["phase"] ] }
+
+    asked = body(call_tool("createChangeComment", { project_id: project.id, change_id: "export-csv", body: "Archived tasks too?" }, token:))
+    assert_equal [ "Archived tasks too?", "Fish" ], [ asked["body"], asked.dig("author", "name") ]
+    assert body(call_tool("showChange", { project_id: project.id, id: "export-csv" }, token:))["waiting_for_people"]
+    assert_equal [ "Archived tasks too?" ], body(call_tool("listChangeComments", { project_id: project.id, change_id: change.id }, token:)).map { it["body"] }
+
+    imported = body(call_tool("importOpenspecChange", { project_id: project.id, name: "export-csv",
+      artifacts: { tasks: TEXT, proposal: "# Why\n", specs: { "export" => "## ADDED\n" } } }, token:))
+    assert_equal [ "proposed", %w[proposal.md specs/export/spec.md] ], [ imported["phase"], imported["files"].map { it["path"] } ]
+    assert_not_includes imported.to_json, "## ADDED"
+
+    file = body(call_tool("showChangeFile", { project_id: project.id, change_id: "export-csv", path: "specs/export/spec.md" }, token:))
+    assert_equal({ "path" => "specs/export/spec.md", "text" => "## ADDED\n" }, file)
+
+    assert_equal [ [ "phase", "exploring" ], [ "import", nil ], [ "phase", "proposed" ] ], change.events.map { [ it.kind, it.phase ] }
+    assert change.events.all? { it.actor == fish.user }
+    assert_equal fish.user, change.comments.sole.author
+  end
+
+  test "Done cannot be chosen through MCP either" do
+    project = projects(:goal)
+    project.project_changes.create!(name: "export-csv")
+
+    result = call_tool("updateChange", { project_id: project.id, id: "export-csv", phase: "done" })
+
+    assert result["isError"]
+    assert_equal "idea", project.project_changes.sole.phase
   end
 end
