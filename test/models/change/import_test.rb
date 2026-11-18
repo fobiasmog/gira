@@ -1,9 +1,11 @@
 require "test_helper"
 
 # Spec openspec-changes: "Import a change", "Cards and subtasks in their
-# change", "Goalner keys in the tasks text", "Import again" and "Limits of a
-# change"; add-openspec-changes design.md, decisions 3 to 5;
-# replace-sprints-with-changes design.md, decisions 3 and 4.
+# change", "Goalner keys in the tasks text", "Import again", "Limits of a
+# change" and "Files of a change"; spec changes, "Change history";
+# add-openspec-changes design.md, decisions 3 to 5;
+# replace-sprints-with-changes design.md, decisions 3 and 4;
+# add-change-conversation design.md, decisions 4 to 6.
 class Change::ImportTest < ActiveSupport::TestCase
   LABELS = <<~MD
     # Tasks
@@ -139,11 +141,54 @@ class Change::ImportTest < ActiveSupport::TestCase
     end
   end
 
-  test "artifacts other than tasks are refused" do
-    errors = refusal { import(nil, artifacts: { "tasks" => LABELS, "proposal" => "# Why" }) }
+  test "artifacts other than tasks, proposal, design and specs are refused" do
+    errors = refusal { import(nil, artifacts: { "tasks" => LABELS, "notes" => "# Notes" }) }
 
-    assert_equal [ "Proposal is not an artifact Goalner imports" ], errors.full_messages_for(:proposal)
+    assert_equal [ "Notes is not an artifact Goalner imports" ], errors.full_messages_for(:notes)
     assert_equal 0, Change.count
+  end
+
+  test "a proposal, a design or a spec that is not a text is refused, naming the field or the key" do
+    assert_no_difference [ *counts, -> { ChangeFile.count } ] do
+      assert refusal { import(nil, artifacts: { "tasks" => LABELS, "proposal" => 3 }) }.include?(:proposal)
+      assert refusal { import(nil, artifacts: { "tasks" => LABELS, "design" => [ "x" ] }) }.include?(:design)
+      assert refusal { import(nil, artifacts: { "tasks" => LABELS, "specs" => "## export" }) }.include?(:specs)
+      assert_equal [ "Specs export: must be a text" ], refusal { import(nil, artifacts: { "tasks" => LABELS, "specs" => { "export" => 1 } }) }.full_messages
+    end
+  end
+
+  test "an invalid capability path is refused, naming the key, and nothing changes" do
+    change = import(LABELS).change
+    before = change.reload.attributes
+
+    [ "../secrets", "Export", "identity//user-auth", "export/", "a--b", "" ].each do |key|
+      errors = refusal { import(nil, artifacts: { "tasks" => change.tasks_text, "specs" => { "export" => "# ok", key => "# bad" } }) }
+      assert_equal 1, errors[:specs].size, key
+      assert errors[:specs].first.start_with?("#{key}: is not a capability path"), key
+    end
+    assert_equal before, change.reload.attributes
+    assert_empty change.files
+    assert_equal 1, change.events.count
+  end
+
+  test "a proposal, a design or a spec of 100,001 characters is refused" do
+    long = "a" * 100_001
+
+    assert_no_difference [ *counts, -> { ChangeFile.count } ] do
+      assert_equal [ "Proposal is too long (maximum is 100000 characters)" ], refusal { import(nil, artifacts: { "tasks" => LABELS, "proposal" => long }) }.full_messages
+      assert_equal [ "Design is too long (maximum is 100000 characters)" ], refusal { import(nil, artifacts: { "tasks" => LABELS, "design" => long }) }.full_messages
+      assert_match(/export: is too long/, refusal { import(nil, artifacts: { "tasks" => LABELS, "specs" => { "export" => long } }) }.full_messages.join)
+    end
+    assert import(nil, artifacts: { "tasks" => LABELS, "proposal" => "a" * 100_000 })
+  end
+
+  test "more than 50 specs are refused" do
+    specs = (1..51).to_h { |n| [ "cap-#{n}", "# #{n}" ] }
+
+    assert_no_difference [ *counts, -> { ChangeFile.count } ] do
+      assert_match(/51 specs/, refusal { import(nil, artifacts: { "tasks" => LABELS, "specs" => specs }) }.full_messages_for(:specs).join)
+    end
+    assert_equal 50, import(nil, artifacts: { "tasks" => LABELS, "specs" => specs.first(50).to_h }).change.files.count
   end
 
   test "the tasks text is required and limited to 100,000 characters" do
@@ -431,5 +476,102 @@ class Change::ImportTest < ActiveSupport::TestCase
     model.update!(status: statuses(:goal_done))
     assert_includes change.current_tasks_text, "- [x] 1.2 Add the model"
     assert_includes change.tasks_text, "- [ ] 1.2 Add the model"
+  end
+
+  # Files and phase (add-change-conversation, tasks 2.1 and 2.2)
+
+  def artifacts(tasks = LABELS, **files) = { "tasks" => tasks, **files.transform_keys(&:to_s) }
+
+  def paths(change) = change.files.in_order.pluck(:path)
+
+  test "first import: the change is created in Proposed, with an import and no move in its history" do
+    change = import(nil, artifacts: artifacts(proposal: "# Why")).change
+
+    assert_equal "proposed", change.phase
+    assert_equal [ [ "import", nil, %w[proposal.md tasks.md], users(:one) ] ], change.events.map { |e| [ e.kind, e.phase, e.paths, e.actor ] }
+    assert_nil change.idea
+  end
+
+  test "change created by hand, moved to Exploring: the import moves it to Proposed and records the import, then the move" do
+    export = @project.project_changes.create!(name: "export-csv", idea: "CSV")
+    fish = create_agent(@project).user
+    export.move_to!("exploring", by: fish)
+
+    result = import(nil, name: "export-csv", user: fish, artifacts: artifacts(proposal: "# Why", specs: { "export" => "## ADDED" }))
+
+    assert_not result.created
+    assert_equal "proposed", export.reload.phase
+    assert_equal [ [ "phase", "exploring", nil ], [ "import", nil, %w[proposal.md specs/export/spec.md tasks.md] ], [ "phase", "proposed", nil ] ],
+      export.events.map { |e| [ e.kind, e.phase, e.paths ] }
+    assert export.events.all? { |e| e.actor == fish }
+    assert_equal "CSV", export.idea
+  end
+
+  test "an import into a change in Idea moves it to Proposed as well" do
+    export = @project.project_changes.create!(name: "export-csv")
+
+    import(LABELS, name: "export-csv")
+
+    assert_equal "proposed", export.reload.phase
+    assert_equal %w[import phase], export.events.map(&:kind)
+  end
+
+  test "import during implementation: the phase stays, and the new item becomes a subtask" do
+    change = import(LABELS).change
+    change.move_to!("implementing", by: users(:one))
+
+    import(change.tasks_text + "- [ ] 2.4 Add the changelog\n")
+
+    assert_equal "implementing", change.reload.phase
+    assert change.tasks.exists?(title: "2.4 Add the changelog")
+    assert_equal %w[import phase import], change.events.map(&:kind)
+  end
+
+  test "an import into a change in Proposed records the import only" do
+    change = import(LABELS).change
+
+    import(change.tasks_text, user: users(:two))
+
+    assert_equal [ [ "import", users(:one) ], [ "import", users(:two) ] ], change.events.map { |e| [ e.kind, e.actor ] }
+  end
+
+  test "all the files: stored exactly as sent, in order, and listed in the import's history line" do
+    proposal = "# Proposal\n\n## Why\n\nBecause.  \n"
+    files = { proposal:, design: "# Design\n", specs: { "identity/user-auth" => "## MODIFIED\n", "export" => "## ADDED\n" } }
+
+    change = import(nil, name: "export-csv", artifacts: artifacts(**files)).change
+
+    assert_equal %w[proposal.md design.md specs/export/spec.md specs/identity/user-auth/spec.md], paths(change)
+    assert_equal proposal, change.files.find_by!(path: "proposal.md").text
+    assert_equal "## MODIFIED\n", change.files.find_by!(path: "specs/identity/user-auth/spec.md").text
+    assert_equal %w[proposal.md design.md specs/export/spec.md specs/identity/user-auth/spec.md tasks.md], change.events.last.paths
+  end
+
+  test "a file no longer sent no longer belongs to the change, and a file sent again is replaced" do
+    change = import(nil, name: "export-csv", artifacts: artifacts(proposal: "# One", design: "# D", specs: { "export" => "# E" })).change
+
+    import(nil, name: "export-csv", artifacts: artifacts(change.tasks_text, proposal: "# Two", specs: { "export" => "# E" }))
+
+    assert_equal %w[proposal.md specs/export/spec.md], paths(change)
+    assert_equal "# Two", change.files.find_by!(path: "proposal.md").text
+    assert_equal %w[proposal.md specs/export/spec.md tasks.md], change.events.last.paths
+
+    import(nil, name: "export-csv", artifacts: artifacts(change.reload.tasks_text, proposal: nil))
+    assert_empty paths(change)
+    assert_equal %w[tasks.md], change.events.last.paths
+  end
+
+  test "all or nothing: a refused import leaves the files, the phase and the history as they were" do
+    change = @project.project_changes.create!(name: "export-csv")
+    change.move_to!("exploring", by: users(:one))
+    import(nil, name: "export-csv", artifacts: artifacts(proposal: "# One", design: "# D"))
+    change.update!(phase: "exploring")
+    before = [ paths(change), change.files.pluck(:text), change.events.count, change.reload.phase ]
+
+    assert_no_difference counts do
+      refusal { import(nil, name: "export-csv", artifacts: artifacts(change.tasks_text + "- [ ] 2.4 Bad <!-- goalner:GOAL-9999 -->\n", proposal: "# Two")) }
+    end
+    assert_raises(Change::Import::KeysMissing) { import(nil, name: "export-csv", artifacts: artifacts(LABELS, proposal: "# Two")) }
+    assert_equal before, [ paths(change), change.files.pluck(:text), change.events.count, change.reload.phase ]
   end
 end

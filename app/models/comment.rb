@@ -1,4 +1,6 @@
-# A Markdown comment on a task, stored exactly as written (spec comments).
+# A Markdown comment on a task or in the thread of a change, stored exactly
+# as written (spec comments). It belongs to exactly one of them, which the
+# database checks as well (add-change-conversation design.md, decision 7).
 class Comment < ApplicationRecord
   MAX_ATTACHMENTS = 10
   ATTACHMENT_POLICY = UploadPolicy.new(
@@ -6,13 +8,22 @@ class Comment < ApplicationRecord
     max_size: 10.megabytes
   )
 
-  belongs_to :task
+  belongs_to :task, optional: true
+  belongs_to :change, optional: true
   belongs_to :author, class_name: "User"
   has_many_attached :attachments
 
   scope :kept, -> { where(deleted_at: nil) }
+  # With what CommentSerializer shows of each.
+  scope :for_listing, -> { includes(author: [ :agent, { avatar_attachment: :blob } ], attachments_attachments: :blob) }
 
   validates :body, presence: true, length: { maximum: 10_000 }
+  validate :on_a_task_or_a_change
+
+  # The project of its task or change.
+  def project_id
+    (task || change).project_id
+  end
 
   # Checks uploads before anything is stored; a single refused file rejects
   # the whole comment with an error naming it.
@@ -38,6 +49,10 @@ class Comment < ApplicationRecord
   end
 
   private
+    def on_a_task_or_a_change
+      errors.add(:base, :task_or_change) unless [ task_id, change_id ].compact.one?
+    end
+
     # Plain text that is named .csv is stored as CSV; every other type is the
     # sniffed one.
     def detected_type(file)

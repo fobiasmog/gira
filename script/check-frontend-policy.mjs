@@ -52,7 +52,8 @@ function* walk(dir) {
   }
 }
 
-const IMPORT = /(?:\bimport\s*(?:[\w*{}\s,$]+\s*from\s*)?|\bexport\s*[\w*{}\s,$]+\s*from\s*|\bimport\s*\(\s*)["']([^"']+)["']/g
+// An import keyword is never right after a quote: the string "import" is not one.
+const IMPORT = /(?:(?<!["'`])\bimport\s*(?:[\w*{}\s,$]+\s*from\s*)?|\bexport\s*[\w*{}\s,$]+\s*from\s*|(?<!["'`])\bimport\s*\(\s*)["']([^"']+)["']/g
 const HTML_SINKS = [
   ["v-html", /\bv-html\b/],
   ["innerHTML", /\binnerHTML\b/],

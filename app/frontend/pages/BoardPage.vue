@@ -143,7 +143,15 @@ async function showCreated(created: Change) {
 
     <div :id="panelId" role="tabpanel" :aria-labelledby="changeTabId(change)" class="board-panel">
       <p v-if="missingChange" class="notice" role="status">{{ t("board.tabs.missing", { name: missingChange }) }}</p>
-      <ChangeSummary v-if="change" :project-id="projectId" :change="change" :columns="columns" :tasks="board.tasks" @archive="archiving = true" />
+      <ChangeSummary
+        v-if="change"
+        :project-id="projectId"
+        :change="change"
+        :phase="changes.find((open) => open.id === change!.id)?.phase ?? null"
+        :columns="columns"
+        :tasks="board.tasks"
+        @archive="archiving = true"
+      />
 
       <BoardList v-if="layout === 'list'" :project-id="projectId" />
       <div v-else ref="boardElement" class="board" v-bind="columnDrag.container('board')">

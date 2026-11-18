@@ -134,6 +134,49 @@ class ApiTokenAccessTest < ActionDispatch::IntegrationTest
     assert_nil task.reload.change
   end
 
+  test "change thread, phase and files: a read-write token moves and comments, a read-only token lists and reads" do
+    change = @goal.project_changes.create!(name: "export-csv")
+    Change::Import.new(project: @goal, user: users(:two), name: "export-csv",
+      artifacts: { "tasks" => "## 1. A\n- [ ] 1.1 B\n", "proposal" => "# Why" }).run!
+    change.update!(phase: "idea")
+    write = bearer("glnr_two_goal_read_write")
+    read = bearer("glnr_two_goal_read")
+
+    patch api_project_change_path(@goal, "export-csv"), params: { phase: "exploring" }, headers: write, as: :json
+    assert_response :success
+    post api_project_change_comments_path(@goal, "export-csv"), params: { body: "Question" }, headers: write, as: :json
+    assert_response :created
+    get api_project_change_comments_path(@goal, "export-csv"), headers: read
+    assert_equal [ 200, [ "Question" ] ], [ response.status, response.parsed_body.map { |comment| comment["body"] } ]
+    get api_project_change_file_path(@goal, "export-csv", path: "proposal.md"), headers: read
+    assert_equal [ 200, "# Why" ], [ response.status, response.parsed_body["text"] ]
+
+    assert_equal [ "exploring", users(:two) ], [ change.reload.phase, change.events.last.actor ]
+    assert_equal users(:two), change.comments.sole.author
+  end
+
+  test "change thread with a read-only token: commenting and moving are refused, nothing changes" do
+    change = @goal.project_changes.create!(name: "export-csv")
+    read = bearer("glnr_two_goal_read")
+
+    post api_project_change_comments_path(@goal, "export-csv"), params: { body: "Question" }, headers: read, as: :json
+    assert_equal [ 403, "insufficient_scope" ], [ response.status, error_code ]
+    patch api_project_change_path(@goal, "export-csv"), params: { phase: "exploring" }, headers: read, as: :json
+    assert_equal [ 403, "insufficient_scope" ], [ response.status, error_code ]
+
+    assert_equal [ "idea", 0, 0 ], [ change.reload.phase, change.comments.count, change.events.count ]
+  end
+
+  test "change thread of another project of the owner: 404" do
+    change = @side.project_changes.create!(name: "theirs")
+    change.files.create!(path: "proposal.md", text: "secret")
+
+    get api_project_change_comments_path(@side, change.id), headers: bearer("glnr_two_goal_read_write")
+    assert_response :not_found
+    get api_project_change_file_path(@side, change.id, path: "proposal.md"), headers: bearer("glnr_two_goal_read_write")
+    assert_response :not_found
+  end
+
   # Access level
 
   test "read-only token writes: 403 and nothing is created" do

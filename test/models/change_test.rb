@@ -1,8 +1,9 @@
 require "test_helper"
 
 # Spec changes: "Changes in a project", "Archive a change", "Tasks in a
-# change" and "Change lists and statistics"; spec openspec-changes, "Read a
-# change".
+# change", "Change lists and statistics", "Idea of a change", "Phase of a
+# change", "Change history" and "Waiting for people"; spec openspec-changes,
+# "Read a change".
 class ChangeTest < ActiveSupport::TestCase
   setup { @project = projects(:goal) }
 
@@ -203,5 +204,222 @@ class ChangeTest < ActiveSupport::TestCase
 
     assert_equal [ [ "labels-1", 0 ], [ "labels-2", 1 ] ], labels.tasks.order(:position).pluck(:title, :position)
     assert_equal [ [ "export-0", 0 ], [ "labels-0", 1 ] ], export.tasks.order(:position).pluck(:title, :position)
+  end
+
+  # Idea of a change
+
+  test "create with an idea: in Idea, with the idea exactly as written" do
+    idea = "People want a project's tasks as CSV for weekly reports.\n\n- one\n- two\n"
+    change = @project.project_changes.create!(name: "export-csv", idea:)
+
+    assert_equal [ "idea", idea ], change.reload.values_at(:phase, :idea)
+  end
+
+  test "edit before exploring: the idea can be set, changed and cleared while in Idea" do
+    change = create_change("export-csv")
+
+    change.update!(idea: "First")
+    assert_equal "First", change.reload.idea
+    change.update!(idea: "Second")
+    assert_equal "Second", change.reload.idea
+    change.update!(idea: "")
+    assert_nil change.reload.idea
+  end
+
+  test "fixed once exploring starts: changing the idea in any other phase is refused" do
+    change = @project.project_changes.create!(name: "export-csv", idea: "First")
+    change.move_to!("exploring", by: create_agent(@project).user)
+
+    %w[exploring proposed implementing].each do |phase|
+      change.update_column(:phase, phase)
+      change.reload.idea = "Second"
+      assert_not change.save, phase
+      assert change.errors.of_kind?(:idea, :fixed), phase
+      assert_equal "First", change.reload.idea
+    end
+  end
+
+  test "the idea and the move out of Idea in one update: the idea is taken, then fixed" do
+    change = create_change("export-csv")
+
+    change.idea = "Written as exploring starts"
+    change.move_to!("exploring", by: users(:one))
+
+    assert_equal [ "exploring", "Written as exploring starts" ], change.reload.values_at(:phase, :idea)
+  end
+
+  test "the same idea again is no change, whatever the phase" do
+    change = @project.project_changes.create!(name: "export-csv", idea: "First")
+    change.update_column(:phase, "proposed")
+
+    assert change.reload.update(idea: "First")
+  end
+
+  test "idea too long: refused, nothing created" do
+    change = @project.project_changes.new(name: "export-csv", idea: "a" * 100_001)
+
+    assert_not change.save
+    assert change.errors.of_kind?(:idea, :too_long)
+    assert @project.project_changes.new(name: "export-csv", idea: "a" * 100_000).valid?
+  end
+
+  # Phase of a change
+
+  test "a new change is in Idea" do
+    assert_equal "idea", create_change("export-csv").phase
+  end
+
+  test "agent moves the phase, and back to an earlier phase" do
+    change = create_change("export-csv")
+    fish = create_agent(@project).user
+
+    change.move_to!("exploring", by: fish)
+    assert_equal "exploring", change.reload.phase
+
+    change.move_to!("proposed", by: fish)
+    change.move_to!("exploring", by: users(:one))
+    assert_equal "exploring", change.reload.phase
+  end
+
+  test "Done is reported while every card of a change in Implementing is in the done column, and not otherwise" do
+    change = create_change("add-labels")
+    cards = 4.times.map { |i| create_task("Card #{i}", change:, status: statuses(:goal_done)) }
+    cards.first.update!(status: statuses(:goal_work))
+    change.move_to!("implementing", by: users(:one))
+
+    assert_equal "implementing", change.phase_reported
+    cards.first.update!(status: statuses(:goal_done))
+    assert_equal "done", change.phase_reported
+    assert_equal "implementing", change.reload.phase
+
+    cards.last.update!(status: statuses(:goal_todo))
+    assert_equal "implementing", change.phase_reported
+  end
+
+  test "Done ignores archived cards and subtasks, and needs the change to be in Implementing" do
+    change = create_change("add-labels")
+    card = create_task("Card", change:, status: statuses(:goal_done))
+    create_task("Open step", parent: card, status: statuses(:goal_todo))
+    create_task("Gone", change:, status: statuses(:goal_todo)).archive!
+
+    assert_equal "idea", change.phase_reported
+    change.update!(phase: "proposed")
+    assert_equal "proposed", change.phase_reported
+    change.update!(phase: "implementing")
+    assert_equal "done", change.phase_reported
+  end
+
+  test "implementing without cards is reported as Implementing" do
+    change = create_change("fix-login")
+    change.move_to!("implementing", by: users(:one))
+
+    assert_equal "implementing", change.phase_reported
+  end
+
+  test "Done, or an unknown phase, cannot be chosen" do
+    change = create_change("export-csv")
+
+    [ "done", "review", "", nil ].each do |phase|
+      error = assert_raises(ActiveRecord::RecordInvalid, phase.inspect) { change.move_to!(phase, by: users(:one)) }
+      assert error.record.errors.include?(:phase), phase.inspect
+      assert_equal "idea", change.reload.phase
+    end
+    assert_empty change.events
+    assert_raises(ActiveRecord::StatementInvalid) { change.update_column(:phase, "done") }
+  end
+
+  test "an archived change keeps its phase and cannot be moved or edited" do
+    change = @project.project_changes.create!(name: "fix-login", idea: "Fix it")
+    change.move_to!("proposed", by: users(:one))
+    change.archive!
+
+    assert_raises(ActiveRecord::RecordInvalid) { change.reload.move_to!("exploring", by: users(:one)) }
+    assert_equal "proposed", change.reload.phase
+    assert_not change.update(idea: "Other")
+    assert change.errors.of_kind?(:base, :archived)
+    assert_equal [ "proposed" ], change.events.map(&:phase)
+  end
+
+  # Change history
+
+  test "phase moves are recorded with who made them and when, oldest first" do
+    change = create_change("export-csv")
+    fish = create_agent(@project).user
+
+    travel_to(1.hour.ago) { change.move_to!("exploring", by: fish) }
+    change.move_to!("implementing", by: users(:one))
+
+    events = change.reload.events
+    assert_equal [ [ "phase", "exploring", fish ], [ "phase", "implementing", users(:one) ] ], events.map { |event| [ event.kind, event.phase, event.actor ] }
+    assert_operator events.first.created_at, :<, events.last.created_at
+  end
+
+  test "moving to the same phase records nothing, and Done is never recorded" do
+    change = create_change("export-csv")
+    change.move_to!("proposed", by: users(:one))
+
+    assert_no_difference(-> { ChangeEvent.count }) { change.move_to!("proposed", by: users(:two)) }
+
+    change.move_to!("implementing", by: users(:one))
+    create_task("Card", change:, status: statuses(:goal_done))
+    assert_equal "done", change.phase_reported
+    assert_equal %w[proposed implementing], change.events.reload.map(&:phase)
+  end
+
+  # Waiting for people
+
+  test "an open change whose newest comment is an agent's is waiting, until a person answers" do
+    export = create_change("export-csv")
+    login = create_change("fix-login")
+    fish = create_agent(@project).user
+
+    assert_not export.waiting_for_people?
+    export.comments.create!(author: users(:one), body: "Start please")
+    export.comments.create!(author: fish, body: "Should archived tasks go into the file?")
+    assert export.waiting_for_people?
+    assert_equal Set[export.id], Change.waiting_for_people([ export, login ])
+
+    export.comments.create!(author: users(:one), body: "No.")
+    assert_not export.waiting_for_people?
+  end
+
+  test "the newest comment is the newest kept one, by time and then id" do
+    change = create_change("export-csv")
+    fish = create_agent(@project).user
+    now = Time.current
+    asked = change.comments.create!(author: fish, body: "Question", created_at: now)
+    answer = change.comments.create!(author: users(:one), body: "Answer", created_at: now)
+
+    assert_not change.waiting_for_people?
+    answer.soft_delete!
+    assert change.waiting_for_people?
+    asked.soft_delete!
+    assert_not change.waiting_for_people?
+  end
+
+  test "no thread, a task comment by an agent, or an archived change: not waiting" do
+    change = create_change("fix-login")
+    fish = create_agent(@project).user
+    create_task("T", change:).comments.create!(author: fish, body: "On a task")
+
+    assert_not change.waiting_for_people?
+
+    change.comments.create!(author: fish, body: "Question")
+    change.archive!
+    assert_not change.reload.waiting_for_people?
+    assert_empty Change.waiting_for_people([])
+  end
+
+  test "waiting for people for many changes takes one query" do
+    changes = 3.times.map { |i| create_change("change-#{i}") }
+    fish = create_agent(@project).user
+    changes.each { |change| change.comments.create!(author: fish, body: "?") }
+
+    queries = []
+    callback = ->(*, payload) { queries << payload[:sql] unless payload[:name] == "SCHEMA" }
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      assert_equal changes.map(&:id).to_set, Change.waiting_for_people(changes)
+    end
+    assert_equal 1, queries.size
   end
 end

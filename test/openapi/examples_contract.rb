@@ -10,6 +10,11 @@ class OpenapiExamplesContract < OpenapiContractTest
 
   TOKEN = "glnr_two_goal_read_write"
   OPENSPEC_TASKS = "## 1. Model\n\n- [x] 1.1 Add the table\n- [ ] 1.2 Add the model\n  - with validations\n\n## 2. API\n\n- [ ] 2.1 Add the routes\n"
+  OPENSPEC_FILES = {
+    proposal: "# Proposal\n\n## Why\n\nPeople want CSV.\n",
+    design: "# Design\n\n| Option | Chosen |\n|---|---|\n",
+    specs: { "export" => "## ADDED Requirements\n", "identity/user-auth" => "## MODIFIED Requirements\n" }
+  }.freeze
 
   EXAMPLES = {
     "showProfile" => -> { get api_me_path, headers: token },
@@ -47,16 +52,38 @@ class OpenapiExamplesContract < OpenapiContractTest
     "createLabel" => -> { post api_project_labels_path(@project), params: { title: "frontend" }, headers: token, as: :json },
 
     "listChanges" => -> { get api_project_changes_path(@project, view: "archived"), headers: token },
-    "createChange" => -> { post api_project_changes_path(@project), params: { name: "fix-login" }, headers: token, as: :json },
+    "createChange" => -> do
+      post api_project_changes_path(@project), params: { name: "fix-login", idea: "Signing in fails **after** a password reset." }, headers: token, as: :json
+    end,
     "showChange" => -> do
-      Change::Import.new(project: @project, user: users(:two), name: "add-labels", artifacts: { "tasks" => OPENSPEC_TASKS }).run!
+      Change::Import.new(project: @project, user: users(:two), name: "add-labels", artifacts: { "tasks" => OPENSPEC_TASKS, **OPENSPEC_FILES.stringify_keys }).run!
+      @change.comments.create!(author: users(:one), body: "Go ahead")
       get api_project_change_path(@project, "add-labels"), headers: token
+    end,
+    "updateChange" => -> do
+      @change.update!(idea: "Labels for tasks")
+      patch api_project_change_path(@project, "add-labels"), params: { phase: "exploring" }, headers: token, as: :json
+      assert_equal [ "exploring", "Labels for tasks" ], response.parsed_body.values_at("phase", "idea")
+    end,
+    "showChangeFile" => -> do
+      Change::Import.new(project: @project, user: users(:two), name: "add-labels", artifacts: { "tasks" => OPENSPEC_TASKS, **OPENSPEC_FILES.stringify_keys }).run!
+      get api_project_change_file_path(@project, "add-labels", path: "specs/identity/user-auth/spec.md"), headers: token
+    end,
+    "listChangeComments" => -> do
+      agent = create_agent(@project, name: "Fish")
+      @change.comments.create!(author: agent.user, body: "Should labels have **colours**?")
+      @change.comments.create!(author: users(:one), body: "Not yet.")
+      get api_project_change_comments_path(@project, "add-labels"), headers: token
+    end,
+    "createChangeComment" => -> do
+      post api_project_change_comments_path(@project, "add-labels"), params: { body: "Which colours?" }, headers: token, as: :json
     end,
     "archiveChange" => -> { post api_project_change_archival_path(@project, @change.id), headers: token },
     "listChangeTasks" => -> { get api_project_change_tasks_path(@project, "add-labels"), headers: token },
 
     "importOpenspecChange" => -> do
-      post api_project_openspec_changes_path(@project), params: { name: "export-csv", artifacts: { tasks: OPENSPEC_TASKS } }, headers: token, as: :json
+      post api_project_openspec_changes_path(@project), params: { name: "export-csv", artifacts: { tasks: OPENSPEC_TASKS, **OPENSPEC_FILES } }, headers: token, as: :json
+      assert_equal %w[proposal.md design.md specs/export/spec.md specs/identity/user-auth/spec.md], response.parsed_body["files"].map { |file| file["path"] }
     end,
 
     "downloadFile" => -> { get file_path(@attachment.signed_id), headers: token },
@@ -115,6 +142,28 @@ class OpenapiExamplesContract < OpenapiContractTest
 
     put api_project_task_placement_path(@project, @task.key), params: { status_id: statuses(:goal_work).id }, headers: token, as: :json
     assert_response :success
+  end
+
+  test "createChangeComment with an attachment, and listChanges with a change waiting for people" do
+    post api_project_change_comments_path(@project, "add-labels"), params: { body: "See the screenshot", attachments: [ image_upload(format: "png") ] }, headers: token
+    assert_response :created
+    assert_equal 1, response.parsed_body["attachments"].size
+
+    agent = create_agent(@project, name: "Fish")
+    @change.comments.create!(author: agent.user, body: "Done?")
+    get api_project_changes_path(@project), headers: token
+    assert_response :success
+    assert_includes response.parsed_body.map { |change| change.values_at("name", "waiting_for_people") }, [ "add-labels", true ]
+  end
+
+  test "showChange of a change reported in Done" do
+    @change.update!(phase: "implementing")
+    @task.update!(status: statuses(:goal_done))
+
+    get api_project_change_path(@project, "add-labels"), headers: token
+
+    assert_response :success
+    assert_equal "done", response.parsed_body["phase"]
   end
 
   test "importOpenspecChange again: 200" do
