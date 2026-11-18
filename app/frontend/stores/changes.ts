@@ -33,8 +33,8 @@ export const useChangesStore = defineStore("changes", () => {
     tasks.value.set(changeId, await changesApi.tasks(id, changeId))
   }
 
-  async function create(id: Id, name: string, idea = ""): Promise<Change> {
-    const change = await changesApi.create(id, name, idea)
+  async function create(id: Id, name: string, idea = "", agent: Id | null = null): Promise<Change> {
+    const change = await changesApi.create(id, name, idea, agent)
     await load(id)
     return change
   }

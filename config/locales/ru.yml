@@ -207,6 +207,19 @@ ru:
               fixed: не меняется после начала исследования; напишите в обсуждении
             phase:
               inclusion: должна быть idea, exploring, proposed или implementing
+            agent:
+              not_an_agent: должен быть агентом проекта, который не удалён
+              on_the_change: уже работает над изменением; сначала освободите его
+        change_request:
+          attributes:
+            base:
+              change_archived: Изменение в архиве не принимает запросов
+              open_request: У изменения уже есть открытый запрос; сначала отмените его
+              not_taken: Запрос не взят вами; возможно, его отменили
+            kind:
+              inclusion: должен быть explore, propose, implement или archive
+            outcome:
+              inclusion: должен быть done или failed
         comment:
           attributes:
             base:

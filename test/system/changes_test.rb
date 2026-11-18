@@ -268,6 +268,29 @@ class ChangesTest < ApplicationSystemTestCase
     assert_equal 1, @project.project_changes.count
   end
 
+  test "pick an agent: the agents with their states, and the new change's page says Fish is picked" do
+    fish = create_agent(@project, name: "Fish").user
+    heron = create_agent(@project, name: "Heron").user
+    owl = create_agent(@project, name: "Owl").user
+    @project.project_changes.create!(name: "export-csv", phase: "exploring").update!(agent: fish, agent_taken_at: Time.current)
+    [ fish, heron ].each { |agent| @project.memberships.find_by!(user: agent).update!(checked_in_at: 1.minute.ago) }
+    @project.memberships.find_by!(user: owl).update!(checked_in_at: 2.hours.ago)
+    visit_board
+
+    click_button "New change"
+    within("dialog[open]") do
+      fill_in "Name", with: "add-tags"
+      assert_equal [ "Any free agent", "Fish — on export-csv", "Heron — free", "Owl — offline" ], all("select option").map(&:text)
+      select "Fish — on export-csv", from: "Agent"
+      click_button "Create change"
+    end
+
+    assert_no_selector "dialog[open]"
+    assert_equal fish, @project.project_changes.find_by!(name: "add-tags").agent
+    visit "/app/projects/#{@project.id}/changes/add-tags"
+    assert_selector "[role=status]", text: "Fish is picked for this change"
+  end
+
   test "from the board: the dialog closes and the board shows the new change's tab" do
     create_change("add-labels")
     visit_board

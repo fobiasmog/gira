@@ -14,6 +14,10 @@ class Agent < ApplicationRecord
 
   # Tries at a free generated address before giving up (design decision 2).
   HANDLE_ATTEMPTS = 5
+  # An agent is online in a project while its last check-in there, its last
+  # take of a request, is younger than this: three ticks of /loop 1m (spec
+  # change-requests, "Check-ins"; add-change-requests design.md, decision 9).
+  ONLINE_WINDOW = 3.minutes
 
   belongs_to :user
   belongs_to :created_by, class_name: "User"
@@ -63,6 +67,11 @@ class Agent < ApplicationRecord
           attempts < HANDLE_ATTEMPTS && error.record.errors.of_kind?(:email_address, :taken) ? retry : raise
         end
       end
+  end
+
+  # Whether a check-in time, nil for none, makes an agent online now.
+  def self.online?(checked_in_at)
+    checked_in_at.present? && checked_in_at > ONLINE_WINDOW.ago
   end
 
   def deleted?

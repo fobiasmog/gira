@@ -8,7 +8,7 @@ import ArchiveChangeDialog from "../components/changes/ArchiveChangeDialog.vue"
 import NewChangeDialog from "../components/changes/NewChangeDialog.vue"
 import PhasePill from "../components/changes/PhasePill.vue"
 import WaitingMarker from "../components/changes/WaitingMarker.vue"
-import type { Change, TaskCard } from "../api/types.ts"
+import type { Change, Id, TaskCard } from "../api/types.ts"
 import { countsProgress, unfinished } from "../composables/changes.ts"
 import { boardLocation, changeLocation } from "../router/routes.ts"
 import { OTHER_TAB, useBoardStore } from "../stores/board.ts"
@@ -110,7 +110,7 @@ async function moveTask(task: TaskCard, target: Change | null) {
 }
 
 const creating = ref(false)
-const createChange = (name: string, idea: string) => store.create(props.projectId, name, idea)
+const createChange = (name: string, idea: string, agent: Id | null) => store.create(props.projectId, name, idea, agent)
 
 // Archive dialog.
 const archiving = ref<Change | null>(null)
@@ -268,7 +268,7 @@ async function archive() {
       </ul>
     </details>
 
-    <NewChangeDialog v-model:open="creating" :create="createChange" @created="(change) => ui.toast(t('changes.created', { name: change.name }))" />
+    <NewChangeDialog v-model:open="creating" :project-id="projectId" :create="createChange" @created="(change) => ui.toast(t('changes.created', { name: change.name }))" />
     <ArchiveChangeDialog v-model:open="archiveOpen" :change="archiving" :unfinished="unfinishedCards" :on-confirm="archive" />
   </section>
 </template>

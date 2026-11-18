@@ -24,19 +24,22 @@ class Api::Projects::ChangesController < Api::BaseController
   end
 
   # Under the project's lock, as an import is, so that two requests for one
-  # name get a validation error rather than the unique index's.
+  # name get a validation error rather than the unique index's. The agent,
+  # when given, is picked (spec change-requests, "Agent of a change").
   def create
-    change = @project.with_lock { @project.project_changes.create!(name: params[:name], idea: idea_param) }
+    change = @project.with_lock { @project.project_changes.create!(name: params[:name], idea: idea_param, agent_id: agent_param) }
     render json: ChangeSerializer.new(change), status: :created
   end
 
-  # The idea, the phase, or both (add-change-conversation design.md,
-  # decision 3). Under the project's lock, so that a phase move and an
-  # import of the same change do not interleave.
+  # The idea, the phase, the agent, or any of them (add-change-conversation
+  # design.md, decision 3; add-change-requests design.md, decision 6). Under
+  # the project's lock, so that a phase move, a pick and an import or a take
+  # of the same change do not interleave.
   def update
     change = @project.with_lock do
       @project.project_changes.find_by_ref!(params[:id]).tap do |change|
         change.idea = idea_param if params.key?(:idea)
+        change.agent_id = agent_param if params.key?(:agent)
         params.key?(:phase) ? change.move_to!(params[:phase], by: Current.user) : change.save!
       end
     end
@@ -44,6 +47,15 @@ class Api::Projects::ChangesController < Api::BaseController
   end
 
   private
+    # An agent's user id, or null for any free agent.
+    def agent_param
+      agent = params[:agent]
+      return agent if agent.nil? || agent.is_a?(Integer)
+      return agent.to_i if agent.is_a?(String) && Change::ID_FORMAT.match?(agent)
+
+      raise ActiveRecord::RecordInvalid, Change.new.tap { |change| change.errors.add(:agent, "must be an agent's user id, or null") }
+    end
+
     # A text, or null for no idea.
     def idea_param
       idea = params[:idea]

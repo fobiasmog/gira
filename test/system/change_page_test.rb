@@ -1,7 +1,8 @@
 require "application_system_test_case"
 
-# Spec web-client, "Change page"; spec markdown-content, "One feature set for
-# editing and display" and "Read-only Markdown views".
+# Spec web-client, "Change page" and "Requests on the change page"; spec
+# markdown-content, "One feature set for editing and display" and "Read-only
+# Markdown views".
 class ChangePageTest < ApplicationSystemTestCase
   TASKS = "## 1. Export\n\n- [ ] 1.1 Add the endpoint\n- [ ] 1.2 Add the button\n"
   PROPOSAL = "# Proposal\n\n## Why\n\nPeople want CSV.\n\n- one row per task\n- no archived tasks\n"
@@ -30,6 +31,19 @@ class ChangePageTest < ApplicationSystemTestCase
   def thread = find("section[aria-labelledby='change-thread']")
 
   def files = find("aside[aria-labelledby='change-files']")
+
+  def request_area = find("section[aria-labelledby='change-request']")
+
+  def ask(change, kind) = ChangeRequest.ask!(change:, kind:, by: @user)
+
+  # agent is on change, and checked in a minute ago.
+  def put_on(change, agent)
+    change.update!(agent:, agent_taken_at: Time.current)
+    check_in(agent)
+    change
+  end
+
+  def check_in(agent, at: 1.minute.ago) = @project.memberships.find_by!(user: agent).update!(checked_in_at: at)
 
   # Review a proposal; Source of a file; Table in a change file
 
@@ -197,6 +211,186 @@ class ChangePageTest < ApplicationSystemTestCase
     assert_no_field "Comment"
     assert_no_button "Archive"
     assert_no_button "Comment actions"
+    assert_no_selector "section[aria-labelledby='change-request']"
+    assert_no_button "Start exploring"
+    assert_no_button "Cancel request"
+    assert_no_field "Agent"
+  end
+
+  test "archived change with its agent: no request button, Cancel request, Release or agent menu" do
+    change = put_on(@project.project_changes.create!(name: "fix-login", phase: "implementing"), @fish)
+    ask(change, "archive")
+    change.archive!(by: @user)
+    visit_change(change.id)
+
+    assert_text "This change was archived on"
+    assert_no_button "Archive and sync specs"
+    assert_no_button "Cancel request"
+    assert_no_button "Release Fish"
+    assert_no_field "Agent"
+  end
+
+  # Requests on the change page
+
+  test "start exploring: the request waits for a free agent, with Cancel request instead of Start exploring" do
+    change = @project.project_changes.create!(name: "export-csv")
+    visit_change("export-csv")
+
+    within(request_area) { assert_field "Agent", with: "" }
+    click_button "Start exploring"
+
+    within(request_area) do
+      assert_selector "[role=status]", text: "Waiting for a free agent"
+      assert_button "Cancel request"
+    end
+    assert_no_button "Start exploring"
+    assert_equal [ [ "explore", "waiting" ] ], change.requests.pluck(:kind, :state)
+  end
+
+  test "button for the phase: Implement in Proposed" do
+    @project.project_changes.create!(name: "export-csv", phase: "proposed")
+    visit_change("export-csv")
+
+    assert_button "Implement"
+    assert_no_button "Start exploring"
+  end
+
+  test "comment with the step: the comment is in the thread, the field is empty, and the implement request is open" do
+    change = @project.project_changes.create!(name: "export-csv", phase: "proposed")
+    visit_change("export-csv")
+
+    within(thread) do
+      fill_in "Comment", with: "Start with the API."
+      click_button "Implement"
+      assert_selector ".comment", text: "Start with the API."
+      assert_field "Comment", with: ""
+    end
+
+    within(request_area) { assert_button "Cancel request" }
+    assert_equal [ [ "implement", "waiting" ] ], change.requests.pluck(:kind, :state)
+    assert_equal [ "Start with the API." ], change.comments.pluck(:body)
+  end
+
+  test "queued for a busy agent: the request is queued for Fish, who is on export-csv" do
+    put_on(@project.project_changes.create!(name: "export-csv", phase: "exploring"), @fish)
+    @project.project_changes.create!(name: "add-tags", agent: @fish)
+    visit_change("add-tags")
+
+    click_button "Start exploring"
+
+    within(request_area) { assert_selector "[role=status]", text: "Queued for Fish, who is on export-csv" }
+  end
+
+  test "taken request: Fish has been working on it since it took it, with Cancel request and Release Fish" do
+    change = @project.project_changes.create!(name: "export-csv", phase: "proposed")
+    ask(change, "implement")
+    ChangeRequest.take!(project: @project, agent: @fish)
+    visit_change("export-csv")
+
+    within(request_area) do
+      assert_selector "[role=status]", text: "Fish has been working on it since"
+      assert_button "Cancel request"
+      assert_button "Release Fish"
+      assert_no_field "Agent"
+    end
+  end
+
+  test "blocked: the tab shows the waiting marker, and the page says Fish's context is full and offers Release Fish" do
+    change = @project.project_changes.create!(name: "export-csv", phase: "proposed")
+    ask(change, "implement")
+    ChangeRequest.take!(project: @project, agent: @fish)
+    Change.block_for_full_context!(project: @project, agent: @fish)
+
+    visit "/app/projects/#{@project.id}/board/changes/export-csv"
+    assert_selector "[role=tab] .waiting-marker"
+    visit_change("export-csv")
+
+    within(request_area) do
+      assert_selector "[role=status]", text: "The context of Fish is full. The change is blocked until you release Fish."
+      assert_button "Release Fish"
+    end
+  end
+
+  test "agent picks it up: without reloading, the page shows Fish working, then Fish's questions and no open request" do
+    change = @project.project_changes.create!(name: "export-csv")
+    ask(change, "explore")
+    visit_change("export-csv")
+    within(request_area) { assert_selector "[role=status]", text: "Waiting for a free agent" }
+
+    request = ChangeRequest.take!(project: @project, agent: @fish)
+    using_wait_time(15) do
+      within(request_area) { assert_selector "[role=status]", text: "Fish has been working on it since" }
+    end
+
+    request.finish!(by: @fish, outcome: "done", comment: "Should archived tasks go into the file?")
+    using_wait_time(15) do
+      within(thread) { assert_selector ".comment", text: "Should archived tasks go into the file?" }
+    end
+    assert_no_button "Cancel request"
+    assert_button "Write the proposal"
+  end
+
+  test "cancel: no open request, and Start exploring again" do
+    change = @project.project_changes.create!(name: "export-csv")
+    ask(change, "explore")
+    visit_change("export-csv")
+
+    click_button "Cancel request"
+
+    assert_button "Start exploring"
+    assert_no_button "Cancel request"
+    assert_equal "cancelled", change.requests.sole.state
+  end
+
+  test "pick another agent: Heron is picked" do
+    heron = create_agent(@project, name: "Heron").user
+    check_in(heron)
+    change = @project.project_changes.create!(name: "add-tags", agent: @fish)
+    visit_change("add-tags")
+    within(request_area) { assert_selector "[role=status]", text: "Fish is picked for this change" }
+
+    within(request_area) { select "Heron — free", from: "Agent" }
+
+    within(request_area) { assert_selector "[role=status]", text: "Heron is picked for this change" }
+    assert_equal heron, change.reload.agent
+  end
+
+  test "release: no agent, the agent menu, and a line saying that the member released Fish" do
+    change = put_on(@project.project_changes.create!(name: "export-csv", phase: "exploring"), @fish)
+    visit_change("export-csv")
+    within(request_area) { assert_selector "[role=status]", text: "Fish is on this change" }
+
+    click_button "Release Fish"
+
+    within(request_area) do
+      assert_field "Agent", with: ""
+      assert_no_button "Release Fish"
+    end
+    within(thread) { assert_selector ".thread-event", text: "User One released Fish (agent)" }
+    assert_nil change.reload.agent
+  end
+
+  test "reply note: posting asks Fish to reply" do
+    put_on(@project.project_changes.create!(name: "export-csv", phase: "exploring"), @fish)
+    visit_change("export-csv")
+
+    within(thread) { assert_text "Posting asks Fish to reply." }
+  end
+
+  test "request lines in the thread: the member asking for exploring, Fish taking and finishing it, then Fish's questions" do
+    change = @project.project_changes.create!(name: "export-csv")
+    ask(change, "explore")
+    ChangeRequest.take!(project: @project, agent: @fish).finish!(by: @fish, outcome: "done", comment: "Archived tasks too?")
+    visit_change("export-csv")
+
+    within(thread) do
+      items = all("ol > li").map(&:text)
+      assert_match(/User One asked for exploring/, items[0])
+      assert_match(/Fish \(agent\) started exploring/, items[1])
+      assert_match(/Fish \(agent\) moved the change to Exploring/, items[2])
+      assert_match(/Fish \(agent\) finished exploring/, items[3])
+      assert_match(/Archived tasks too\?/, items[4])
+    end
   end
 
   test "archive from the page: the page shows the archived change by its id" do
@@ -239,5 +433,9 @@ class ChangePageTest < ApplicationSystemTestCase
 
     within("ol[aria-label='Фазы']") { assert_selector "li[aria-current=step]", text: "Исследование" }
     assert_text "Fish (агент): изменение переведено в фазу «Исследование»"
+
+    click_button "Написать предложение"
+    assert_text "User One: запрошено — написание предложения"
+    assert_selector "[role=status]", text: "Ждёт свободного агента"
   end
 end

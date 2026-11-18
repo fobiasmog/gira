@@ -206,7 +206,7 @@ async function showCreated(created: Change) {
     </div>
 
     <ArchiveChangeDialog v-model:open="archiving" :change="change" :unfinished="unfinishedCards" :on-confirm="archiveShown" />
-    <NewChangeDialog v-model:open="creatingChange" :create="board.createChange" @created="showCreated" />
+    <NewChangeDialog v-model:open="creatingChange" :project-id="projectId" :create="board.createChange" @created="showCreated" />
   </section>
 </template>
 

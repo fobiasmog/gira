@@ -12,6 +12,12 @@
 # (add-change-conversation design.md, decisions 1, 2, 4, 7 and 8). Done is
 # never stored: it is reported while every card of a change in Implementing
 # is in the done column (#phase_reported).
+#
+# A change has requests for its steps (ChangeRequest), at most one of them
+# open, and at most one agent, picked or on the change; an agent is on at
+# most one open change, and its change is blocked while its context is full
+# (add-change-requests design.md, decisions 2, 7, 8, 10 and 13). Picking,
+# releasing, blocking and archiving run under the project's lock.
 class Change < ApplicationRecord
   NAME_FORMAT = /\A[a-z0-9]+(?:-[a-z0-9]+)*\z/
   NAME_LIMIT = 100
@@ -30,10 +36,16 @@ class Change < ApplicationRecord
   has_many :files, class_name: "ChangeFile", dependent: :delete_all
   has_many :events, -> { order(:created_at, :id) }, class_name: "ChangeEvent", dependent: :delete_all, inverse_of: :change
   has_many :comments, dependent: :destroy
+  has_many :requests, class_name: "ChangeRequest", dependent: :delete_all
+  has_one :open_request, -> { unfinished }, class_name: "ChangeRequest", inverse_of: :change
+  # The agent's user, picked or on the change.
+  belongs_to :agent, class_name: "User", optional: true
 
   scope :kept, -> { where(archived_at: nil) }
   scope :archived, -> { where.not(archived_at: nil) }
   scope :newest_first, -> { order(created_at: :desc, id: :desc) }
+  # The changes an agent is on, open or archived.
+  scope :on_by, ->(agent) { where(agent_id: agent.id).where.not(agent_taken_at: nil) }
 
   validates :name, presence: true, length: { maximum: NAME_LIMIT }, format: { with: NAME_FORMAT, allow_blank: true }
   # Archived changes give their name up (design.md, decision 1); the partial
@@ -43,6 +55,8 @@ class Change < ApplicationRecord
   validates :phase, inclusion: { in: PHASES }
   validate :idea_fixed_once_exploring, if: :will_save_change_to_idea?, on: :update
   validate :archived_changes_are_read_only, on: :update
+  validate :agent_of_the_project, if: -> { agent_id && will_save_change_to_agent_id? }
+  validate :agent_kept_while_on, if: :will_save_change_to_agent_id?, on: :update
 
   # No idea is an empty idea.
   normalizes :idea, with: ->(idea) { idea.presence }
@@ -67,18 +81,31 @@ class Change < ApplicationRecord
     end
   end
 
-  # The ids of the given open changes whose newest comment was written by an
-  # agent (spec changes, "Waiting for people"), in one query.
+  # The ids of the given open changes that are waiting for people (spec
+  # changes, "Waiting for people"), in one query: those that are blocked,
+  # and those with no open request whose newest comment was written by an
+  # agent.
   def self.waiting_for_people(changes)
-    ids = changes.reject(&:archived?).map(&:id)
-    return Set.new if ids.empty?
+    open = changes.reject(&:archived?)
+    return Set.new if open.empty?
 
-    newest = Comment.kept.where(change_id: ids)
+    newest = Comment.kept.where(change_id: open.map(&:id))
       .select("DISTINCT ON (comments.change_id) comments.change_id, comments.author_id")
       .order(:change_id, created_at: :desc, id: :desc)
-    Comment.unscoped.from(newest, :newest)
+    asked = Comment.unscoped.from(newest, :newest)
       .joins("JOIN agents ON agents.user_id = newest.author_id")
-      .pluck("newest.change_id").to_set
+      .where("NOT EXISTS (SELECT 1 FROM change_requests WHERE change_requests.change_id = newest.change_id AND change_requests.state IN (?))", ChangeRequest::OPEN_STATES)
+      .pluck("newest.change_id")
+    open.select(&:blocked?).to_set(&:id) | asked
+  end
+
+  # Under the project's lock, picks agent, a user, or no agent for any free
+  # agent, while no agent is on the change (spec change-requests, "Agent of
+  # a change"). Picking asks for no step.
+  def pick_agent!(agent)
+    project.with_lock do
+      update!(agent:)
+    end
   end
 
   # The phase to report for a change in stored phase, given its task counts
@@ -102,6 +129,15 @@ class Change < ApplicationRecord
     self.class.waiting_for_people([ self ]).include?(id)
   end
 
+  # Whether its agent is on it rather than picked.
+  def agent_on?
+    agent_taken_at.present?
+  end
+
+  def blocked?
+    agent_blocked_at.present?
+  end
+
   # Moves the change to phase and records who did it, saving any other
   # attribute assigned with it. Moving to the phase it is in records
   # nothing; Done, or an unknown phase, is a validation error on phase.
@@ -114,9 +150,61 @@ class Change < ApplicationRecord
     end
   end
 
-  # Archiving an archived change leaves it as it is, archive time included.
-  def archive!
-    update!(archived_at: Time.current) unless archived?
+  # Under the project's lock, cancels the open request as by and archives
+  # the change, which frees its agent (spec changes, "Archive a change";
+  # decision 10). Archiving an archived change leaves it as it is, archive
+  # time included.
+  def archive!(by: nil)
+    project.with_lock do
+      reload
+      next if archived?
+
+      open_request&.close!("cancelled", by:)
+      update!(archived_at: Time.current)
+    end
+  end
+
+  # Under the project's lock, releases the agent as by (spec change-requests,
+  # "Release an agent"): cancels the taken request, ends the block, leaves
+  # the change with no agent and records the release. A change with no agent
+  # is left as it is.
+  def release_agent!(by:)
+    project.with_lock do
+      reload
+      next if agent_id.nil?
+
+      released = agent
+      open_request.close!("cancelled", by:) if open_request&.state == "taken"
+      update!(agent: nil, agent_taken_at: nil, agent_blocked_at: nil)
+      events.create!(kind: "release", actor: by, agent: released)
+    end
+  end
+
+  # Under the project's lock, blocks the open change of project that agent
+  # is on, because its context is full (spec change-requests, "Full
+  # context"; decision 13), and records the block once. Returns whether the
+  # agent is blocked: false when it is on no open change of project.
+  def self.block_for_full_context!(project:, agent:)
+    project.with_lock do
+      change = project.project_changes.kept.on_by(agent).first
+      next false unless change
+
+      unless change.blocked?
+        change.update!(agent_blocked_at: Time.current)
+        change.events.create!(kind: "block", actor: agent)
+      end
+      true
+    end
+  end
+
+  # A reply request for comment, a person's comment just posted on the
+  # change, when the change is open, past Idea and has no open request
+  # (spec change-requests, "Reply requests"; decision 7). Called under the
+  # project's lock.
+  def ask_reply_after(comment)
+    return if comment.author.agent? || archived? || phase == "idea" || requests.unfinished.exists?
+
+    requests.create!(kind: "reply", requested_by: comment.author)
   end
 
   def task_counts
@@ -144,5 +232,17 @@ class Change < ApplicationRecord
     # Archiving itself is the last update of a change.
     def archived_changes_are_read_only
       errors.add(:base, :archived) if archived_at_in_database.present?
+    end
+
+    # An agent of the change's project that is not deleted.
+    def agent_of_the_project
+      agent_member = Agent.kept.where(user_id: agent_id).exists? && project.memberships.exists?(user_id: agent_id)
+      errors.add(:agent, :not_an_agent) unless agent_member
+    end
+
+    # Once an agent is on the change, only releasing it (which clears
+    # agent_taken_at with it) changes the agent.
+    def agent_kept_while_on
+      errors.add(:agent, :on_the_change) if agent_taken_at_in_database && agent_taken_at
     end
 end

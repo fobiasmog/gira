@@ -1,7 +1,10 @@
-import { test } from "node:test"
+import { mock, test } from "node:test"
 import assert from "node:assert/strict"
-import { boardProgress, chosenPhase, countsProgress, threadEntries, typedChangeName, unfinished } from "./changes.ts"
-import type { ChangeEvent, Comment, UserCard } from "../api/types.ts"
+import {
+  agentState, asksForReply, boardProgress, canAskStep, chosenPhase, countsProgress, nextStep, refresher, statusLine, threadEntries,
+  typedChangeName, unfinished,
+} from "./changes.ts"
+import type { ChangeAgent, ChangeEvent, ChangeRequest, Comment, ProjectAgent, UserCard } from "../api/types.ts"
 
 const columns = [{ id: 1, done: false }, { id: 2, done: false }, { id: 3, done: true }]
 
@@ -33,7 +36,7 @@ const fish: UserCard = { id: 9, name: "Fish", email_address: "fish@agents.exampl
 const comment = (id: number, created_at: string): Comment =>
   ({ id, body: `Comment ${id}`, author: fish, created_at, updated_at: created_at, attachments: [] })
 const event = (phase: ChangeEvent["phase"], created_at: string): ChangeEvent =>
-  ({ kind: phase ? "phase" : "import", actor: fish, phase, paths: phase ? null : ["tasks.md"], created_at })
+  ({ kind: phase ? "phase" : "import", actor: fish, phase, paths: phase ? null : ["tasks.md"], agent: null, step: null, state: null, created_at })
 
 test("the thread: comments and history lines by time, oldest first", () => {
   const entries = threadEntries(
@@ -59,4 +62,95 @@ test("the thread: a history line comes before a comment of the same time, and or
 test("the phase to choose: Done stays Implementing, the others stay as they are", () => {
   assert.equal(chosenPhase("done"), "implementing")
   for (const phase of ["idea", "exploring", "proposed", "implementing"] as const) assert.equal(chosenPhase(phase), phase)
+})
+
+// Requests and agents
+
+test("the next step for each phase: explore, propose, implement twice, then archive", () => {
+  assert.deepEqual(
+    (["idea", "exploring", "proposed", "implementing", "done"] as const).map((phase) => nextStep(phase)),
+    [
+      { kind: "explore", label: "startExploring" },
+      { kind: "propose", label: "writeProposal" },
+      { kind: "implement", label: "implement" },
+      { kind: "implement", label: "continueImplementing" },
+      { kind: "archive", label: "archiveAndSync" },
+    ],
+  )
+})
+
+const member: UserCard = { id: 1, name: "Ann", email_address: "ann@example.com", avatar_url: null, agent: false, deleted: false }
+const request = (fields: Partial<ChangeRequest>): ChangeRequest => ({
+  id: 5, kind: "explore", state: "waiting", change: { id: 3, name: "export-csv", phase: "idea" }, requested_by: member,
+  taken_by: null, finished_by: null, created_at: "2026-11-18T14:00:00Z", taken_at: null, finished_at: null, ...fields,
+})
+const agentOf = (fields: Partial<ChangeAgent> = {}): ChangeAgent => ({ user: fish, on: false, since: null, blocked_at: null, ...fields })
+const listed = (fields: Partial<ProjectAgent>): ProjectAgent => ({
+  ...fish, created_by: member, created_at: "2026-11-01T00:00:00Z", deleted_at: null, token_count: 1, removable: false,
+  checked_in_at: null, online: false, working_on: null, ...fields,
+})
+
+test("asking for a step: with no open request, or over a waiting reply request, and never on an archived change", () => {
+  assert.equal(canAskStep({ archived_at: null, request: null }), true)
+  assert.equal(canAskStep({ archived_at: null, request: request({ kind: "reply" }) }), true)
+  assert.equal(canAskStep({ archived_at: null, request: request({ kind: "reply", state: "taken" }) }), false)
+  assert.equal(canAskStep({ archived_at: null, request: request({}) }), false)
+  assert.equal(canAskStep({ archived_at: "2026-11-18T00:00:00Z", request: null }), false)
+})
+
+test("agent states: offline first, then on a change, then free", () => {
+  assert.deepEqual(agentState(listed({ online: false, working_on: { id: 1, name: "export-csv", project_id: 1 } })), { kind: "offline" })
+  assert.deepEqual(agentState(listed({ online: true, working_on: { id: 1, name: "export-csv", project_id: 1 } })), { kind: "busy", change: "export-csv" })
+  assert.deepEqual(agentState(listed({ online: true, working_on: { id: null, name: null, project_id: null } })), { kind: "busy", change: null })
+  assert.deepEqual(agentState(listed({ online: true })), { kind: "free" })
+})
+
+test("the status line: blocked, working, waiting for a free agent, queued, on the change, picked, or nothing", () => {
+  const agents = new Map([[fish.id, listed({ online: true, working_on: { id: 2, name: "fix-login", project_id: 1 } })]])
+
+  assert.deepEqual(statusLine({ request: request({ state: "taken", taken_by: fish, taken_at: "2026-11-18T14:05:00Z" }), agent: agentOf({ on: true, blocked_at: "2026-11-18T15:00:00Z" }) }, agents),
+    { key: "blocked", agent: fish })
+  assert.deepEqual(statusLine({ request: request({ state: "taken", taken_by: fish, taken_at: "2026-11-18T14:05:00Z" }), agent: agentOf({ on: true }) }, agents),
+    { key: "working", agent: fish, since: "2026-11-18T14:05:00Z" })
+  assert.deepEqual(statusLine({ request: request({}), agent: null }, agents), { key: "waitingFree" })
+  assert.deepEqual(statusLine({ request: request({}), agent: agentOf() }, agents), { key: "queued", agent: fish, state: { kind: "busy", change: "fix-login" } })
+  assert.deepEqual(statusLine({ request: request({}), agent: agentOf() }, new Map()), { key: "queued", agent: fish, state: null })
+  assert.deepEqual(statusLine({ request: null, agent: agentOf({ on: true }) }, agents), { key: "onChange", agent: fish })
+  assert.deepEqual(statusLine({ request: null, agent: agentOf() }, agents), { key: "picked", agent: fish })
+  assert.equal(statusLine({ request: null, agent: null }, agents), null)
+})
+
+test("a comment asks for a reply on an open change past Idea with no open request", () => {
+  assert.equal(asksForReply({ archived_at: null, phase: "exploring", request: null }), true)
+  assert.equal(asksForReply({ archived_at: null, phase: "idea", request: null }), false)
+  assert.equal(asksForReply({ archived_at: null, phase: "done", request: request({}) }), false)
+  assert.equal(asksForReply({ archived_at: "2026-11-18T00:00:00Z", phase: "proposed", request: null }), false)
+})
+
+test("the refresh: runs every interval while set running and the page is visible, and stops when set off", () => {
+  mock.timers.enable({ apis: ["setInterval"] })
+  try {
+    let visible = true
+    let calls = 0
+    const refresh = refresher(() => { calls++ }, 10_000, () => visible)
+
+    refresh.set(true)
+    refresh.set(true)
+    assert.equal(refresh.running, true)
+    mock.timers.tick(10_000)
+    mock.timers.tick(10_000)
+    assert.equal(calls, 2, "one timer, however often it is set running")
+
+    visible = false
+    mock.timers.tick(10_000)
+    assert.equal(calls, 2, "not while the page is hidden")
+
+    visible = true
+    refresh.set(false)
+    assert.equal(refresh.running, false)
+    mock.timers.tick(30_000)
+    assert.equal(calls, 2, "stopped")
+  } finally {
+    mock.timers.reset()
+  }
 })

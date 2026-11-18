@@ -10,7 +10,14 @@ import { useMeStore } from "../../stores/me.ts"
 import { useUiStore } from "../../stores/ui.ts"
 import { t } from "../../i18n/index.ts"
 
-const props = defineProps<{ post: (body: string, files: File[]) => Promise<void> }>()
+// step: a second action that sends the text, or nothing, with something
+// else than a comment, such as a change's next step; files cannot go with
+// it. note: a line about what posting does.
+const props = defineProps<{
+  post: (body: string, files: File[]) => Promise<void>
+  step?: { label: string; send: (body: string) => Promise<void> } | null
+  note?: string | null
+}>()
 const body = ref("")
 const files = ref<File[]>([])
 const serverErrors = ref<string[]>([])
@@ -42,12 +49,24 @@ function removeFile(index: number) {
 
 async function submit() {
   if (!body.value.trim() || problems.value.length) return
+  await sending(async () => {
+    await props.post(body.value, files.value)
+    files.value = []
+  })
+}
+
+async function sendStep() {
+  if (!props.step || files.value.length) return
+  await sending(() => props.step!.send(body.value))
+}
+
+// The field is emptied once what it held was sent.
+async function sending(send: () => Promise<void>) {
   busy.value = true
   serverErrors.value = []
   try {
-    await props.post(body.value, files.value)
+    await send()
     body.value = ""
-    files.value = []
   } catch (error) {
     if (error instanceof ApiError && error.status === 422) serverErrors.value = Object.values(error.fields).flat()
     else ui.fail(error)
@@ -81,11 +100,13 @@ async function submit() {
               </label>
               <input :id="fileInputId" type="file" multiple :accept="ACCEPT" class="visually-hidden" @change="onFiles">
               <span class="composer__hint grow">{{ t("task.attachmentsHint", { count: MAX_ATTACHMENTS }) }}</span>
+              <button v-if="step" type="button" class="button button--secondary" :disabled="busy || files.length > 0" @click="sendStep">{{ step.label }}</button>
               <button type="submit" class="button" :disabled="busy || !body.trim() || problems.length > 0">{{ t("task.postComment") }}</button>
             </div>
           </div>
         </template>
       </AppField>
+      <p v-if="note" class="comment-form__note">{{ note }}</p>
     </div>
   </form>
 </template>
@@ -94,6 +115,7 @@ async function submit() {
 .comment-form { display: flex; align-items: flex-start; gap: var(--space-3); }
 .comment-form__avatar { margin-block-start: var(--space-1); }
 .comment-form__body { flex-grow: 1; min-inline-size: 0; }
+.comment-form__note { margin-block-start: var(--space-1); color: var(--color-muted); font-size: var(--text-xs); }
 
 /* The text and its actions share one bordered box; the box is the field's
    visible boundary, so it takes the control border and the focus ring. */

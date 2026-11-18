@@ -79,6 +79,35 @@ class OpenapiExamplesContract < OpenapiContractTest
       post api_project_change_comments_path(@project, "add-labels"), params: { body: "Which colours?" }, headers: token, as: :json
     end,
     "archiveChange" => -> { post api_project_change_archival_path(@project, @change.id), headers: token },
+    "createRequest" => -> do
+      post api_project_change_requests_path(@project, "add-labels"), params: { kind: "explore", comment: "Start with the **API**." }, headers: token, as: :json
+    end,
+    "claimRequest" => -> do
+      ChangeRequest.ask!(change: @change, kind: "explore", by: users(:one))
+      post claim_api_project_requests_path(@project), headers: fish_token, as: :json
+      assert_equal "taken", response.parsed_body.dig("request", "state")
+    end,
+    "finishRequest" => -> do
+      ChangeRequest.ask!(change: @change, kind: "explore", by: users(:one))
+      request = ChangeRequest.take!(project: @project, agent: fish.user)
+      post finish_api_project_request_path(@project, request), params: { outcome: "done", comment: "Should labels have **colours**?" }, headers: fish_token, as: :json
+    end,
+    "cancelRequest" => -> do
+      request = ChangeRequest.ask!(change: @change, kind: "explore", by: users(:one))
+      post cancellation_api_project_request_path(@project, request), headers: token
+    end,
+    "releaseChangeAgent" => -> do
+      ChangeRequest.ask!(change: @change, kind: "explore", by: users(:one))
+      ChangeRequest.take!(project: @project, agent: fish.user)
+      post api_project_change_agent_release_path(@project, "add-labels"), headers: token
+      assert_equal "release", response.parsed_body["history"].last["kind"]
+    end,
+    "reportContextFull" => -> do
+      ChangeRequest.ask!(change: @change, kind: "explore", by: users(:one))
+      ChangeRequest.take!(project: @project, agent: fish.user)
+      post context_full_api_project_requests_path(@project), headers: fish_token
+      assert_equal true, response.parsed_body["blocked"]
+    end,
     "listChangeTasks" => -> { get api_project_change_tasks_path(@project, "add-labels"), headers: token },
 
     "importOpenspecChange" => -> do
@@ -156,6 +185,38 @@ class OpenapiExamplesContract < OpenapiContractTest
     assert_includes response.parsed_body.map { |change| change.values_at("name", "waiting_for_people") }, [ "add-labels", true ]
   end
 
+  test "claimRequest with nothing waiting, and showChange and listChanges with a request, an agent and every kind of history" do
+    post claim_api_project_requests_path(@project), headers: fish_token
+    assert_response :success
+    assert_equal({ "request" => nil }, response.parsed_body)
+
+    ChangeRequest.ask!(change: @change, kind: "explore", by: users(:two), comment: "Go")
+    ChangeRequest.take!(project: @project, agent: fish.user).finish!(by: fish.user, outcome: "done", comment: "Questions")
+    @change.reload.release_agent!(by: users(:two))
+    ChangeRequest.ask!(change: @change, kind: "propose", by: users(:two))
+    heron = create_agent(@project, name: "Heron").user
+    ChangeRequest.take!(project: @project, agent: heron)
+    Change.block_for_full_context!(project: @project, agent: heron)
+    @project.project_changes.create!(name: "add-tags", agent: fish.user)
+
+    get api_project_change_path(@project, "add-labels"), headers: token
+    assert_response :success
+    assert_equal %w[request request phase request release request request block], response.parsed_body["history"].map { |entry| entry["kind"] }
+    assert response.parsed_body.dig("agent", "blocked_at").present?
+
+    get api_project_changes_path(@project), headers: token
+    assert_response :success
+    assert_equal [ "Fish", false ], response.parsed_body.find { |change| change["name"] == "add-tags" }["agent"].then { |agent| [ agent.dig("user", "name"), agent["on"] ] }
+  end
+
+  test "createChange and updateChange with an agent" do
+    post api_project_changes_path(@project), params: { name: "add-tags", agent: fish.user.id }, headers: token, as: :json
+    assert_response :created
+    patch api_project_change_path(@project, "add-tags"), params: { agent: nil }, headers: token, as: :json
+    assert_response :success
+    assert_nil response.parsed_body["agent"]
+  end
+
   test "showChange of a change reported in Done" do
     @change.update!(phase: "implementing")
     @task.update!(status: statuses(:goal_done))
@@ -217,5 +278,13 @@ class OpenapiExamplesContract < OpenapiContractTest
   private
     def token
       bearer(TOKEN)
+    end
+
+    def fish
+      @fish ||= create_agent(@project, name: "Fish")
+    end
+
+    def fish_token
+      @fish_token ||= bearer(issue_agent_token(fish, issuer: users(:two)))
     end
 end

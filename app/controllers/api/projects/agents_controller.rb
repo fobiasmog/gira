@@ -8,15 +8,24 @@ class Api::Projects::AgentsController < Api::BaseController
   rate_limit_per_user to: 10, within: 1.hour, only: :create, scope: "agent_tokens"
   before_action :require_reentered_password, only: :create
 
+  # With each agent's last check-in in the project, whether it is online,
+  # and the open change it is on (spec change-requests, "Check-ins"). A
+  # change in a project the member does not share is named by nothing.
   def index
     agents = Agent.of_project(@project).joins(:user).order("users.name", :id)
       .includes(created_by: :agent, user: { avatar_attachment: :blob }).to_a
     user_ids = agents.map(&:user_id)
     token_counts = ApiToken.of_agents.where(user_id: user_ids).group(:user_id).count
     elsewhere = Membership.where(user_id: user_ids).where.not(project_id: @project.id).joins(:project).merge(Project.kept).distinct.pluck(:user_id)
+    check_ins = @project.memberships.where(user_id: user_ids).pluck(:user_id, :checked_in_at).to_h
+    working_on = Change.kept.where(agent_id: user_ids).where.not(agent_taken_at: nil).index_by(&:agent_id)
+    shared = Current.user.projects.kept.where(id: working_on.values.map(&:project_id)).pluck(:id)
 
     render json: agents.map { |agent|
-      AgentSerializer.new(agent, token_count: token_counts.fetch(agent.user_id, 0), removable: elsewhere.include?(agent.user_id))
+      change = working_on[agent.user_id]
+      AgentSerializer.new(agent, token_count: token_counts.fetch(agent.user_id, 0), removable: elsewhere.include?(agent.user_id),
+        checked_in_at: check_ins[agent.user_id], online: Agent.online?(check_ins[agent.user_id]),
+        working_on: change && (shared.include?(change.project_id) ? { id: change.id, name: change.name, project_id: change.project_id } : { id: nil, name: nil, project_id: nil }))
     }
   end
 
@@ -32,7 +41,8 @@ class Api::Projects::AgentsController < Api::BaseController
       token.save!
     end
 
-    render json: AgentSerializer.new(agent, token_count: 1, removable: false).as_json.merge(first_token: AgentTokenSerializer.new(token).with_value),
+    render json: AgentSerializer.new(agent, token_count: 1, removable: false, checked_in_at: nil, online: false, working_on: nil).as_json
+      .merge(first_token: AgentTokenSerializer.new(token).with_value),
       status: :created
   end
 

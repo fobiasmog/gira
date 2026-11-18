@@ -12,6 +12,8 @@ class OpenapiErrorsContract < OpenapiContractTest
     "422" => "ValidationFailed", "429" => "RateLimited"
   }.freeze
   FILE_RESPONSES = { "401" => "FileUnauthorized", "404" => "FileNotFound", "429" => "FileRateLimited" }.freeze
+  # Operations for agents only, whose 403 is also agents_only.
+  AGENTS_ONLY = %w[claimRequest reportContextFull].freeze
 
   def error_code
     response.parsed_body.dig("error", "code")
@@ -48,6 +50,13 @@ class OpenapiErrorsContract < OpenapiContractTest
 
     assert_response :forbidden
     assert_equal "insufficient_scope", error_code
+  end
+
+  test "403 agents_only for a person's token taking a request" do
+    post claim_api_project_requests_path(projects(:goal)), headers: bearer("glnr_two_goal_read_write")
+
+    assert_response :forbidden
+    assert_equal "agents_only", error_code
   end
 
   test "404 not_found for another project of the token's owner" do
@@ -144,6 +153,7 @@ class OpenapiErrorsContract < OpenapiContractTest
       expected << "404" if operation.path.include?("{")
       expected << "422" if operation.definition["requestBody"]
       shared = operation.path.start_with?("/files/") ? FILE_RESPONSES : RESPONSES
+      shared = shared.merge("403" => "AgentsOnly") if AGENTS_ONLY.include?(operation.id)
 
       expected.filter_map do |status|
         reference = listed.dig(status, "$ref")

@@ -173,15 +173,21 @@ class ApiTokenAuthenticationTest < ForgeryProtectedIntegrationTest
     api/projects/changes#index
     api/projects/changes#show
     api/projects/changes#update
+    api/projects/changes/agent_releases#create
     api/projects/changes/archivals#create
     api/projects/changes/comments#create
     api/projects/changes/comments#index
     api/projects/changes/files#show
+    api/projects/changes/requests#create
     api/projects/changes/tasks#index
     api/projects/labels#create
     api/projects/labels#index
     api/projects/members#index
     api/projects/openspec_changes#create
+    api/projects/requests#cancellation
+    api/projects/requests#claim
+    api/projects/requests#context_full
+    api/projects/requests#finish
     api/projects/statuses#index
     api/projects/tasks#create
     api/projects/tasks#destroy

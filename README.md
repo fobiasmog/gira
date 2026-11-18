@@ -71,8 +71,15 @@ Endpoints available to tokens, all under `/api`:
   and `comments`; `PATCH`/`DELETE /comments/:id` for your own comments;
 - labels, and changes (list, create, show, update, with `archival`, `tasks`,
   `comments` and `file?path=`) under `/projects/:id`, where a change in a path
-  is its id or an open change's name; importing OpenSpec changes with
-  `POST /projects/:id/openspec_changes`;
+  is its id or an open change's name; creating and updating a change take an
+  `agent` (an agent's user id, or `null` for any free agent); importing
+  OpenSpec changes with `POST /projects/:id/openspec_changes`;
+- requests for the steps of a change: `POST /projects/:id/changes/:change/requests`
+  asks for one, `POST /projects/:id/changes/:change/agent_release` releases
+  the change's agent, and under `/projects/:id/requests` an agent takes one
+  with `POST claim`, finishes it with `POST :request/finish` and reports a
+  full context with `POST context_full`; anyone cancels one with
+  `POST :request/cancellation`;
 - downloads of attachments and avatars from the `/files/...` URLs in responses.
 
 Everything else (projects, members, invitations, changing columns, your
@@ -92,6 +99,7 @@ Errors use the API's JSON envelope, `{ "error": { "code", "message" } }`:
 | 401 | `invalid_token` | The token is unknown, expired or revoked. |
 | 403 | `token_not_allowed` | The endpoint is not available to tokens. |
 | 403 | `insufficient_scope` | A read-only token tried to change something. |
+| 403 | `agents_only` | A person's token tried to take a request or report a full context. |
 | 404 | `not_found` | The record does not exist or is outside the token's project. |
 | 429 | `rate_limited` | More than 300 requests in a minute with this token. |
 
@@ -206,8 +214,45 @@ import with who made it and when, and its page shows these lines among the
 comments.
 
 Every change has a page, linked from its name in the board summary and on the
-Changes screen: its phases and phase menu, its idea, its thread, and the
-OpenSpec files of its last import, each shown formatted or as its source.
+Changes screen: its phases and phase menu, its open request and its agent,
+the button for its next step, its idea, its thread, and the OpenSpec files of
+its last import, each shown formatted or as its source.
+
+### Requests and the agent pool
+
+People ask for the steps of a change on its page, and the project's agents
+take them, one change per agent. The button for the next step follows the
+phase: **Start exploring** (Idea), **Write the proposal** (Exploring),
+**Implement** (Proposed), **Continue implementing** (Implementing) and
+**Archive and sync specs** (Done). Text in the comment field goes with the
+request as its comment.
+
+- A change has at most one open **request**, waiting or taken. Members cancel
+  it with **Cancel request**.
+- An agent takes a change with its first request and stays **on** it until
+  the change is archived or a member releases it, so the agent that asked a
+  question gets its answer. Pick an agent in the **New change** dialog or on
+  the page; otherwise the change goes to the first free agent. While an agent
+  is on a change, every request of the change waits for that agent.
+- A person's comment on a change past Idea with no open request asks the
+  change's agent to **reply**. A comment posted while the agent works is
+  answered when it finishes. A request for another step replaces a reply
+  request that nobody has taken.
+- Taking `explore` moves a change in Idea to Exploring, and taking `implement`
+  moves it to Implementing. Finishing posts the agent's comment in the
+  thread; finishing an archive request archives the change.
+- Every take is the agent's **check-in**. An agent without one for 3 minutes
+  is offline. The New change dialog, the Agents screen and the change page
+  show which agents are free, which change each is on, and which are offline.
+- **Release** an agent when its terminal is gone: its taken request is
+  cancelled, and the change goes back to any free agent.
+- When an agent's context fills up, its change is **blocked**: the change
+  waits for people and its page says why. Release the agent and ask for the
+  step again; the next agent continues from the change's files, cards,
+  commits and thread.
+
+While a change has an open request, its page reloads itself every 10 seconds.
+Requests, releases and blocks appear in the change's history.
 
 Archive a change when its work is done. Its tasks stay with it and leave the
 board, whether they are done or not, and a new change may take its name. An
@@ -334,6 +379,10 @@ Limits and known gaps:
   committed: ask for changes in the thread;
 - tables and other Markdown outside the shared feature set lose their
   structure when a file is shown formatted; its source shows it as imported.
+
+The steps above are the manual way, for an agent driven from its terminal.
+With requests, the `goalner-worker` skill does them: see "Running agents"
+below.
 
 This repository is developed this way: its own OpenSpec changes go on a
 Goalner board, and agents work their cards through MCP.

@@ -134,18 +134,58 @@ export type ChosenPhase = Exclude<ChangePhase, "done">
 export interface Change extends ChangeReference {
   archived_at: Timestamp | null
   phase: ChangePhase
-  // The newest comment of its thread was written by an agent.
+  // Its agent's context is full, or it has no open request and the newest
+  // comment of its thread was written by an agent.
   waiting_for_people: boolean
   task_counts: TaskCounts
+  // The open request, waiting or taken.
+  request: ChangeRequest | null
+  // Picked, or on the change; null for any free agent.
+  agent: ChangeAgent | null
 }
 
-// One line of a change's history: a phase move, or an import with the files
-// it brought, tasks.md included.
+// Requests for the steps of a change (spec change-requests). People ask for
+// all kinds but reply, which comments create.
+export const REQUEST_KINDS = ["explore", "propose", "implement", "archive", "reply"] as const
+export type RequestKind = (typeof REQUEST_KINDS)[number]
+export type AskableKind = Exclude<RequestKind, "reply">
+export type RequestState = "waiting" | "taken" | "done" | "failed" | "cancelled"
+
+export interface ChangeRequest {
+  id: Id
+  kind: RequestKind
+  state: RequestState
+  change: ChangeReference & { phase: ChangePhase }
+  requested_by: UserCard
+  taken_by: UserCard | null
+  // The agent that finished it, or who cancelled it.
+  finished_by: UserCard | null
+  created_at: Timestamp
+  taken_at: Timestamp | null
+  finished_at: Timestamp | null
+}
+
+// The agent of a change: on it once it took the change's first request,
+// picked before. blocked_at: since when its context is full.
+export interface ChangeAgent {
+  user: UserCard
+  on: boolean
+  since: Timestamp | null
+  blocked_at: Timestamp | null
+}
+
+// One line of a change's history: a phase move, an import with the files it
+// brought, tasks.md included, a step of a request, the release of the
+// change's agent, or a block because the agent's context is full.
 export interface ChangeEvent {
-  kind: "phase" | "import"
+  kind: "phase" | "import" | "request" | "release" | "block"
   actor: UserCard
   phase: ChosenPhase | null
   paths: string[] | null
+  // The released agent.
+  agent: UserCard | null
+  step: RequestKind | null
+  state: "asked" | "taken" | "done" | "failed" | "cancelled" | null
   created_at: Timestamp
 }
 
@@ -228,9 +268,15 @@ export interface Agent extends UserCard {
 
 // An agent in a project's list. removable: it belongs to another project
 // too, so it can be removed from this one.
+// checked_in_at: its last take of a request in the project; online while it
+// is younger than 3 minutes. working_on: the open change it is on, unnamed
+// when it is in a project the viewer does not share.
 export interface ProjectAgent extends Agent {
   token_count: number
   removable: boolean
+  checked_in_at: Timestamp | null
+  online: boolean
+  working_on: { id: Id | null; name: string | null; project_id: Id | null } | null
 }
 
 // An agent the user can see, with the projects they share.

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue"
+import { computed, onBeforeUnmount, ref, watch } from "vue"
 import { storeToRefs } from "pinia"
 import { useRouter } from "vue-router"
 import AppField from "../components/ui/AppField.vue"
-import AppIcon from "../components/ui/AppIcon.vue"
+import AppIcon, { type IconName } from "../components/ui/AppIcon.vue"
 import AppTextarea from "../components/ui/AppTextarea.vue"
 import MarkdownView from "../components/MarkdownView.vue"
 import CommentItem from "../components/task/CommentItem.vue"
@@ -11,11 +11,15 @@ import CommentForm from "../components/task/CommentForm.vue"
 import ArchiveChangeDialog from "../components/changes/ArchiveChangeDialog.vue"
 import { phaseName } from "../components/changes/PhasePill.vue"
 import WaitingMarker from "../components/changes/WaitingMarker.vue"
+import { agentOption, historyText, statusText } from "../components/changes/requestTexts.ts"
 import { changesApi, type ChangeFields } from "../api/changes.ts"
+import { activeAgents, agentsApi } from "../api/agents.ts"
 import { tasksApi } from "../api/tasks.ts"
 import { ApiError } from "../api/client.ts"
-import { CHANGE_PHASES, type ChangeDetail, type ChangeEvent, type ChosenPhase, type Comment } from "../api/types.ts"
-import { boardProgress, chosenPhase, threadEntries, unfinished } from "../composables/changes.ts"
+import { CHANGE_PHASES, type ChangeDetail, type ChangeEvent, type ChosenPhase, type Comment, type ProjectAgent } from "../api/types.ts"
+import {
+  asksForReply, boardProgress, canAskStep, chosenPhase, nextStep, refresher, statusLine, threadEntries, unfinished,
+} from "../composables/changes.ts"
 import { boardLocation, changeLocation } from "../router/routes.ts"
 import { OTHER_TAB, useBoardStore } from "../stores/board.ts"
 import { useMeStore } from "../stores/me.ts"
@@ -24,9 +28,12 @@ import { language, t } from "../i18n/index.ts"
 import { personName } from "../i18n/people.ts"
 import { formatDate, formatDateTime } from "../i18n/format.ts"
 
-// A change's page (spec web-client, "Change page"): its phases and phase
-// menu, its idea, its thread with its history, and the OpenSpec files of its
-// last import. An archived change's page is read-only.
+// A change's page (spec web-client, "Change page" and "Requests on the
+// change page"): its phases and phase menu, its open request and agent with
+// their actions, the button for the next step, its idea, its thread with its
+// history, and the OpenSpec files of its last import. While a request is
+// open the page reloads the change, its thread and the agents. An archived
+// change's page is read-only.
 const props = defineProps<{ projectId: number; changeRef: string }>()
 const router = useRouter()
 const ui = useUiStore()
@@ -38,6 +45,8 @@ const TASKS_MD = "tasks.md"
 
 const change = ref<ChangeDetail | null>(null)
 const comments = ref<Comment[]>([])
+// The project's active agents with their states.
+const agents = ref<ProjectAgent[]>([])
 const missing = ref(false)
 const loaded = ref(false)
 const editingIdea = ref(false)
@@ -57,10 +66,13 @@ watch(() => [props.projectId, props.changeRef] as const, async ([projectId, chan
   const ready = await ui.load(board.projectId === projectId ? Promise.resolve(true) : board.load(projectId, OTHER_TAB).then(() => true))
   if (!ready) return
   try {
-    const [detail, thread] = await Promise.all([changesApi.show(projectId, changeRef), changesApi.comments(projectId, changeRef)])
+    const [detail, thread, listed] = await Promise.all([
+      changesApi.show(projectId, changeRef), changesApi.comments(projectId, changeRef), agentsApi.inProject(projectId),
+    ])
     if (projectId !== props.projectId || changeRef !== props.changeRef) return
     change.value = detail
     comments.value = thread
+    agents.value = activeAgents(listed)
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) missing.value = true
     else ui.fail(error)
@@ -78,11 +90,12 @@ const steps = computed(() => {
   return CHANGE_PHASES.map((phase, index) => ({ phase, passed: index < current, current: index === current }))
 })
 
-// The board's tabs follow the phase and the waiting marker.
+// The board's tabs follow the phase, the waiting marker, the request and the agent.
 function syncBoard(detail: ChangeDetail) {
   if (board.projectId !== props.projectId) return
-  board.changes = board.changes.map((listed) =>
-    listed.id === detail.id ? { ...listed, phase: detail.phase, waiting_for_people: detail.waiting_for_people } : listed)
+  board.changes = board.changes.map((listed) => listed.id === detail.id
+    ? { ...listed, phase: detail.phase, waiting_for_people: detail.waiting_for_people, request: detail.request, agent: detail.agent }
+    : listed)
 }
 
 async function update(fields: ChangeFields): Promise<ChangeDetail> {
@@ -98,6 +111,96 @@ async function refresh() {
     change.value = detail
     syncBoard(detail)
   } catch (error) {
+    ui.fail(error)
+  }
+}
+
+// Requests and the agent (spec web-client, "Requests on the change page")
+
+const agentsById = computed(() => new Map(agents.value.map((agent) => [agent.id, agent])))
+const status = computed(() => (change.value ? statusLine(change.value, agentsById.value) : null))
+const askable = computed(() => (change.value && canAskStep(change.value) ? nextStep(change.value.phase) : null))
+const agentOn = computed(() => (change.value?.agent?.on ? change.value.agent.user : null))
+
+const replyNote = computed(() => {
+  const detail = change.value
+  if (!detail || !asksForReply(detail)) return null
+  return detail.agent ? t("changePage.replyNote", { name: detail.agent.user.name }) : t("changePage.replyNoteAny")
+})
+
+// The comment field's text goes with the request as its comment.
+const stepAction = computed(() => {
+  const next = askable.value
+  if (!next) return null
+  const label = t(`changePage.steps.${next.label}`)
+  return {
+    label,
+    send: async (body: string) => {
+      await changesApi.askStep(props.projectId, change.value!.id, next.kind, body)
+      ui.toast(t("changePage.stepAsked", { step: label }))
+      await reload()
+    },
+  }
+})
+
+// The change, its thread and the agents' states, as they are now.
+async function reload() {
+  const current = change.value
+  if (!current) return
+  try {
+    const [detail, thread, listed] = await Promise.all([
+      changesApi.show(props.projectId, current.id), changesApi.comments(props.projectId, current.id), agentsApi.inProject(props.projectId),
+    ])
+    if (change.value?.id !== current.id) return
+    change.value = detail
+    comments.value = thread
+    agents.value = activeAgents(listed)
+    syncBoard(detail)
+  } catch (error) {
+    ui.fail(error)
+  }
+}
+
+// While the change has an open request, so that its state, the agent's
+// comments and the phase show up without reloading the page.
+const autoRefresh = refresher(reload)
+watch(() => Boolean(change.value && isOpen.value && change.value.request), (open) => autoRefresh.set(open), { immediate: true })
+onBeforeUnmount(() => autoRefresh.set(false))
+
+async function cancelRequest() {
+  const request = change.value?.request
+  if (!request) return
+  try {
+    await changesApi.cancelRequest(props.projectId, request.id)
+    ui.toast(t("changePage.requestCancelled"))
+    await reload()
+  } catch (error) {
+    ui.fail(error)
+  }
+}
+
+async function release() {
+  const agent = agentOn.value
+  if (!agent) return
+  try {
+    const detail = await changesApi.releaseAgent(props.projectId, change.value!.id)
+    change.value = detail
+    syncBoard(detail)
+    ui.toast(t("changePage.released", { name: agent.name }))
+    await reload()
+  } catch (error) {
+    ui.fail(error)
+  }
+}
+
+async function pickAgent(event: Event) {
+  const select = event.target as HTMLSelectElement
+  const agent = select.value ? Number(select.value) : null
+  try {
+    const updated = await update({ agent })
+    ui.toast(updated.agent ? t("changePage.agentPicked", { name: updated.agent.user.name }) : t("changePage.anyAgentPicked"))
+  } catch (error) {
+    select.value = String(change.value?.agent?.user.id ?? "")
     ui.fail(error)
   }
 }
@@ -146,12 +249,9 @@ async function saveIdea() {
 
 const entries = computed(() => threadEntries(comments.value, change.value?.history ?? []))
 
-function eventText(event: ChangeEvent): string {
-  const name = personName(event.actor)
-  return event.kind === "phase"
-    ? t("changePage.movedLine", { name, phase: phaseName(event.phase!) })
-    : t("changePage.importedLine", { name, files: (event.paths ?? []).join(", ") })
-}
+const EVENT_ICONS: Record<ChangeEvent["kind"], IconName> = { phase: "flag", import: "description", request: "robot", release: "logout", block: "close" }
+
+const eventKey = (at: number, event: ChangeEvent) => `event-${at}-${event.kind}-${event.phase}-${event.step}-${event.state}`
 
 // A reply can end the wait for people.
 async function postComment(body: string, files: File[]) {
@@ -285,6 +385,25 @@ async function archive() {
       </p>
     </header>
 
+    <section v-if="isOpen" class="change-request panel" aria-labelledby="change-request">
+      <h2 id="change-request" class="visually-hidden">{{ t("changePage.request") }}</h2>
+      <p class="change-request__status grow" role="status">
+        <AppIcon name="robot" :size="20" />
+        <span>{{ status ? statusText(status) : t("changePage.anyAgentPicked") }}</span>
+      </p>
+      <div class="change-request__actions">
+        <button v-if="change.request" type="button" class="button button--secondary" @click="cancelRequest">{{ t("changePage.cancelRequest") }}</button>
+        <button v-if="agentOn" type="button" class="button button--secondary" @click="release">{{ t("changePage.release", { name: agentOn.name }) }}</button>
+        <label v-else class="row small change-request__agent">
+          {{ t("changes.agent") }}
+          <select class="input" :value="String(change.agent?.user.id ?? '')" @change="pickAgent">
+            <option value="">{{ t("changes.anyAgent") }}</option>
+            <option v-for="candidate in agents" :key="candidate.id" :value="String(candidate.id)">{{ agentOption(candidate) }}</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
     <div class="change-page__main panel">
       <section class="change-section" aria-labelledby="change-idea">
         <div class="row">
@@ -313,7 +432,7 @@ async function archive() {
           {{ t("changePage.thread") }} <span v-if="comments.length" class="badge">{{ comments.length }}</span>
         </h2>
         <ol v-if="entries.length" role="list" class="thread">
-          <template v-for="entry in entries" :key="entry.kind === 'comment' ? `comment-${entry.comment.id}` : `event-${entry.at}-${entry.event.kind}-${entry.event.phase}`">
+          <template v-for="entry in entries" :key="entry.kind === 'comment' ? `comment-${entry.comment.id}` : eventKey(entry.at, entry.event)">
             <CommentItem
               v-if="entry.kind === 'comment'"
               :comment="entry.comment"
@@ -322,16 +441,16 @@ async function archive() {
               :remove="() => removeComment(entry.comment)"
             />
             <li v-else class="thread-event">
-              <AppIcon :name="entry.event.kind === 'phase' ? 'flag' : 'description'" :size="16" />
+              <AppIcon :name="EVENT_ICONS[entry.event.kind]" :size="16" />
               <span>
-                {{ eventText(entry.event) }}
+                {{ historyText(entry.event) }}
                 <time :datetime="entry.event.created_at" class="thread-event__time">· {{ formatDateTime(language, entry.event.created_at) }}</time>
               </span>
             </li>
           </template>
         </ol>
         <p v-else class="muted small">{{ t("changePage.noComments") }}</p>
-        <CommentForm v-if="isOpen" :post="postComment" />
+        <CommentForm v-if="isOpen" :post="postComment" :step="stepAction" :note="replyNote" />
       </section>
     </div>
 
@@ -391,7 +510,20 @@ async function archive() {
   max-inline-size: 1240px;
 }
 
-.change-header { grid-column: 1 / -1; }
+.change-header,
+.change-request { grid-column: 1 / -1; }
+
+.change-request {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-5);
+}
+
+.change-request__status { display: flex; align-items: center; gap: var(--space-2); min-inline-size: 12rem; }
+.change-request__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.change-request__agent select { inline-size: auto; max-inline-size: 20rem; }
 
 @media (min-width: 1100px) {
   .change-page { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); }
