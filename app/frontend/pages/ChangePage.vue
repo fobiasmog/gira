@@ -16,9 +16,9 @@ import { changesApi, type ChangeFields } from "../api/changes.ts"
 import { activeAgents, agentsApi } from "../api/agents.ts"
 import { tasksApi } from "../api/tasks.ts"
 import { ApiError } from "../api/client.ts"
-import { CHANGE_PHASES, type ChangeDetail, type ChangeEvent, type ChosenPhase, type Comment, type ProjectAgent } from "../api/types.ts"
+import { CHANGE_PHASES, type ChangeDetail, type ChangeEvent, type Comment, type ProjectAgent } from "../api/types.ts"
 import {
-  asksForReply, boardProgress, canAskStep, chosenPhase, nextStep, refresher, statusLine, threadEntries, unfinished,
+  asksForReply, boardProgress, canAskStep, nextStep, refresher, statusLine, threadEntries, unfinished,
 } from "../composables/changes.ts"
 import { boardLocation, changeLocation } from "../router/routes.ts"
 import { OTHER_TAB, useBoardStore } from "../stores/board.ts"
@@ -29,9 +29,10 @@ import { personName } from "../i18n/people.ts"
 import { formatDate, formatDateTime } from "../i18n/format.ts"
 
 // A change's page (spec web-client, "Change page" and "Requests on the
-// change page"): its phases and phase menu, its open request and agent with
-// their actions, the button for the next step, its idea, its thread with its
-// history, and the OpenSpec files of its last import. While a request is
+// change page"): its phases, its open request and agent with their actions,
+// the button for the next step, its idea, its thread with its history, and
+// the OpenSpec files of its last import. Phases move with the steps agents
+// take, and through the API; the page offers no phase menu. While a request is
 // open the page reloads the change, its thread and the agents. An archived
 // change's page is read-only.
 const props = defineProps<{ projectId: number; changeRef: string }>()
@@ -40,7 +41,6 @@ const ui = useUiStore()
 const board = useBoardStore()
 const { profile } = storeToRefs(useMeStore())
 
-const CHOSEN: ChosenPhase[] = ["idea", "exploring", "proposed", "implementing"]
 const TASKS_MD = "tasks.md"
 
 const change = ref<ChangeDetail | null>(null)
@@ -129,19 +129,26 @@ const replyNote = computed(() => {
 })
 
 // The comment field's text goes with the request as its comment.
-const stepAction = computed(() => {
+// The comment field's text, which the button for the next step sends along.
+const draft = ref("")
+const asking = ref(false)
+
+async function askStep() {
   const next = askable.value
-  if (!next) return null
+  if (!next || asking.value) return
   const label = t(`changePage.steps.${next.label}`)
-  return {
-    label,
-    send: async (body: string) => {
-      await changesApi.askStep(props.projectId, change.value!.id, next.kind, body)
-      ui.toast(t("changePage.stepAsked", { step: label }))
-      await reload()
-    },
+  asking.value = true
+  try {
+    await changesApi.askStep(props.projectId, change.value!.id, next.kind, draft.value)
+    draft.value = ""
+    ui.toast(t("changePage.stepAsked", { step: label }))
+    await reload()
+  } catch (error) {
+    ui.fail(error)
+  } finally {
+    asking.value = false
   }
-})
+}
 
 // The change, its thread and the agents' states, as they are now.
 async function reload() {
@@ -201,19 +208,6 @@ async function pickAgent(event: Event) {
     ui.toast(updated.agent ? t("changePage.agentPicked", { name: updated.agent.user.name }) : t("changePage.anyAgentPicked"))
   } catch (error) {
     select.value = String(change.value?.agent?.user.id ?? "")
-    ui.fail(error)
-  }
-}
-
-// Phase menu
-
-async function choosePhase(event: Event) {
-  const select = event.target as HTMLSelectElement
-  try {
-    const updated = await update({ phase: select.value as ChosenPhase })
-    ui.toast(t("changePage.moved", { name: updated.name, phase: phaseName(updated.phase) }))
-  } catch (error) {
-    select.value = chosenPhase(change.value!.phase)
     ui.fail(error)
   }
 }
@@ -370,12 +364,6 @@ async function archive() {
 
       <div v-if="isOpen" class="change-header__actions">
         <span v-if="change.waiting_for_people" class="waiting-status"><WaitingMarker />{{ t("changes.waiting") }}</span>
-        <label class="row small change-header__phase">
-          {{ t("changePage.phase") }}
-          <select class="input" :value="chosenPhase(change.phase)" @change="choosePhase">
-            <option v-for="phase in CHOSEN" :key="phase" :value="phase">{{ phaseName(phase) }}</option>
-          </select>
-        </label>
         <button type="button" class="button button--text" @click="archiving = true">
           <AppIcon name="archive" :size="20" />{{ t("changes.archive") }}
         </button>
@@ -387,20 +375,28 @@ async function archive() {
 
     <section v-if="isOpen" class="change-request panel" aria-labelledby="change-request">
       <h2 id="change-request" class="visually-hidden">{{ t("changePage.request") }}</h2>
-      <p class="change-request__status grow" role="status">
+      <div class="change-request__status grow">
         <AppIcon name="robot" :size="20" />
-        <span>{{ status ? statusText(status) : t("changePage.anyAgentPicked") }}</span>
-      </p>
+        <p v-if="status" role="status">{{ statusText(status) }}</p>
+        <!-- While no agent is on the change: who will take its next request. -->
+        <p v-else class="change-request__pick">
+          <label>
+            <span class="visually-hidden">{{ t("changes.agent") }}</span>
+            <select class="input" :value="String(change.agent?.user.id ?? '')" @change="pickAgent">
+              <option value="">{{ t("changes.anyAgent") }}</option>
+              <option v-for="candidate in agents" :key="candidate.id" :value="String(candidate.id)">{{ agentOption(candidate) }}</option>
+            </select>
+          </label>
+          {{ t("changePage.willTakeIt") }}
+        </p>
+      </div>
       <div class="change-request__actions">
+        <template v-if="askable">
+          <button type="button" class="button" :disabled="asking" @click="askStep">{{ t(`changePage.steps.${askable.label}`) }}</button>
+          <span v-if="draft.trim()" class="small muted">{{ t("changePage.stepWithComment") }}</span>
+        </template>
         <button v-if="change.request" type="button" class="button button--secondary" @click="cancelRequest">{{ t("changePage.cancelRequest") }}</button>
         <button v-if="agentOn" type="button" class="button button--secondary" @click="release">{{ t("changePage.release", { name: agentOn.name }) }}</button>
-        <label v-else class="row small change-request__agent">
-          {{ t("changes.agent") }}
-          <select class="input" :value="String(change.agent?.user.id ?? '')" @change="pickAgent">
-            <option value="">{{ t("changes.anyAgent") }}</option>
-            <option v-for="candidate in agents" :key="candidate.id" :value="String(candidate.id)">{{ agentOption(candidate) }}</option>
-          </select>
-        </label>
       </div>
     </section>
 
@@ -450,7 +446,7 @@ async function archive() {
           </template>
         </ol>
         <p v-else class="muted small">{{ t("changePage.noComments") }}</p>
-        <CommentForm v-if="isOpen" :post="postComment" :step="stepAction" :note="replyNote" />
+        <CommentForm v-if="isOpen" v-model:body="draft" :post="postComment" :note="replyNote" />
       </section>
     </div>
 
@@ -523,7 +519,8 @@ async function archive() {
 
 .change-request__status { display: flex; align-items: center; gap: var(--space-2); min-inline-size: 12rem; }
 .change-request__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
-.change-request__agent select { inline-size: auto; max-inline-size: 20rem; }
+.change-request__pick { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.change-request__pick select { inline-size: auto; max-inline-size: 20rem; }
 
 @media (min-width: 1100px) {
   .change-page { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); }
@@ -549,7 +546,6 @@ async function archive() {
   gap: var(--space-2) var(--space-3);
 }
 
-.change-header__phase select { inline-size: auto; }
 .change-header__archived { flex: 1 1 20rem; }
 
 .waiting-status {

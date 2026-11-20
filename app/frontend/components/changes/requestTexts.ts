@@ -16,21 +16,14 @@ export function agentOption(agent: Pick<ProjectAgent, "name" | "online" | "worki
   return state.change ? t("changes.agentBusy", { name, change: state.change }) : t("changes.agentBusyElsewhere", { name })
 }
 
-// The status line of a change's request and agent.
+// The status line of a change's request while an agent is on the change.
 export function statusText(line: StatusLine): string {
+  const name = line.agent.name
   switch (line.key) {
-    case "blocked": return t("changePage.blocked", { name: line.agent.name })
-    case "working": return t("changePage.working", { name: line.agent.name, time: formatDateTime(language.value, line.since) })
-    case "waitingFree": return t("changePage.waitingFree")
-    case "onChange": return t("changePage.onChange", { name: line.agent.name })
-    case "picked": return t("changePage.picked", { name: line.agent.name })
-    case "queued": {
-      const name = line.agent.name
-      const state = line.state
-      if (state?.kind === "offline") return t("changePage.queuedOffline", { name })
-      if (state?.kind === "busy") return state.change ? t("changePage.queuedBusy", { name, change: state.change }) : t("changePage.queuedBusyElsewhere", { name })
-      return t("changePage.queued", { name })
-    }
+    case "blocked": return t("changePage.blocked", { name })
+    case "working": return t("changePage.working", { name, time: formatDateTime(language.value, line.since) })
+    case "onChange": return t("changePage.onChange", { name })
+    case "queued": return t(line.offline ? "changePage.queuedOffline" : "changePage.queued", { name })
   }
 }
 

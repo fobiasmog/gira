@@ -1,5 +1,5 @@
 import type {
-  AskableKind, Change, ChangeEvent, ChangePhase, ChosenPhase, Column, Comment, Id, ProjectAgent, TaskCard, TaskCounts, UserCard,
+  AskableKind, Change, ChangeEvent, ChangePhase, Column, Comment, Id, ProjectAgent, TaskCard, TaskCounts, UserCard,
 } from "../api/types.ts"
 
 // How far a change has come: its cards in the done column, of all its cards.
@@ -41,12 +41,6 @@ export function typedChangeName(value: string): string {
       return lower.length === letter.length ? lower : letter
     })
     .replace(/\s/g, "-")
-}
-
-// The phase a member chooses to keep a change where it is: Done is reported
-// while the change is in Implementing (spec changes, "Phase of a change").
-export function chosenPhase(phase: ChangePhase): ChosenPhase {
-  return phase === "done" ? "implementing" : phase
 }
 
 // One entry of a change's thread: a comment, or a line of its history.
@@ -100,27 +94,23 @@ export function agentState(agent: Pick<ProjectAgent, "online" | "working_on">): 
   return agent.working_on ? { kind: "busy", change: agent.working_on.name } : { kind: "free" }
 }
 
-// The line that says where a change's request and agent stand, as a message
-// key and the values it names, or null when there is nothing to say.
+// The line that says where a change's request stands while an agent is on
+// the change, as a message key and the values it names. Null while no agent
+// is on it: the page then shows the agent menu, "[agent] will take it".
 // agents: the project's agents with their states, by id.
 export type StatusLine =
   | { key: "blocked"; agent: UserCard }
   | { key: "working"; agent: UserCard; since: string }
-  | { key: "waitingFree" }
-  | { key: "queued"; agent: UserCard; state: AgentState | null }
-  | { key: "onChange" | "picked"; agent: UserCard }
+  | { key: "queued"; agent: UserCard; offline: boolean }
+  | { key: "onChange"; agent: UserCard }
 
 export function statusLine(change: Pick<Change, "request" | "agent">, agents: Map<Id, ProjectAgent>): StatusLine | null {
   const { request, agent } = change
-  if (agent?.blocked_at) return { key: "blocked", agent: agent.user }
+  if (!agent?.on) return null
+  if (agent.blocked_at) return { key: "blocked", agent: agent.user }
   if (request?.state === "taken" && request.taken_by && request.taken_at) return { key: "working", agent: request.taken_by, since: request.taken_at }
-  if (request?.state === "waiting") {
-    if (!agent) return { key: "waitingFree" }
-    const listed = agents.get(agent.user.id)
-    return { key: "queued", agent: agent.user, state: listed ? agentState(listed) : null }
-  }
-  if (agent) return { key: agent.on ? "onChange" : "picked", agent: agent.user }
-  return null
+  if (request?.state === "waiting") return { key: "queued", agent: agent.user, offline: agents.get(agent.user.id)?.online === false }
+  return { key: "onChange", agent: agent.user }
 }
 
 // Whether a person's comment would ask for a reply: on an open change past

@@ -5,7 +5,8 @@ import type { ChangeReference } from "../../api/types.ts"
 import { useUiStore } from "../../stores/ui.ts"
 import { t, tc } from "../../i18n/index.ts"
 
-// Confirms archiving a change (spec web-client, "Archiving a change"). When
+// Confirms archiving a change in Goalner only (spec web-client, "Archiving a
+// change"): no agent is asked, so the OpenSpec change is not archived. When
 // root tasks are not in the done column, it says how many and what happens to
 // them; archiving stays possible either way.
 const props = defineProps<{ change: ChangeReference | null; unfinished: number; onConfirm: () => Promise<unknown> }>()
@@ -35,6 +36,7 @@ async function confirm() {
         <p>{{ t("changes.unfinishedNote") }}</p>
       </div>
       <p>{{ t("changes.archiveConfirm", { name: change?.name ?? "" }) }}</p>
+      <p>{{ t("changes.archiveOnlyHere") }}</p>
     </div>
     <template #actions>
       <button type="button" class="button button--text" @click="open = false">{{ t("common.cancel") }}</button>

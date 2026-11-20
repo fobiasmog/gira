@@ -10,15 +10,13 @@ import { useMeStore } from "../../stores/me.ts"
 import { useUiStore } from "../../stores/ui.ts"
 import { t } from "../../i18n/index.ts"
 
-// step: a second action that sends the text, or nothing, with something
-// else than a comment, such as a change's next step; files cannot go with
-// it. note: a line about what posting does.
+// note: a line about what posting does. The text can be bound with
+// v-model:body, so that the page can send it along with something else.
 const props = defineProps<{
   post: (body: string, files: File[]) => Promise<void>
-  step?: { label: string; send: (body: string) => Promise<void> } | null
   note?: string | null
 }>()
-const body = ref("")
+const body = defineModel<string>("body", { default: "" })
 const files = ref<File[]>([])
 const serverErrors = ref<string[]>([])
 const busy = ref(false)
@@ -49,24 +47,12 @@ function removeFile(index: number) {
 
 async function submit() {
   if (!body.value.trim() || problems.value.length) return
-  await sending(async () => {
-    await props.post(body.value, files.value)
-    files.value = []
-  })
-}
-
-async function sendStep() {
-  if (!props.step || files.value.length) return
-  await sending(() => props.step!.send(body.value))
-}
-
-// The field is emptied once what it held was sent.
-async function sending(send: () => Promise<void>) {
   busy.value = true
   serverErrors.value = []
   try {
-    await send()
+    await props.post(body.value, files.value)
     body.value = ""
+    files.value = []
   } catch (error) {
     if (error instanceof ApiError && error.status === 422) serverErrors.value = Object.values(error.fields).flat()
     else ui.fail(error)
@@ -100,7 +86,6 @@ async function sending(send: () => Promise<void>) {
               </label>
               <input :id="fileInputId" type="file" multiple :accept="ACCEPT" class="visually-hidden" @change="onFiles">
               <span class="composer__hint grow">{{ t("task.attachmentsHint", { count: MAX_ATTACHMENTS }) }}</span>
-              <button v-if="step" type="button" class="button button--secondary" :disabled="busy || files.length > 0" @click="sendStep">{{ step.label }}</button>
               <button type="submit" class="button" :disabled="busy || !body.trim() || problems.length > 0">{{ t("task.postComment") }}</button>
             </div>
           </div>

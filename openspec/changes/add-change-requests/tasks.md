@@ -34,6 +34,12 @@
 - [x] 4.4 Request, release and block lines in the thread, in the viewer's language; verify with a system test for "Request lines in the thread".
 - [x] 4.5 Agent states on the Agents screen, and the note under the MCP configuration; verify with a system test for "Agent states".
 - [x] 4.6 English and Russian texts; verify that `npm test`, `npm run typecheck` and `npm run policy` pass, and that `bin/rails test:system` passes after `npx vite build --mode test`, apart from the two failures known on this machine.
+- [x] 4.7 Remove the phase menu from the change page (found in dogfooding: it moved the phase without asking any agent for a step, and showed Implementing for a change reported Done), with the modified "Change page" requirement of the `web-client` delta; verify with a system test for "Phase menu", which the page no longer offers.
+- [x] 4.8 Rename the "Archive" action of changes to "Archive only", and say in its dialog that no agent is asked, so the OpenSpec change is not archived and its specs are not synced (found in dogfooding: it read like "Archive and sync specs"), with the modified "Board change summary" and "Archiving a change" requirements of the `web-client` delta; verify with the system tests of archiving from the changes screen and the change page.
+- [x] 4.9 Remove the archive action from the board's change summary (asked for in dogfooding), with the modified "Board change summary" and "Archiving a change" requirements of the `web-client` delta; verify with system tests that the summary offers no archive action and that archiving on the change page takes the change's tab off the board.
+- [x] 4.10 Name the board summary's link to the change's page "Open the change" instead of the change's name, which its tab already shows (asked for in dogfooding), with the modified "Board change summary" and "Change page" requirements of the `web-client` delta; verify with the system tests that open the page from the summary.
+- [x] 4.11 Remove the phase badge from the board summary, since the change's tab shows the phase (asked for in dogfooding), with the modified "Board change summary" requirement of the `web-client` delta; verify with a system test that the summary shows no phase.
+- [x] 4.12 Remove the count of done cards from the change tabs of the board, which the board summary shows (asked for in dogfooding), with the modified "Board change tabs" requirement of the `web-client` delta; verify with system tests that the tabs show no count.
 
 ## 5. Worker
 

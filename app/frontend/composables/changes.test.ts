@@ -1,7 +1,7 @@
 import { mock, test } from "node:test"
 import assert from "node:assert/strict"
 import {
-  agentState, asksForReply, boardProgress, canAskStep, chosenPhase, countsProgress, nextStep, refresher, statusLine, threadEntries,
+  agentState, asksForReply, boardProgress, canAskStep, countsProgress, nextStep, refresher, statusLine, threadEntries,
   typedChangeName, unfinished,
 } from "./changes.ts"
 import type { ChangeAgent, ChangeEvent, ChangeRequest, Comment, ProjectAgent, UserCard } from "../api/types.ts"
@@ -59,10 +59,6 @@ test("the thread: a history line comes before a comment of the same time, and or
   assert.deepEqual(threadEntries([], []), [])
 })
 
-test("the phase to choose: Done stays Implementing, the others stay as they are", () => {
-  assert.equal(chosenPhase("done"), "implementing")
-  for (const phase of ["idea", "exploring", "proposed", "implementing"] as const) assert.equal(chosenPhase(phase), phase)
-})
 
 // Requests and agents
 
@@ -105,18 +101,19 @@ test("agent states: offline first, then on a change, then free", () => {
   assert.deepEqual(agentState(listed({ online: true })), { kind: "free" })
 })
 
-test("the status line: blocked, working, waiting for a free agent, queued, on the change, picked, or nothing", () => {
-  const agents = new Map([[fish.id, listed({ online: true, working_on: { id: 2, name: "fix-login", project_id: 1 } })]])
+test("the status line: blocked, working, queued, or on the change while an agent is on it, and nothing otherwise", () => {
+  const agents = new Map([[fish.id, listed({ online: true, working_on: { id: 3, name: "export-csv", project_id: 1 } })]])
+  const taken = request({ state: "taken", taken_by: fish, taken_at: "2026-11-18T14:05:00Z" })
 
-  assert.deepEqual(statusLine({ request: request({ state: "taken", taken_by: fish, taken_at: "2026-11-18T14:05:00Z" }), agent: agentOf({ on: true, blocked_at: "2026-11-18T15:00:00Z" }) }, agents),
-    { key: "blocked", agent: fish })
-  assert.deepEqual(statusLine({ request: request({ state: "taken", taken_by: fish, taken_at: "2026-11-18T14:05:00Z" }), agent: agentOf({ on: true }) }, agents),
-    { key: "working", agent: fish, since: "2026-11-18T14:05:00Z" })
-  assert.deepEqual(statusLine({ request: request({}), agent: null }, agents), { key: "waitingFree" })
-  assert.deepEqual(statusLine({ request: request({}), agent: agentOf() }, agents), { key: "queued", agent: fish, state: { kind: "busy", change: "fix-login" } })
-  assert.deepEqual(statusLine({ request: request({}), agent: agentOf() }, new Map()), { key: "queued", agent: fish, state: null })
+  assert.deepEqual(statusLine({ request: taken, agent: agentOf({ on: true, blocked_at: "2026-11-18T15:00:00Z" }) }, agents), { key: "blocked", agent: fish })
+  assert.deepEqual(statusLine({ request: taken, agent: agentOf({ on: true }) }, agents), { key: "working", agent: fish, since: "2026-11-18T14:05:00Z" })
+  assert.deepEqual(statusLine({ request: request({ kind: "reply" }), agent: agentOf({ on: true }) }, agents), { key: "queued", agent: fish, offline: false })
+  assert.deepEqual(statusLine({ request: request({ kind: "reply" }), agent: agentOf({ on: true }) }, new Map([[fish.id, listed({ online: false })]])),
+    { key: "queued", agent: fish, offline: true })
   assert.deepEqual(statusLine({ request: null, agent: agentOf({ on: true }) }, agents), { key: "onChange", agent: fish })
-  assert.deepEqual(statusLine({ request: null, agent: agentOf() }, agents), { key: "picked", agent: fish })
+
+  assert.equal(statusLine({ request: request({}), agent: null }, agents), null, "the agent menu: any free agent will take it")
+  assert.equal(statusLine({ request: request({}), agent: agentOf() }, agents), null, "the agent menu: the picked agent will take it")
   assert.equal(statusLine({ request: null, agent: null }, agents), null)
 })
 

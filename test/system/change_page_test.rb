@@ -105,21 +105,18 @@ class ChangePageTest < ApplicationSystemTestCase
     assert_equal "design.md", evaluate_script("document.activeElement.textContent.trim()")
   end
 
-  # Phase menu
+  # Phases
 
-  test "phase menu: choosing Implementing marks it current and records the move" do
-    @project.project_changes.create!(name: "export-csv").update!(phase: "proposed")
+  test "phase menu: an open change shows its phases and offers no menu to choose one" do
+    @project.project_changes.create!(name: "export-csv", phase: "proposed")
     visit_change("export-csv")
 
-    select "Implementing", from: "Phase"
-
-    assert_text "“export-csv” moved to Implementing"
-    within(steps) { assert_selector "li[aria-current=step]", text: "Implementing" }
-    within(thread) { assert_text "User One moved the change to Implementing" }
-    assert_equal "implementing", @project.project_changes.find_by!(name: "export-csv").phase
+    within(steps) { assert_selector "li[aria-current=step]", text: "Proposed" }
+    assert_no_field "Phase"
+    within(".change-header") { assert_no_select }
   end
 
-  test "a change whose cards are all done is reported Done, and the menu keeps Implementing" do
+  test "a change whose cards are all done is reported Done" do
     change = @project.project_changes.create!(name: "add-labels")
     @project.tasks.create!(title: "Card", creator: @user, change:, status: statuses(:goal_done))
     change.update!(phase: "implementing")
@@ -129,7 +126,6 @@ class ChangePageTest < ApplicationSystemTestCase
       assert_selector "li[aria-current=step]", text: "Done"
       assert_selector "li", text: /\AImplementing\s+\(passed\)\z/
     end
-    assert_equal "implementing", find_field("Phase").value
     assert_text "1 of 1 cards done"
   end
 
@@ -195,7 +191,7 @@ class ChangePageTest < ApplicationSystemTestCase
 
   # Archived and unknown changes
 
-  test "archived change: its idea, thread and files, and no phase menu, idea editing, comment field or Archive" do
+  test "archived change: its idea, thread and files, and no idea editing, comment field or Archive" do
     change = @project.project_changes.create!(name: "fix-login", idea: "Fix the login")
     change.comments.create!(author: @user, body: "Done with it")
     import("fix-login", proposal: PROPOSAL)
@@ -209,7 +205,7 @@ class ChangePageTest < ApplicationSystemTestCase
     assert_no_field "Phase"
     assert_no_button "Edit idea"
     assert_no_field "Comment"
-    assert_no_button "Archive"
+    assert_no_button "Archive only"
     assert_no_button "Comment actions"
     assert_no_selector "section[aria-labelledby='change-request']"
     assert_no_button "Start exploring"
@@ -240,7 +236,8 @@ class ChangePageTest < ApplicationSystemTestCase
     click_button "Start exploring"
 
     within(request_area) do
-      assert_selector "[role=status]", text: "Waiting for a free agent"
+      assert_select "Agent", selected: "Any free agent"
+      assert_text "will take it"
       assert_button "Cancel request"
     end
     assert_no_button "Start exploring"
@@ -259,13 +256,16 @@ class ChangePageTest < ApplicationSystemTestCase
     change = @project.project_changes.create!(name: "export-csv", phase: "proposed")
     visit_change("export-csv")
 
-    within(thread) do
-      fill_in "Comment", with: "Start with the API."
+    within(thread) { fill_in "Comment", with: "Start with the API." }
+    within(request_area) do
+      assert_text "Your comment below goes with it."
       click_button "Implement"
+    end
+
+    within(thread) do
       assert_selector ".comment", text: "Start with the API."
       assert_field "Comment", with: ""
     end
-
     within(request_area) { assert_button "Cancel request" }
     assert_equal [ [ "implement", "waiting" ] ], change.requests.pluck(:kind, :state)
     assert_equal [ "Start with the API." ], change.comments.pluck(:body)
@@ -278,7 +278,11 @@ class ChangePageTest < ApplicationSystemTestCase
 
     click_button "Start exploring"
 
-    within(request_area) { assert_selector "[role=status]", text: "Queued for Fish, who is on export-csv" }
+    within(request_area) do
+      assert_button "Cancel request"
+      assert_select "Agent", selected: "Fish — on export-csv"
+      assert_text "will take it"
+    end
   end
 
   test "taken request: Fish has been working on it since it took it, with Cancel request and Release Fish" do
@@ -315,7 +319,7 @@ class ChangePageTest < ApplicationSystemTestCase
     change = @project.project_changes.create!(name: "export-csv")
     ask(change, "explore")
     visit_change("export-csv")
-    within(request_area) { assert_selector "[role=status]", text: "Waiting for a free agent" }
+    within(request_area) { assert_select "Agent", selected: "Any free agent" }
 
     request = ChangeRequest.take!(project: @project, agent: @fish)
     using_wait_time(15) do
@@ -347,11 +351,12 @@ class ChangePageTest < ApplicationSystemTestCase
     check_in(heron)
     change = @project.project_changes.create!(name: "add-tags", agent: @fish)
     visit_change("add-tags")
-    within(request_area) { assert_selector "[role=status]", text: "Fish is picked for this change" }
+    within(request_area) { assert_select "Agent", selected: "Fish — offline" }
 
     within(request_area) { select "Heron — free", from: "Agent" }
 
-    within(request_area) { assert_selector "[role=status]", text: "Heron is picked for this change" }
+    within(request_area) { assert_select "Agent", selected: "Heron — free" }
+    assert_text "Heron is picked"
     assert_equal heron, change.reload.agent
   end
 
@@ -397,8 +402,8 @@ class ChangePageTest < ApplicationSystemTestCase
     change = @project.project_changes.create!(name: "fix-login")
     visit_change("fix-login")
 
-    click_button "Archive"
-    within("dialog[open]") { click_button "Archive" }
+    click_button "Archive only"
+    within("dialog[open]") { click_button "Archive only" }
 
     assert_text "“fix-login” was archived"
     assert_current_path page_path(change.id)
@@ -416,7 +421,7 @@ class ChangePageTest < ApplicationSystemTestCase
     @project.project_changes.create!(name: "export-csv")
     visit "/app/projects/#{@project.id}/board"
 
-    within("section[aria-label='Change']") { click_link "export-csv" }
+    within("section[aria-label='Change']") { click_link "Open the change" }
     assert_current_path page_path("export-csv")
     assert_selector "h1", text: "export-csv"
 
@@ -436,6 +441,6 @@ class ChangePageTest < ApplicationSystemTestCase
 
     click_button "Написать предложение"
     assert_text "User One: запрошено — написание предложения"
-    assert_selector "[role=status]", text: "Ждёт свободного агента"
+    assert_text "возьмётся за работу"
   end
 end

@@ -7,15 +7,13 @@ import KanbanColumn from "../components/board/KanbanColumn.vue"
 import BoardList from "../components/board/BoardList.vue"
 import ChangeTabs, { changeTabId } from "../components/changes/ChangeTabs.vue"
 import ChangeSummary from "../components/changes/ChangeSummary.vue"
-import ArchiveChangeDialog from "../components/changes/ArchiveChangeDialog.vue"
 import NewChangeDialog from "../components/changes/NewChangeDialog.vue"
 import type { Change } from "../api/types.ts"
-import { boardProgress, unfinished } from "../composables/changes.ts"
 import { useDragSort, type DragMove } from "../composables/useDragSort.ts"
 import { useBoardMove } from "../composables/useBoardMove.ts"
 import { useKeyboardMoves } from "../composables/useKeyboardMoves.ts"
 import { boardLocation, type BoardLayout } from "../router/routes.ts"
-import { DEFAULT_TAB, useBoardStore, type BoardTab } from "../stores/board.ts"
+import { useBoardStore, type BoardTab } from "../stores/board.ts"
 import { useProjectsStore } from "../stores/projects.ts"
 import { useUiStore } from "../stores/ui.ts"
 import { t } from "../i18n/index.ts"
@@ -90,19 +88,6 @@ async function addColumn() {
   }
 }
 
-// After archiving, the default tab; the address may already name it.
-const archiving = ref(false)
-const unfinishedCards = computed(() => unfinished(boardProgress(columns.value, board.tasks)))
-
-async function archiveShown() {
-  const shown = change.value
-  if (!shown) return
-  await board.archiveChange(shown.id)
-  ui.toast(t("changes.archived", { name: shown.name }))
-  if (props.tab.kind === "default") await ui.load(board.load(props.projectId, DEFAULT_TAB))
-  else await router.push(boardLocation(props.projectId, props.layout, DEFAULT_TAB))
-}
-
 const creatingChange = ref(false)
 
 async function showCreated(created: Change) {
@@ -113,33 +98,33 @@ async function showCreated(created: Change) {
 
 <template>
   <section v-if="loaded" class="page page--full board-page">
-    <header class="board-header">
-      <h1 class="ellipsis">{{ project?.title }}</h1>
-      <div class="board-header__actions">
-        <nav class="segmented" :aria-label="t('board.layout')">
-          <RouterLink :to="boardLocation(projectId, 'kanban', tab)" :aria-current="layout === 'kanban' ? 'page' : undefined">
-            <AppIcon name="view_kanban" :size="18" />{{ t("navigation.board") }}
-          </RouterLink>
-          <RouterLink :to="boardLocation(projectId, 'list', tab)" :aria-current="layout === 'list' ? 'page' : undefined">
-            <AppIcon name="view_list" :size="18" />{{ t("navigation.list") }}
-          </RouterLink>
-        </nav>
-        <button v-if="layout === 'kanban' && columns.length" type="button" class="button" @click="newTask">
-          <AppIcon name="add" :size="20" />{{ t("board.newTask") }}
-        </button>
-      </div>
-    </header>
+    <div class="board-top">
+      <header class="board-header">
+        <h1 class="ellipsis">{{ project?.title }}</h1>
+        <div class="board-header__actions">
+          <nav class="segmented" :aria-label="t('board.layout')">
+            <RouterLink :to="boardLocation(projectId, 'kanban', tab)" :aria-current="layout === 'kanban' ? 'page' : undefined">
+              <AppIcon name="view_kanban" :size="18" />{{ t("navigation.board") }}
+            </RouterLink>
+            <RouterLink :to="boardLocation(projectId, 'list', tab)" :aria-current="layout === 'list' ? 'page' : undefined">
+              <AppIcon name="view_list" :size="18" />{{ t("navigation.list") }}
+            </RouterLink>
+          </nav>
+          <button v-if="layout === 'kanban' && columns.length" type="button" class="button" @click="newTask">
+            <AppIcon name="add" :size="20" />{{ t("board.newTask") }}
+          </button>
+        </div>
+      </header>
 
-    <ChangeTabs
-      :project-id="projectId"
-      :layout="layout"
-      :changes="changes"
-      :shown="change"
-      :columns="columns"
-      :tasks="board.tasks"
-      :panel-id="panelId"
-      @new="creatingChange = true"
-    />
+      <ChangeTabs
+        :project-id="projectId"
+        :layout="layout"
+        :changes="changes"
+        :shown="change"
+        :panel-id="panelId"
+        @new="creatingChange = true"
+      />
+    </div>
 
     <div :id="panelId" role="tabpanel" :aria-labelledby="changeTabId(change)" class="board-panel">
       <p v-if="missingChange" class="notice" role="status">{{ t("board.tabs.missing", { name: missingChange }) }}</p>
@@ -147,10 +132,8 @@ async function showCreated(created: Change) {
         v-if="change"
         :project-id="projectId"
         :change="change"
-        :phase="changes.find((open) => open.id === change!.id)?.phase ?? null"
         :columns="columns"
         :tasks="board.tasks"
-        @archive="archiving = true"
       />
 
       <BoardList v-if="layout === 'list'" :project-id="projectId" />
@@ -205,13 +188,34 @@ async function showCreated(created: Change) {
       </div>
     </div>
 
-    <ArchiveChangeDialog v-model:open="archiving" :change="change" :unfinished="unfinishedCards" :on-confirm="archiveShown" />
     <NewChangeDialog v-model:open="creatingChange" :project-id="projectId" :create="board.createChange" @created="showCreated" />
   </section>
 </template>
 
 <style scoped>
-.board-page { block-size: 100%; grid-template-rows: auto auto 1fr; gap: var(--space-4); }
+.board-page { block-size: 100%; grid-template-rows: auto 1fr; gap: var(--space-4); }
+
+/* The page header and the tabs on one white band across the content's
+   padding (AppShell.vue's .shell__content), down to the tabs' bottom line;
+   the shown tab takes the board's colour below. Up to the top bar unless an
+   announcement stands above the page. */
+.board-top {
+  display: grid;
+  gap: var(--space-4);
+  margin-inline: calc(-1 * var(--space-4));
+  padding: var(--space-4) var(--space-4) 0;
+  border-block-end: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.board-page:first-child > .board-top {
+  margin-block-start: calc(-1 * var(--space-5));
+  padding-block-start: var(--space-5);
+}
+
+@media (min-width: 1024px) {
+  .board-top { margin-inline: calc(-1 * var(--space-6)); padding-inline: var(--space-6); }
+}
 
 .board-header {
   display: flex;

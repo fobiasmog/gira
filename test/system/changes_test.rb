@@ -154,12 +154,12 @@ class ChangesTest < ApplicationSystemTestCase
     end
 
     assert_equal labels, Task.find_by!(title: "Fix flaky test").change
-    within(selected_tab) { assert_text "0/1" }
+    within(selected_tab) { assert_no_selector ".change-tabs__count" }
   end
 
   # Board change summary
 
-  test "a change in progress: its name links to its page, with its phase, the cards done and Archive" do
+  test "a change in progress: Open the change links to its page, with the cards done, and no phase or archive action" do
     labels = create_change("add-labels").tap { |change| change.update!(phase: "implementing") }
     3.times { |i| task("Open #{i}", change: labels, status: i.even? ? :goal_todo : :goal_work) }
     task("Finished", change: labels, status: :goal_done)
@@ -167,18 +167,40 @@ class ChangesTest < ApplicationSystemTestCase
     visit_board("/changes/add-labels")
 
     within(summary) do
-      assert_link "add-labels", href: "/app/projects/#{@project.id}/changes/add-labels"
-      assert_selector ".phase-pill", text: "Implementing"
+      assert_link "Open the change", href: "/app/projects/#{@project.id}/changes/add-labels"
+      assert_no_selector ".phase-pill"
       assert_text "1 of 4 done"
       assert_selector "[role=progressbar][aria-valuenow='1'][aria-valuemax='4']"
       assert_selector ".progress-bar__fill[style*='25%']"
-      assert_button "Archive"
+      assert_no_button "Archive only"
     end
-    within(selected_tab) { assert_text "1/4" }
+    within(selected_tab) { assert_no_text "1/4" }
     assert_no_text "Not in the change"
 
-    within(summary) { click_link "add-labels" }
+    within(summary) { click_link "Open the change" }
     assert_current_path "/app/projects/#{@project.id}/changes/add-labels"
+  end
+
+  test "more tabs than fit: no scrollbar, a mouse wheel scrolls the row, and it fades into New change until its end" do
+    12.times { |i| create_change("a-rather-long-change-name-#{i}") }
+    visit_board
+
+    assert_selector ".change-tabs__new.change-tabs__new--fade"
+    assert_equal "none", evaluate_script("getComputedStyle(document.querySelector('[role=tablist]')).scrollbarWidth")
+
+    execute_script("document.querySelector('[role=tablist]').dispatchEvent(new WheelEvent('wheel', { deltaY: 200, bubbles: true, cancelable: true }))")
+    assert_operator evaluate_script("document.querySelector('[role=tablist]').scrollLeft"), :>, 0, "a mouse wheel scrolls the row sideways"
+
+    execute_script("const row = document.querySelector('[role=tablist]'); row.scrollLeft = row.scrollWidth")
+    assert_no_selector ".change-tabs__new--fade"
+  end
+
+  test "tabs that fit: no fade" do
+    create_change("add-labels")
+    visit_board
+
+    assert_selector ".change-tabs__new"
+    assert_no_selector ".change-tabs__new--fade"
   end
 
   test "the board of other tasks has no summary" do
@@ -197,7 +219,8 @@ class ChangesTest < ApplicationSystemTestCase
 
     within("section[aria-label='Изменение']") do
       assert_text "Готово 0 из 0"
-      assert_button "В архив"
+      assert_link "Открыть изменение"
+      assert_no_button "Только в архив"
     end
     assert_selector "[role=tab]", text: "Другие задачи"
   end
@@ -207,36 +230,38 @@ class ChangesTest < ApplicationSystemTestCase
   test "archiving with unfinished cards warns, and still archives; the board then shows the default tab" do
     import("add-labels", "## 1. Model\n- [x] 1.1 Table\n## 2. API\n- [ ] 2.1 Routes\n## 3. Docs\n- [ ] 3.1 README\n## 4. UI\n- [ ] 4.1 Dialog\n")
     travel(-1.minute) { create_change("export-csv") }
-    visit_board("/changes/add-labels")
+    visit "/app/projects/#{@project.id}/changes/add-labels"
 
-    within(summary) { click_button "Archive" }
+    click_button "Archive only"
     within("dialog[open]") do
-      assert_text "Archive “add-labels”"
+      assert_text "Archive only: “add-labels”"
       assert_text "3 cards are not done."
       assert_text "Agents may still be working on them. They stay with the archived change and leave the board."
-      click_button "Archive"
+      click_button "Archive only"
     end
 
     assert_text "“add-labels” was archived"
-    assert_current_path board_path
-    assert_no_selector "[role=tab]", text: "add-labels"
-    assert_equal "export-csv", selected_tab.find(".ellipsis").text
     assert @project.project_changes.find_by!(name: "add-labels").archived?
+    visit_board
+    assert_no_selector "[role=tab]", text: "add-labels"
+    assert_selector "[role=tablist] [role=tab][aria-selected=true] .ellipsis", exact_text: "export-csv"
   end
 
   test "archiving a change whose cards are all done asks for confirmation without a warning" do
     done = create_change("add-labels")
     task("Finished", change: done, status: :goal_done)
-    visit_board
+    visit "/app/projects/#{@project.id}/changes/add-labels"
 
-    within(summary) { click_button "Archive" }
+    click_button "Archive only"
     within("dialog[open]") do
       assert_text "“add-labels” leaves the board, and its tasks stay with it."
+      assert_text "No agent is asked: the OpenSpec change is not archived and its specs are not synced."
       assert_no_text "not done"
-      click_button "Archive"
+      click_button "Archive only"
     end
 
     assert_text "“add-labels” was archived"
+    visit_board
     assert_no_selector "[role=tab]", text: "add-labels"
     assert_selector "[role=tab][aria-selected=true]", text: "Other tasks"
   end
@@ -288,7 +313,8 @@ class ChangesTest < ApplicationSystemTestCase
     assert_no_selector "dialog[open]"
     assert_equal fish, @project.project_changes.find_by!(name: "add-tags").agent
     visit "/app/projects/#{@project.id}/changes/add-tags"
-    assert_selector "[role=status]", text: "Fish is picked for this change"
+    assert_select "Agent", selected: "Fish — on export-csv"
+    assert_text "will take it"
   end
 
   test "from the board: the dialog closes and the board shows the new change's tab" do
@@ -303,7 +329,8 @@ class ChangesTest < ApplicationSystemTestCase
 
     assert_no_selector "dialog[open]"
     assert_current_path board_path("/changes/fix-login")
-    assert_equal "fix-login", selected_tab.find(".ellipsis").text
+    # The address changes first; the tab is selected once the board has loaded it.
+    assert_selector "[role=tablist] [role=tab][aria-selected=true] .ellipsis", exact_text: "fix-login"
     assert_equal %w[fix-login add-labels], all("[role=tablist] [role=tab] .ellipsis").map(&:text).first(2)
   end
 
@@ -370,11 +397,11 @@ class ChangesTest < ApplicationSystemTestCase
       assert_text "Work 1"
       assert_text "Done 1"
       assert_selector "button[aria-expanded=true][aria-label='Tasks of add-labels']"
-      click_button "Archive add-labels"
+      click_button "Archive only: add-labels"
     end
     within("dialog[open]") do
       assert_text "1 card is not done."
-      click_button "Archive"
+      click_button "Archive only"
     end
 
     assert_text "“add-labels” was archived"

@@ -199,7 +199,8 @@ input.
 A change is in one **phase**: Idea, Exploring, Proposed, Implementing or Done.
 A new change starts in Idea. Agents move it with `updateChange`
 (`PATCH /api/projects/{project_id}/changes/{change}` with `phase`), and
-members can move it to any phase but Done from the phase menu on its page.
+members can move it to any phase but Done through the API. Taking a request
+moves it too (see "Requests and the agent pool").
 Importing it moves a change in Idea or Exploring to Proposed. Done is never
 set: Goalner reports it while every card of a change in Implementing is in
 the done column.
@@ -213,8 +214,8 @@ screen show a dot. The change's **history** records every phase move and
 import with who made it and when, and its page shows these lines among the
 comments.
 
-Every change has a page, linked from its name in the board summary and on the
-Changes screen: its phases and phase menu, its open request and its agent,
+Every change has a page, opened with **Open the change** in the board summary
+and from its name on the Changes screen: its phases, its open request and its agent,
 the button for its next step, its idea, its thread, and the OpenSpec files of
 its last import, each shown formatted or as its source.
 
@@ -254,8 +255,12 @@ request as its comment.
 While a change has an open request, its page reloads itself every 10 seconds.
 Requests, releases and blocks appear in the change's history.
 
-Archive a change when its work is done. Its tasks stay with it and leave the
-board, whether they are done or not, and a new change may take its name. An
+Archive a change when its work is done: **Archive and sync specs** asks its
+agent to archive the OpenSpec change, sync its specs and commit, and then
+archives the change in Goalner. **Archive only** archives it at
+once, with no agent and no OpenSpec archiving. Either way, its tasks stay
+with it and leave the board, whether they are done or not, and a new change
+may take its name. An
 archived change keeps its page, read-only, at an address with its id.
 
 ## OpenSpec changes
