@@ -14,10 +14,6 @@ class Agent < ApplicationRecord
 
   # Tries at a free generated address before giving up (design decision 2).
   HANDLE_ATTEMPTS = 5
-  # An agent is online in a project while its last check-in there, its last
-  # take of a request, is younger than this: three ticks of /loop 1m (spec
-  # change-requests, "Check-ins"; add-change-requests design.md, decision 9).
-  ONLINE_WINDOW = 3.minutes
 
   belongs_to :user
   belongs_to :created_by, class_name: "User"
@@ -32,6 +28,14 @@ class Agent < ApplicationRecord
   class << self
     def email_domain
       Rails.configuration.x.agents.email_domain
+    end
+
+    # An agent is online in a project while its last check-in there, its last
+    # take of a request, is younger than this (spec change-requests,
+    # "Check-ins"; add-change-requests design.md, decision 9): 3 minutes
+    # unless AGENT_ONLINE_SECONDS sets it (config/application.rb).
+    def online_window
+      Rails.configuration.x.agents.online_window
     end
 
     # Whether an address is on the agent domain, where only generated
@@ -71,7 +75,7 @@ class Agent < ApplicationRecord
 
   # Whether a check-in time, nil for none, makes an agent online now.
   def self.online?(checked_in_at)
-    checked_in_at.present? && checked_in_at > ONLINE_WINDOW.ago
+    checked_in_at.present? && checked_in_at > online_window.ago
   end
 
   def deleted?

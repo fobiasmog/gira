@@ -44,13 +44,6 @@ export const useChangesStore = defineStore("changes", () => {
     await load(id)
   }
 
-  // On the first column of the change.
-  async function addTask(id: Id, changeId: Id, title: string): Promise<TaskCard> {
-    const task = await tasksApi.create(id, { title, change_id: changeId })
-    await load(id)
-    return task
-  }
-
   // Into another open change, or into no change (null); the task keeps its
   // column.
   async function moveTask(id: Id, taskId: Id, changeId: Id | null): Promise<TaskCard> {
@@ -59,5 +52,5 @@ export const useChangesStore = defineStore("changes", () => {
     return card
   }
 
-  return { projectId, open, archived, tasks, load, loadTasks, create, archive, addTask, moveTask }
+  return { projectId, open, archived, tasks, load, loadTasks, create, archive, moveTask }
 })

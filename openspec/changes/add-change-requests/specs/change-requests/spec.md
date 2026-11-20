@@ -210,7 +210,7 @@ Members SHALL be able to cancel an open request of their project. Cancelling a r
 - **THEN** the request stays done
 
 ### Requirement: Check-ins
-Every take (requirement "Take a request") SHALL record its time as the agent's last check-in in that project, whether it returns a request or not. An agent SHALL be online in a project while its last check-in there is less than 3 minutes old, and offline otherwise, including when it has never checked in. The project's list of agents (spec `agents`) SHALL include, for each agent, its last check-in, whether it is online, and the open change it is on, if any.
+Every take (requirement "Take a request") SHALL record its time as the agent's last check-in in that project, whether it returns a request or not. An agent SHALL be online in a project while its last check-in there is younger than the online window, and offline otherwise, including when it has never checked in. The online window SHALL be 3 minutes unless the server's configuration sets another number of seconds. The project's list of agents (spec `agents`) SHALL include, for each agent, its last check-in, whether it is online, and the open change it is on, if any.
 
 #### Scenario: Online
 - **WHEN** Fish took a request of TEST a minute ago and got none, and a member lists TEST's agents
@@ -219,6 +219,10 @@ Every take (requirement "Take a request") SHALL record its time as the agent's l
 #### Scenario: Offline
 - **WHEN** Owl's last take in TEST was two hours ago, and a member lists TEST's agents
 - **THEN** Owl is listed as offline, with that check-in time
+
+#### Scenario: Configured window
+- **WHEN** the server is configured with an online window of 10 minutes, Fish's last take in TEST was 5 minutes ago, and a member lists TEST's agents
+- **THEN** Fish is listed as online
 
 #### Scenario: On a change
 - **WHEN** Fish is on `export-csv`, and a member lists TEST's agents

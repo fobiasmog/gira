@@ -269,7 +269,7 @@ export interface Agent extends UserCard {
 // An agent in a project's list. removable: it belongs to another project
 // too, so it can be removed from this one.
 // checked_in_at: its last take of a request in the project; online while it
-// is younger than 3 minutes. working_on: the open change it is on, unnamed
+// is younger than the server's online window (3 minutes unless configured). working_on: the open change it is on, unnamed
 // when it is in a project the viewer does not share.
 export interface ProjectAgent extends Agent {
   token_count: number

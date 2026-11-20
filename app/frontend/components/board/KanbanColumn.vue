@@ -41,8 +41,6 @@ async function startAdding() {
   newInput.value?.focus()
 }
 
-// The board header's "New task" opens this field too.
-defineExpose({ startAdding })
 
 async function addTask() {
   const title = newTitle.value.trim()

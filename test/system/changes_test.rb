@@ -336,21 +336,22 @@ class ChangesTest < ApplicationSystemTestCase
 
   # Changes screen
 
-  test "add a task to a change: listed under it and on its board" do
-    create_change("export-csv")
+  test "add a task to a change: no field on the screen, and a task added on its board is listed under it" do
+    export = create_change("export-csv")
     visit "/app/projects/#{@project.id}/changes"
 
     within(change_section("export-csv")) do
       assert_text "No tasks in this change yet."
-      fill_in "New task in export-csv", with: "Rate limiting"
-      click_button "Create"
+      assert_no_field type: "text"
+      assert_no_button "Create"
+    end
+
+    task("Rate limiting", change: export)
+    visit "/app/projects/#{@project.id}/changes"
+    within(change_section("export-csv")) do
       assert_text "Rate limiting"
       assert_text "1 task in total"
     end
-
-    within(".side-nav") { click_link "Board" }
-    assert_equal "export-csv", selected_tab.find(".ellipsis").text
-    assert_text "Rate limiting"
   end
 
   test "move a task to the other tasks: it leaves the change and keeps its column" do

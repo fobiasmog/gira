@@ -243,8 +243,10 @@ request as its comment.
   moves it to Implementing. Finishing posts the agent's comment in the
   thread; finishing an archive request archives the change.
 - Every take is the agent's **check-in**. An agent without one for 3 minutes
-  is offline. The New change dialog, the Agents screen and the change page
-  show which agents are free, which change each is on, and which are offline.
+  is offline; set `AGENT_ONLINE_SECONDS` on the server to wait longer, for
+  workers that loop more slowly than once a minute. The New change dialog,
+  the Agents screen and the change page show which agents are free, which
+  change each is on, and which are offline.
 - **Release** an agent when its terminal is gone: its taken request is
   cancelled, and the change goes back to any free agent.
 - When an agent's context fills up, its change is **blocked**: the change
@@ -434,7 +436,7 @@ Each agent then:
   person's;
 - every minute takes the next request for it (`claimRequest`). Each take is
   its check-in, so an agent whose loop stops shows as offline after 3
-  minutes;
+  minutes, or `AGENT_ONLINE_SECONDS` on the server;
 - works on each change in a branch named after the change, created from a
   base branch that it asks about in the thread when the idea does not say,
   and commits there. It never pushes;

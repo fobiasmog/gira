@@ -48,6 +48,14 @@ module Goalner
     # accounts"). It accepts no mail: its DNS publishes a null MX record.
     config.x.agents.email_domain = "agents.#{config.x.domain}"
 
+    # How long an agent counts as online after its last check-in, its last
+    # take of a request (spec change-requests, "Check-ins"): three ticks of
+    # /loop 1m unless AGENT_ONLINE_SECONDS says otherwise, for workers that
+    # loop more slowly.
+    online_seconds = Integer(ENV.fetch("AGENT_ONLINE_SECONDS", "180"), 10)
+    raise ArgumentError, "AGENT_ONLINE_SECONDS must be a positive number of seconds" unless online_seconds.positive?
+    config.x.agents.online_window = online_seconds.seconds
+
     # How to connect MCP clients: the README's MCP section (McpGuidesController).
     config.x.mcp.guide_url = "https://github.com/fobiasmog/gira#mcp-server"
 

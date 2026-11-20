@@ -46,7 +46,6 @@ export const en = {
     projects: "Projects",
     newProject: "New project",
     board: "Board",
-    list: "List",
     changes: "Changes",
     members: "Team",
     agents: "Agents",
@@ -267,7 +266,6 @@ export const en = {
     archivedOn: "archived {date}",
     total: { one: "{count} task in total", other: "{count} tasks in total" },
     noTasks: "No tasks in this change yet.",
-    newTask: "New task in {name}",
     done: "Done",
     move: "Move",
     moveTask: "Move {key}",
@@ -452,7 +450,6 @@ export const en = {
   },
   board: {
     taskCount: { one: "{count} task", other: "{count} tasks" },
-    layout: "Layout",
     addColumn: "Add column",
     columnTitle: "Column title",
     columnActions: "Actions for column {title}",
@@ -470,7 +467,6 @@ export const en = {
     comments: { one: "{count} comment", other: "{count} comments" },
     moveHandle: "Move {key}",
     moveColumnHandle: "Move column {title}",
-    newTask: "New task",
     tabs: {
       label: "Boards",
       otherTasks: "Other tasks",

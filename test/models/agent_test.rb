@@ -1,4 +1,5 @@
 require "test_helper"
+require "open3"
 
 # Spec agents, "Agent accounts"; add-agents design.md, decisions 1, 2 and 4.
 class AgentTest < ActiveSupport::TestCase
@@ -179,5 +180,36 @@ class AgentTest < ActiveSupport::TestCase
     assert fish.last_project?(projects(:goal))
     assert_raises(Agent::LastProject) { projects(:goal).remove_member!(fish.user) }
     assert projects(:goal).member?(fish.user)
+  end
+
+  # Check-ins (spec change-requests; add-change-requests design.md, decision 9)
+
+  test "online while the last check-in is younger than the online window, 3 minutes by default" do
+    assert_equal 3.minutes, Agent.online_window
+    assert Agent.online?(2.minutes.ago)
+    assert_not Agent.online?(4.minutes.ago)
+    assert_not Agent.online?(nil)
+  end
+
+  test "the online window follows the configuration" do
+    original = Rails.configuration.x.agents.online_window
+    Rails.configuration.x.agents.online_window = 10.minutes
+
+    assert Agent.online?(5.minutes.ago)
+    assert_not Agent.online?(11.minutes.ago)
+  ensure
+    Rails.configuration.x.agents.online_window = original
+  end
+
+  test "AGENT_ONLINE_SECONDS sets the online window at boot, and a value that is not a positive number refuses to boot" do
+    out, _err, status = Open3.capture3({ "AGENT_ONLINE_SECONDS" => "600" }, "bin/rails", "runner", "puts Agent.online_window.to_i", chdir: Rails.root.to_s)
+    assert status.success?
+    assert_equal "600", out.strip
+
+    %w[0 -5 3m].each do |value|
+      _out, err, status = Open3.capture3({ "AGENT_ONLINE_SECONDS" => value }, "bin/rails", "runner", "puts :booted", chdir: Rails.root.to_s)
+      assert_not status.success?, value
+      assert_match(/AGENT_ONLINE_SECONDS|invalid value for Integer/, err, value)
+    end
   end
 end

@@ -30,17 +30,6 @@ const loaded = ref(false)
 const project = computed(() => projects.list.find((p) => p.id === props.projectId) ?? null)
 const panelId = "board-panel"
 
-// "New task" opens the add field of the first column.
-const columnRefs = new Map<number, InstanceType<typeof KanbanColumn>>()
-function setColumnRef(id: number, instance: unknown) {
-  if (instance) columnRefs.set(id, instance as InstanceType<typeof KanbanColumn>)
-  else columnRefs.delete(id)
-}
-function newTask() {
-  const first = columns.value[0]
-  if (first) void columnRefs.get(first.id)?.startAdding()
-}
-
 const boardElement = ref<HTMLElement>()
 const runMove = useBoardMove()
 const cardDrag = useDragSort({
@@ -101,19 +90,9 @@ async function showCreated(created: Change) {
     <div class="board-top">
       <header class="board-header">
         <h1 class="ellipsis">{{ project?.title }}</h1>
-        <div class="board-header__actions">
-          <nav class="segmented" :aria-label="t('board.layout')">
-            <RouterLink :to="boardLocation(projectId, 'kanban', tab)" :aria-current="layout === 'kanban' ? 'page' : undefined">
-              <AppIcon name="view_kanban" :size="18" />{{ t("navigation.board") }}
-            </RouterLink>
-            <RouterLink :to="boardLocation(projectId, 'list', tab)" :aria-current="layout === 'list' ? 'page' : undefined">
-              <AppIcon name="view_list" :size="18" />{{ t("navigation.list") }}
-            </RouterLink>
-          </nav>
-          <button v-if="layout === 'kanban' && columns.length" type="button" class="button" @click="newTask">
-            <AppIcon name="add" :size="20" />{{ t("board.newTask") }}
-          </button>
-        </div>
+        <!-- No layout switch and no "New task" for now: tasks are added in
+             their column, and the list layout is reached only by its address
+             (spec web-client, "Screens"). -->
       </header>
 
       <ChangeTabs
@@ -148,7 +127,6 @@ async function showCreated(created: Change) {
             :style="{ viewTransitionName: `column-${column.id}` }"
           >
             <KanbanColumn
-              :ref="(instance) => setColumnRef(column.id, instance)"
               :column="column"
               :tasks="board.tasksIn(column.id)"
               :project-id="projectId"
@@ -225,7 +203,6 @@ async function showCreated(created: Change) {
   gap: var(--space-3) var(--space-5);
 }
 
-.board-header__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 
 /* The board fills what the tabs and the summary leave. */
 .board-panel {

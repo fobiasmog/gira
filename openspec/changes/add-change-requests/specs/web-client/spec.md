@@ -64,6 +64,60 @@ While the change has an open request and the page is visible, the client SHALL r
 
 ## MODIFIED Requirements
 
+### Requirement: Changes screen
+The changes screen SHALL show each open change, newest first, as a collapsible section whose header shows its name as a link to the change's page (requirement "Change page"), its phase, a marker with an accessible name when it is waiting for people, its task counts and its actions, and whose body lists its tasks. The screen SHALL offer no field to add a task: tasks are added to a change on its board. Done tasks SHALL be marked as done in text, not only by colour. Each task SHALL offer a move menu listing the other open changes and "Other tasks", except a card whose mark is in its change's tasks text (spec `changes`, "Tasks in a change"), which SHALL offer no move menu. The screen SHALL offer a "New change" action. Archived changes SHALL be listed collapsed below, most recently archived first, each name linking to the change's page, and expanding one SHALL list its tasks.
+
+#### Scenario: Add a task to a change
+- **WHEN** a member expands `export-csv`, and later adds "Rate limiting" on the board of `export-csv`
+- **THEN** the section offers no field to add a task, and then lists "Rate limiting" under `export-csv`
+
+#### Scenario: Move a task to other tasks
+- **WHEN** a member chooses "Other tasks" in the move menu of TEST-9, which is listed under `fix-login`
+- **THEN** TEST-9 leaves `fix-login` and is shown on the board of other tasks with its column unchanged
+
+#### Scenario: Card of tasks.md
+- **WHEN** a member views the section of `add-labels`, whose cards were created by importing it
+- **THEN** those cards offer no move menu, and a task added to `add-labels` by hand does offer one
+
+#### Scenario: Archived change
+- **WHEN** a member expands the archived change `fix-login` below the open changes
+- **THEN** its tasks are listed, done ones marked as done
+
+#### Scenario: Phase and waiting marker
+- **WHEN** `export-csv` is in Proposed and is waiting for people
+- **THEN** its section header shows Proposed and the waiting marker, and its name links to its page
+
+### Requirement: Screens
+The client SHALL provide screens for:
+- a personal dashboard (own or a teammate's open tasks and upcoming deadlines);
+- the project list and project creation;
+- a project's board, one change at a time, in the kanban layout; the list layout is reached only by its address, since the board offers no layout switch for now, and tasks are added from their column's own add action;
+- task details;
+- changes, and each change's page;
+- members and invitations;
+- agents;
+- project settings (owner only);
+- the project archive and an archived task;
+- profile settings (name, language, contact links, avatar, password, API tokens, connected apps);
+- announcements;
+- feedback.
+
+#### Scenario: Board screen
+- **WHEN** a member opens a project's board
+- **THEN** the project's columns are shown in order with their tasks, each card showing key, title, label, assignee avatar, deadline and importance, and no switch to another layout is offered
+
+#### Scenario: Owner-only settings
+- **WHEN** a non-owner member opens the project
+- **THEN** no project settings entry is offered
+
+#### Scenario: Agents entry
+- **WHEN** any member opens a project
+- **THEN** the project's sections include Agents
+
+#### Scenario: No sprints, backlog or milestones
+- **WHEN** any member opens a project
+- **THEN** the project's sections include Changes, and include no Backlog, Sprints or Milestones
+
 ### Requirement: Board change tabs
 Above the board, in both layouts, the client SHALL show a tab for each open change of the project, newest first, then an "Other tasks" tab for the board of other tasks (spec `project-board`), then a "New change" action. Each change tab SHALL show the change's name, its phase, and a marker with an accessible name when the change is waiting for people (spec `changes`, "Waiting for people"); it SHALL show no count of cards, which the board summary shows (requirement "Board change summary"). The tabs SHALL be exposed to assistive technology as a tab list, with the shown tab marked as selected. Choosing a tab SHALL show that board, and a task added on it SHALL be created in that change, or in no change on "Other tasks". The shown tab SHALL be part of the page address, so that reloading or sharing the address shows the same tab. Without a tab in the address, the board SHALL show the newest open change, or "Other tasks" when there is no open change. An address that names a change that is not open SHALL show that default tab together with a message that the change is archived or does not exist.
 
@@ -218,3 +272,9 @@ A new token's value SHALL be shown once, with a copy control and a warning that 
 #### Scenario: Restore
 - **WHEN** a member restores a deleted agent from the deleted group
 - **THEN** the agent moves to the list of agents, with no tokens
+
+## REMOVED Requirements
+
+### Requirement: New task from the board header
+**Reason**: The board's header keeps only the project's title for now: each column's own add action creates a task in that column, so the header's "New task" repeated it for the first column.
+**Migration**: Add a task with the add action of the column it belongs in.

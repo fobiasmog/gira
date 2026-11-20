@@ -33,7 +33,6 @@ export const ru: Messages = {
     projects: "Проекты",
     newProject: "Новый проект",
     board: "Доска",
-    list: "Список",
     changes: "Изменения",
     members: "Команда",
     agents: "Агенты",
@@ -259,7 +258,6 @@ export const ru: Messages = {
     archivedOn: "в архиве с {date}",
     total: { one: "Всего {count} задача", few: "Всего {count} задачи", many: "Всего {count} задач", other: "Всего {count} задачи" },
     noTasks: "В этом изменении пока нет задач.",
-    newTask: "Новая задача в «{name}»",
     done: "Готово",
     move: "Переместить",
     moveTask: "Переместить {key}",
@@ -444,7 +442,6 @@ export const ru: Messages = {
   },
   board: {
     taskCount: { one: "{count} задача", few: "{count} задачи", many: "{count} задач", other: "{count} задачи" },
-    layout: "Вид",
     addColumn: "Добавить колонку",
     columnTitle: "Название колонки",
     columnActions: "Действия с колонкой {title}",
@@ -462,7 +459,6 @@ export const ru: Messages = {
     comments: { one: "{count} комментарий", few: "{count} комментария", many: "{count} комментариев", other: "{count} комментария" },
     moveHandle: "Переместить {key}",
     moveColumnHandle: "Переместить колонку {title}",
-    newTask: "Новая задача",
     tabs: {
       label: "Доски",
       otherTasks: "Другие задачи",

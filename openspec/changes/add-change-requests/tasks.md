@@ -18,6 +18,7 @@
 - [x] 2.5 Archive under the project's lock through `Change#archive!` in `ArchivalsController`; verify with a controller test for "Archive with an open request".
 - [x] 2.6 `ChangeSerializer`: `request` and `agent` in lists and in the detail, each loaded for all listed changes in one query, and request and release entries in `history` (design decisions 4 and 6); verify with tests for every scenario of "Open request and agent of a change", "A request from start to end" and "Release" of "Change history", and a query-count assertion on the changes list.
 - [x] 2.7 The project's agent list: `checked_in_at`, `online` and `working_on`; verify with tests for the scenarios of "Check-ins".
+- [x] 2.10 Make the online window configurable with `AGENT_ONLINE_SECONDS` (3 minutes by default; asked for in dogfooding); verify with tests that `Agent.online?` follows the configuration, that the variable sets it at boot, and that a value that is not a positive number of seconds refuses to boot.
 - [x] 2.8 Add `reportContextFull` (agents only with 403 `agents_only`, always 200 with `blocked`); verify with controller tests for the scenarios of "Full context".
 - [x] 2.9 Open the request endpoints, the release and `reportContextFull` to tokens; verify with request tests for the `api-tokens` scenarios "Requests" and "Requests with a read-only token".
 
@@ -40,6 +41,8 @@
 - [x] 4.10 Name the board summary's link to the change's page "Open the change" instead of the change's name, which its tab already shows (asked for in dogfooding), with the modified "Board change summary" and "Change page" requirements of the `web-client` delta; verify with the system tests that open the page from the summary.
 - [x] 4.11 Remove the phase badge from the board summary, since the change's tab shows the phase (asked for in dogfooding), with the modified "Board change summary" requirement of the `web-client` delta; verify with a system test that the summary shows no phase.
 - [x] 4.12 Remove the count of done cards from the change tabs of the board, which the board summary shows (asked for in dogfooding), with the modified "Board change tabs" requirement of the `web-client` delta; verify with system tests that the tabs show no count.
+- [x] 4.13 Hide the board's layout switch for now, keeping the list layout at its address, and remove the header's "New task" (asked for in dogfooding), with the modified "Screens" requirement and the removed "New task from the board header" requirement of the `web-client` delta; verify with system tests that the board offers neither, and that the list layout still opens by its address.
+- [x] 4.14 Remove the field that adds a task from the changes screen's sections, since tasks are added on a change's board (asked for in dogfooding), with the modified "Changes screen" requirement of the `web-client` delta; verify with a system test that the section offers no such field and lists a task added on the board.
 
 ## 5. Worker
 

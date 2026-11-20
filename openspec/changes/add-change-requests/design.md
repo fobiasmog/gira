@@ -129,7 +129,7 @@ Step 4 is what keeps a comment posted during a long step from going unanswered: 
 
 ### 9. Check-ins
 
-`memberships.checked_in_at`, written on the agent's membership of the project by every take, whether it returns a request or not. An agent is online in a project while `checked_in_at` is less than 3 minutes old (`Agent::ONLINE_WINDOW`), which is three ticks of `/loop 1m`. One write per agent per minute is cheap.
+`memberships.checked_in_at`, written on the agent's membership of the project by every take, whether it returns a request or not. An agent is online in a project while `checked_in_at` is younger than the online window (`Agent.online_window`): 3 minutes by default, which is three ticks of `/loop 1m`, or the seconds in `AGENT_ONLINE_SECONDS` (`config.x.agents.online_window`), for workers that loop more slowly. One write per agent per tick is cheap.
 
 Alternatives:
 - *A separate check-ins table.* It would hold one row per agent and project, which is what memberships already are.
@@ -190,7 +190,7 @@ Alternatives:
 
 ## Risks / Trade-offs
 
-- [A worker crashes with a request taken] → The page shows who took it and since when, and the agent goes offline after 3 minutes. Restarting the same instance resumes the request, since a take returns the agent's unfinished request first. Otherwise a person cancels the request or releases the agent.
+- [A worker crashes with a request taken] → The page shows who took it and since when, and the agent goes offline once the online window has passed. Restarting the same instance resumes the request, since a take returns the agent's unfinished request first. Otherwise a person cancels the request or releases the agent.
 - [An agent's instance is gone for good] → A person releases it. The next agent takes the change cold, with only the change and its thread to go on.
 - [The picked agent is offline] → Its queue waits, and the page says the agent is offline. A person picks another agent or clears the pick.
 - [Two instances run with one agent's token] → Goalner sees one agent; the second instance's take would resume the first's request. The skill and the README say one instance per agent.
