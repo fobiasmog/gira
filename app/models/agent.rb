@@ -30,6 +30,14 @@ class Agent < ApplicationRecord
       Rails.configuration.x.agents.email_domain
     end
 
+    # An agent is online in a project while its last check-in there, its last
+    # take of a request, is younger than this (spec change-requests,
+    # "Check-ins"; add-change-requests design.md, decision 9): 3 minutes
+    # unless AGENT_ONLINE_SECONDS sets it (config/application.rb).
+    def online_window
+      Rails.configuration.x.agents.online_window
+    end
+
     # Whether an address is on the agent domain, where only generated
     # addresses live: people cannot register or be invited with one.
     def reserved_address?(email)
@@ -63,6 +71,11 @@ class Agent < ApplicationRecord
           attempts < HANDLE_ATTEMPTS && error.record.errors.of_kind?(:email_address, :taken) ? retry : raise
         end
       end
+  end
+
+  # Whether a check-in time, nil for none, makes an agent online now.
+  def self.online?(checked_in_at)
+    checked_in_at.present? && checked_in_at > online_window.ago
   end
 
   def deleted?

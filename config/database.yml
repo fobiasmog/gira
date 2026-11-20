@@ -54,9 +54,16 @@ development:
 # Warning: The database defined as "test" will be erased and
 # re-generated from your development database when you run "rake".
 # Do not set this db to the same as development or production.
+#
+# GOALNER_TEST_DB_SUFFIX, when set, extends the name, so that test runs in
+# two working copies, such as two agents' worktrees, never share databases
+# (add-change-requests design.md, decision 12): with "fish", the test
+# databases are goalner_test_fish and goalner_test_fish_0 to _N.
+<% test_db_suffix = ENV["GOALNER_TEST_DB_SUFFIX"].to_s %>
+<% raise "GOALNER_TEST_DB_SUFFIX may hold only letters, digits and underscores" unless test_db_suffix.match?(/\A\w*\z/) %>
 test:
   <<: *default
-  database: goalner_test
+  database: goalner_test<%= "_#{test_db_suffix}" unless test_db_suffix.empty? %>
 
 # Production reads its connection only from DATABASE_URL, with no default
 # credentials. Solid Cache and Solid Queue share this database (design.md,

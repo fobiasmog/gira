@@ -236,6 +236,19 @@ en:
               fixed: is fixed once exploring starts; write in the thread instead
             phase:
               inclusion: must be idea, exploring, proposed or implementing
+            agent:
+              not_an_agent: must be an agent of the project that is not deleted
+              on_the_change: is on the change; release it first
+        change_request:
+          attributes:
+            base:
+              change_archived: Archived changes take no requests
+              open_request: The change already has an open request; cancel it first
+              not_taken: The request is not taken by you; it may have been cancelled
+            kind:
+              inclusion: must be explore, propose, implement or archive
+            outcome:
+              inclusion: must be done or failed
         comment:
           attributes:
             base:

@@ -59,6 +59,7 @@ const select = (event: FocusEvent) => (event.target as HTMLInputElement | HTMLTe
           <textarea v-bind="control" class="input reveal__code" rows="11" readonly spellcheck="false" :value="config" @focus="select" />
         </template>
       </AppField>
+      <p class="small muted">{{ t("agents.mcpNote", { agent: agentName }) }}</p>
       <p class="row row--wrap">
         <button type="button" class="button button--secondary" @click="copy(config, t('agents.copied'))">{{ t("agents.copyConfig") }}</button>
         <!-- The server redirects to the guide, outside the SPA. -->

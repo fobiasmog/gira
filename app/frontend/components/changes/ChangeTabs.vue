@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import AppIcon from "../ui/AppIcon.vue"
 import PhasePill from "./PhasePill.vue"
 import WaitingMarker from "./WaitingMarker.vue"
-import type { Change, ChangePhase, ChangeReference, Column, TaskCard } from "../../api/types.ts"
-import { boardProgress, countsProgress, type ChangeProgress } from "../../composables/changes.ts"
+import type { Change, ChangePhase, ChangeReference } from "../../api/types.ts"
 import { boardLocation, type BoardLayout } from "../../router/routes.ts"
 import type { BoardTab } from "../../stores/board.ts"
 import { t } from "../../i18n/index.ts"
@@ -20,9 +19,6 @@ const props = defineProps<{
   changes: Change[]
   // The change shown, or null for the tasks in no change.
   shown: ChangeReference | null
-  columns: Column[]
-  // The cards on the board, which count for the change shown.
-  tasks: TaskCard[]
   panelId: string
 }>()
 const emit = defineEmits<{ new: [] }>()
@@ -32,7 +28,6 @@ interface Tab {
   label: string
   tab: BoardTab
   selected: boolean
-  progress: ChangeProgress | null
   phase: ChangePhase | null
   waiting: boolean
 }
@@ -45,15 +40,43 @@ const tabs = computed<Tab[]>(() => [
       label: change.name,
       tab: { kind: "change", name: change.name } as BoardTab,
       selected,
-      progress: selected ? boardProgress(props.columns, props.tasks) : countsProgress(props.columns, change.task_counts),
       phase: change.phase,
       waiting: change.waiting_for_people,
     }
   }),
   {
-    id: changeTabId(null), label: t("board.tabs.otherTasks"), tab: { kind: "other" }, selected: props.shown === null, progress: null, phase: null, waiting: false,
+    id: changeTabId(null), label: t("board.tabs.otherTasks"), tab: { kind: "other" }, selected: props.shown === null, phase: null, waiting: false,
   },
 ])
+
+// While tabs are hidden past the end of the row, the row fades into "New
+// change"; scrolled to its end, nothing fades over the last tab.
+const list = ref<HTMLElement>()
+const moreAfter = ref(false)
+
+function measure() {
+  const row = list.value
+  moreAfter.value = Boolean(row && row.scrollLeft + row.clientWidth < row.scrollWidth - 1)
+}
+
+let resizes: ResizeObserver | undefined
+onMounted(() => {
+  measure()
+  if (typeof ResizeObserver === "undefined" || !list.value) return
+  resizes = new ResizeObserver(measure)
+  resizes.observe(list.value)
+})
+onBeforeUnmount(() => resizes?.disconnect())
+watch(tabs, () => nextTick(measure))
+
+// The row scrolls without a scrollbar: a mouse wheel over it scrolls it
+// sideways, as a trackpad and the arrow keys do.
+function onWheel(event: WheelEvent) {
+  const row = list.value
+  if (!row || row.scrollWidth <= row.clientWidth || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return
+  event.preventDefault()
+  row.scrollLeft += event.deltaY
+}
 
 function onKey(event: KeyboardEvent) {
   const items = [...(event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[role="tab"]')]
@@ -75,7 +98,7 @@ export function changeTabId(change: ChangeReference | null): string {
 
 <template>
   <div class="change-tabs">
-    <div role="tablist" :aria-label="t('board.tabs.label')" class="change-tabs__list" @keydown="onKey">
+    <div ref="list" role="tablist" :aria-label="t('board.tabs.label')" class="change-tabs__list" @keydown="onKey" @scroll.passive="measure" @wheel="onWheel">
       <RouterLink
         v-for="tab in tabs"
         :id="tab.id"
@@ -91,31 +114,30 @@ export function changeTabId(change: ChangeReference | null): string {
         <span class="ellipsis">{{ tab.label }}</span>
         <WaitingMarker v-if="tab.waiting" />
         <PhasePill v-if="tab.phase" :phase="tab.phase" />
-        <span v-if="tab.progress" class="change-tabs__count">
-          <span aria-hidden="true">{{ tab.progress.done }}/{{ tab.progress.total }}</span>
-          <span class="visually-hidden">{{ t("board.tabs.progress", { done: tab.progress.done, total: tab.progress.total }) }}</span>
-        </span>
       </RouterLink>
     </div>
-    <button type="button" class="button button--text change-tabs__new" @click="emit('new')">
-      <AppIcon name="add" :size="20" />{{ t("board.tabs.newChange") }}
+    <!-- An action, not a tab, styled as one at the end of the row. -->
+    <button type="button" class="change-tabs__tab change-tabs__new" :class="{ 'change-tabs__new--fade': moreAfter }" @click="emit('new')">
+      <AppIcon name="add" :size="18" />{{ t("board.tabs.newChange") }}
     </button>
   </div>
 </template>
 
 <style scoped>
+/* On the board page's white band, whose bottom line the tabs stand on. */
 .change-tabs {
   display: flex;
   align-items: flex-end;
-  gap: var(--space-2);
   min-inline-size: 0;
-  border-block-end: 1px solid var(--color-border);
 }
 
 .change-tabs__list {
   display: flex;
   min-inline-size: 0;
   overflow-x: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar { display: none; }
 }
 
 .change-tabs__tab {
@@ -128,7 +150,7 @@ export function changeTabId(change: ChangeReference | null): string {
   margin-block-end: -1px;
   padding: var(--space-1) var(--space-3);
   border-block-end: 2px solid transparent;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  border-radius: var(--radius) var(--radius) 0 0;
   color: var(--color-muted);
   font-size: var(--text-sm);
   font-weight: 500;
@@ -136,20 +158,32 @@ export function changeTabId(change: ChangeReference | null): string {
 
   &:hover { background: var(--color-main-tint); color: var(--color-text); }
 
+  /* The board's colour, joining the board below the band. */
   &[aria-selected="true"] {
     border-block-end-color: var(--color-primary);
+    background: var(--color-background);
     color: var(--color-text);
   }
 }
 
-.change-tabs__count {
-  flex: none;
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-sm);
-  background: var(--color-badge);
-  color: var(--color-badge-text);
-  font-size: var(--text-xs);
+.change-tabs__new {
+  position: relative;
+  border-inline: none;
+  border-block-start: none;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
 }
 
-.change-tabs__new { flex: none; margin-block-end: var(--space-1); }
+/* Over the end of the tab row, from the band's white at the button to
+   transparent; the row's bottom line stays visible. */
+.change-tabs__new--fade::before {
+  position: absolute;
+  inset-block: 0 1px;
+  inset-inline-end: 100%;
+  inline-size: 3rem;
+  background: linear-gradient(to left, var(--color-surface), transparent);
+  content: "";
+  pointer-events: none;
+}
 </style>

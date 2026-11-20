@@ -71,8 +71,15 @@ Endpoints available to tokens, all under `/api`:
   and `comments`; `PATCH`/`DELETE /comments/:id` for your own comments;
 - labels, and changes (list, create, show, update, with `archival`, `tasks`,
   `comments` and `file?path=`) under `/projects/:id`, where a change in a path
-  is its id or an open change's name; importing OpenSpec changes with
-  `POST /projects/:id/openspec_changes`;
+  is its id or an open change's name; creating and updating a change take an
+  `agent` (an agent's user id, or `null` for any free agent); importing
+  OpenSpec changes with `POST /projects/:id/openspec_changes`;
+- requests for the steps of a change: `POST /projects/:id/changes/:change/requests`
+  asks for one, `POST /projects/:id/changes/:change/agent_release` releases
+  the change's agent, and under `/projects/:id/requests` an agent takes one
+  with `POST claim`, finishes it with `POST :request/finish` and reports a
+  full context with `POST context_full`; anyone cancels one with
+  `POST :request/cancellation`;
 - downloads of attachments and avatars from the `/files/...` URLs in responses.
 
 Everything else (projects, members, invitations, changing columns, your
@@ -92,6 +99,7 @@ Errors use the API's JSON envelope, `{ "error": { "code", "message" } }`:
 | 401 | `invalid_token` | The token is unknown, expired or revoked. |
 | 403 | `token_not_allowed` | The endpoint is not available to tokens. |
 | 403 | `insufficient_scope` | A read-only token tried to change something. |
+| 403 | `agents_only` | A person's token tried to take a request or report a full context. |
 | 404 | `not_found` | The record does not exist or is outside the token's project. |
 | 429 | `rate_limited` | More than 300 requests in a minute with this token. |
 
@@ -191,7 +199,8 @@ input.
 A change is in one **phase**: Idea, Exploring, Proposed, Implementing or Done.
 A new change starts in Idea. Agents move it with `updateChange`
 (`PATCH /api/projects/{project_id}/changes/{change}` with `phase`), and
-members can move it to any phase but Done from the phase menu on its page.
+members can move it to any phase but Done through the API. Taking a request
+moves it too (see "Requests and the agent pool").
 Importing it moves a change in Idea or Exploring to Proposed. Done is never
 set: Goalner reports it while every card of a change in Implementing is in
 the done column.
@@ -205,12 +214,55 @@ screen show a dot. The change's **history** records every phase move and
 import with who made it and when, and its page shows these lines among the
 comments.
 
-Every change has a page, linked from its name in the board summary and on the
-Changes screen: its phases and phase menu, its idea, its thread, and the
-OpenSpec files of its last import, each shown formatted or as its source.
+Every change has a page, opened with **Open the change** in the board summary
+and from its name on the Changes screen: its phases, its open request and its agent,
+the button for its next step, its idea, its thread, and the OpenSpec files of
+its last import, each shown formatted or as its source.
 
-Archive a change when its work is done. Its tasks stay with it and leave the
-board, whether they are done or not, and a new change may take its name. An
+### Requests and the agent pool
+
+People ask for the steps of a change on its page, and the project's agents
+take them, one change per agent. The button for the next step follows the
+phase: **Start exploring** (Idea), **Write the proposal** (Exploring),
+**Implement** (Proposed), **Continue implementing** (Implementing) and
+**Archive and sync specs** (Done). Text in the comment field goes with the
+request as its comment.
+
+- A change has at most one open **request**, waiting or taken. Members cancel
+  it with **Cancel request**.
+- An agent takes a change with its first request and stays **on** it until
+  the change is archived or a member releases it, so the agent that asked a
+  question gets its answer. Pick an agent in the **New change** dialog or on
+  the page; otherwise the change goes to the first free agent. While an agent
+  is on a change, every request of the change waits for that agent.
+- A person's comment on a change past Idea with no open request asks the
+  change's agent to **reply**. A comment posted while the agent works is
+  answered when it finishes. A request for another step replaces a reply
+  request that nobody has taken.
+- Taking `explore` moves a change in Idea to Exploring, and taking `implement`
+  moves it to Implementing. Finishing posts the agent's comment in the
+  thread; finishing an archive request archives the change.
+- Every take is the agent's **check-in**. An agent without one for 3 minutes
+  is offline; set `AGENT_ONLINE_SECONDS` on the server to wait longer, for
+  workers that loop more slowly than once a minute. The New change dialog,
+  the Agents screen and the change page show which agents are free, which
+  change each is on, and which are offline.
+- **Release** an agent when its terminal is gone: its taken request is
+  cancelled, and the change goes back to any free agent.
+- When an agent's context fills up, its change is **blocked**: the change
+  waits for people and its page says why. Release the agent and ask for the
+  step again; the next agent continues from the change's files, cards,
+  commits and thread.
+
+While a change has an open request, its page reloads itself every 10 seconds.
+Requests, releases and blocks appear in the change's history.
+
+Archive a change when its work is done: **Archive and sync specs** asks its
+agent to archive the OpenSpec change, sync its specs and commit, and then
+archives the change in Goalner. **Archive only** archives it at
+once, with no agent and no OpenSpec archiving. Either way, its tasks stay
+with it and leave the board, whether they are done or not, and a new change
+may take its name. An
 archived change keeps its page, read-only, at an address with its id.
 
 ## OpenSpec changes
@@ -335,8 +387,77 @@ Limits and known gaps:
 - tables and other Markdown outside the shared feature set lose their
   structure when a file is shown formatted; its source shows it as imported.
 
+The steps above are the manual way, for an agent driven from its terminal.
+With requests, the `goalner-worker` skill does them: see "Running agents"
+below.
+
 This repository is developed this way: its own OpenSpec changes go on a
 Goalner board, and agents work their cards through MCP.
+
+## Running agents
+
+Each agent of a project's pool is one Claude Code instance on a working copy
+of its own, with its own token, running the `goalner-worker` skill
+(`.claude/skills/goalner-worker/SKILL.md`) in a loop. On one machine, for
+each agent:
+
+1. On the project's **Agents** screen, create the agent with a read-write
+   token for **API and MCP**: the skill works through MCP, and its
+   compaction hook calls the API.
+2. Give it a git worktree of its own:
+
+   ```sh
+   git worktree add --detach ../goalner-fish main
+   ```
+
+3. Start Claude Code there with the agent's token, test databases of its own,
+   and only the MCP server of `.claude/goalner-worker.mcp.json`, which reads
+   the token from `GOALNER_TOKEN`:
+
+   ```sh
+   cd ../goalner-fish
+   GOALNER_TOKEN=glnr_... GOALNER_TEST_DB_SUFFIX=fish \
+     claude --strict-mcp-config --mcp-config .claude/goalner-worker.mcp.json
+   ```
+
+   `claude mcp add` does not work for this: Claude Code would keep the
+   server for the repository, and every worktree would share it.
+   `GOALNER_MCP_URL` and `GOALNER_URL` point the server and the hook at
+   another Goalner than `http://localhost:3100/mcp` and
+   `http://localhost:3000`.
+4. In that session, run `/loop 1m /goalner-worker TEST`.
+
+Run one instance per agent: two instances with one token are one agent to
+Goalner, and would take each other's requests.
+
+Each agent then:
+
+- learns which agent it is (`showProfile`), and stops if the token is a
+  person's;
+- every minute takes the next request for it (`claimRequest`). Each take is
+  its check-in, so an agent whose loop stops shows as offline after 3
+  minutes, or `AGENT_ONLINE_SECONDS` on the server;
+- works on each change in a branch named after the change, created from a
+  base branch that it asks about in the thread when the idea does not say,
+  and commits there. It never pushes;
+- does the step: explores and asks, writes and imports the OpenSpec change,
+  replies, implements the cards, or archives the OpenSpec change;
+- finishes the request with a comment in the change's thread.
+
+When a change is **blocked**, its agent's context filled up: the skill's
+`PreCompact` hook (`bin/goalner-context-full`) told Goalner, and stopped
+Claude Code from compacting the session into a summary. On the change's
+page, choose **Release Fish**, then ask for the step again, such as
+**Continue implementing**: the next free agent takes it and continues from
+the change's files, cards, commits and thread. Clear or restart the blocked
+instance to make it a free agent again.
+
+When an agent's terminal is gone for good, release the agent on its change's
+page: its taken request is cancelled, and the change goes back to any free
+agent.
+
+The steps of "OpenSpec changes" above remain the manual way to drive an
+agent from its terminal.
 
 Goalner never sends to these addresses in any case: every mailer drops them.
 
@@ -417,6 +538,11 @@ claude mcp add --transport http goalner https://goalner.com/mcp --header "Author
 
 Tool calls are then the agent's: a task it creates has the agent as its
 creator. `listTasks` with the view `assigned` lists the agent's own work.
+
+Claude Code keeps a server added this way for the repository it was added
+in, git worktrees included, so every working copy of the repository acts as
+that one agent. To run several agents on one machine, give each its own
+session as in "Running agents" below.
 
 ### Connected apps
 

@@ -1,6 +1,10 @@
 # The thread of a change (spec comments, "Comment on a change";
 # add-change-conversation design.md, decision 7), oldest first, as a
 # conversation reads. Archived changes keep their thread and take no more.
+#
+# A comment is saved under the project's lock, and a person's comment may
+# ask the change's agent to reply (spec change-requests, "Reply requests";
+# add-change-requests design.md, decision 7).
 class Api::Projects::Changes::CommentsController < Api::BaseController
   include ProjectScoped
   include CommentPosting
@@ -13,9 +17,12 @@ class Api::Projects::Changes::CommentsController < Api::BaseController
   end
 
   def create
-    raise ActiveRecord::RecordInvalid, @change.tap { |c| c.errors.add(:base, :archived) } if @change.archived?
+    @project.with_lock do
+      @change.reload
+      raise ActiveRecord::RecordInvalid, @change.tap { |c| c.errors.add(:base, :archived) } if @change.archived?
 
-    post_comment @change.comments
+      post_comment(@change.comments) { |comment| @change.ask_reply_after(comment) }
+    end
   end
 
   private

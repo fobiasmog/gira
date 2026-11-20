@@ -33,8 +33,8 @@ export const useChangesStore = defineStore("changes", () => {
     tasks.value.set(changeId, await changesApi.tasks(id, changeId))
   }
 
-  async function create(id: Id, name: string, idea = ""): Promise<Change> {
-    const change = await changesApi.create(id, name, idea)
+  async function create(id: Id, name: string, idea = "", agent: Id | null = null): Promise<Change> {
+    const change = await changesApi.create(id, name, idea, agent)
     await load(id)
     return change
   }
@@ -42,13 +42,6 @@ export const useChangesStore = defineStore("changes", () => {
   async function archive(id: Id, changeId: Id) {
     await changesApi.archive(id, changeId)
     await load(id)
-  }
-
-  // On the first column of the change.
-  async function addTask(id: Id, changeId: Id, title: string): Promise<TaskCard> {
-    const task = await tasksApi.create(id, { title, change_id: changeId })
-    await load(id)
-    return task
   }
 
   // Into another open change, or into no change (null); the task keeps its
@@ -59,5 +52,5 @@ export const useChangesStore = defineStore("changes", () => {
     return card
   }
 
-  return { projectId, open, archived, tasks, load, loadTasks, create, archive, addTask, moveTask }
+  return { projectId, open, archived, tasks, load, loadTasks, create, archive, moveTask }
 })

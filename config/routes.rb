@@ -96,6 +96,19 @@ Rails.application.routes.draw do
             resources :tasks, only: :index
             resource :file, only: :show
             resources :comments, only: %i[index create]
+            resources :requests, only: :create
+            resource :agent_release, only: :create
+          end
+        end
+        # Requests for the steps of changes, as agents take and finish them.
+        resources :requests, only: [] do
+          collection do
+            post :claim
+            post :context_full
+          end
+          member do
+            post :finish
+            post :cancellation
           end
         end
       end

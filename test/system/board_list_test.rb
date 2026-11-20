@@ -36,7 +36,6 @@ class BoardListTest < ApplicationSystemTestCase
     assert_equal [ "To Do", "Work", "Done" ], all(".board-list__group h2").map(&:text)
     assert_equal [ "Plan" ], rows("To Do")
     assert_equal [ "Build" ], rows("Work")
-    assert_selector "[aria-current=page]", text: "List"
   end
 
   test "row to another group: saved in the done column at the dropped position" do
@@ -67,7 +66,7 @@ class BoardListTest < ApplicationSystemTestCase
     assert_equal "Two", evaluate_script("document.activeElement.textContent.trim()")
   end
 
-  test "the list layout shows a change's tab, keeps it when switching layouts, and has no move to the backlog" do
+  test "the list layout shows a change's tab by its address, offers no switch back, and has no move to the backlog" do
     change = @project.project_changes.create!(name: "add-labels")
     task("In the change", :goal_work).update!(change: change)
     task("In no change", :goal_todo)
@@ -79,11 +78,9 @@ class BoardListTest < ApplicationSystemTestCase
     assert_no_button "Actions for GOAL-1"
     assert_no_text "Move to backlog"
 
-    click_link "Board", href: "/app/projects/#{@project.id}/board/changes/add-labels"
-    assert_current_path "/app/projects/#{@project.id}/board/changes/add-labels"
-    within(".column", text: "Work", match: :first) { assert_text "In the change" }
+    assert_no_link "Board", href: "/app/projects/#{@project.id}/board/changes/add-labels"
+    assert_no_selector "nav[aria-label='Layout']"
 
-    click_link "List", href: "/app/projects/#{@project.id}/list/changes/add-labels"
     find("[role=tab]", text: "Other tasks").click
     assert_current_path "/app/projects/#{@project.id}/list/other"
     assert_equal [ "In no change" ], rows("To Do")

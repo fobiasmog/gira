@@ -28,6 +28,18 @@ class ChangeEventTest < ActiveSupport::TestCase
     assert_raises(ActiveRecord::StatementInvalid) { event(kind: "import", phase: "proposed", paths: [ "tasks.md" ]).save!(validate: false) }
   end
 
+  test "a release names the released agent, and a block names none" do
+    fish = create_agent(projects(:goal)).user
+
+    assert event(kind: "release", agent: fish).valid?
+    assert event(kind: "block").valid?
+    [ { kind: "release" }, { kind: "block", agent: fish }, { kind: "phase", phase: "exploring", agent: fish },
+      { kind: "release", agent: fish, phase: "idea" } ].each do |attributes|
+      assert_not event(**attributes).valid?, attributes.inspect
+    end
+    assert_raises(ActiveRecord::StatementInvalid) { event(kind: "release").save!(validate: false) }
+  end
+
   test "an event needs an actor" do
     assert_not @change.events.new(kind: "phase", phase: "exploring").valid?
   end

@@ -167,6 +167,54 @@ class ApiTokenAccessTest < ActionDispatch::IntegrationTest
     assert_equal [ "idea", 0, 0 ], [ change.reload.phase, change.comments.count, change.events.count ]
   end
 
+  test "requests: a read-write token asks for a step, an agent's read-write token takes and finishes it, and the first token releases the agent" do
+    change = @goal.project_changes.create!(name: "export-csv")
+    fish = create_agent(@goal, name: "Fish")
+    write = bearer("glnr_two_goal_read_write")
+    agent = bearer(issue_agent_token(fish, issuer: users(:two)))
+
+    post api_project_change_requests_path(@goal, "export-csv"), params: { kind: "explore" }, headers: write, as: :json
+    assert_response :created
+    post claim_api_project_requests_path(@goal), headers: agent, as: :json
+    assert_equal [ 200, "taken" ], [ response.status, response.parsed_body.dig("request", "state") ]
+    request_id = response.parsed_body.dig("request", "id")
+    post finish_api_project_request_path(@goal, request_id), params: { outcome: "done", comment: "Questions" }, headers: agent, as: :json
+    assert_response :success
+    post context_full_api_project_requests_path(@goal), headers: agent, as: :json
+    assert_equal [ 200, true ], [ response.status, response.parsed_body["blocked"] ]
+    post api_project_change_agent_release_path(@goal, "export-csv"), headers: write, as: :json
+    assert_response :success
+    post api_project_change_requests_path(@goal, "export-csv"), params: { kind: "propose" }, headers: write, as: :json
+    post cancellation_api_project_request_path(@goal, response.parsed_body["id"]), headers: write, as: :json
+    assert_response :success
+
+    assert_equal [ nil, [ "done", "cancelled" ] ], [ change.reload.agent, change.requests.order(:id).pluck(:state) ]
+    assert_equal [ users(:two), "release" ], [ change.requests.first.requested_by, change.events.last.kind ]
+  end
+
+  test "requests with a read-only token: asking, taking, finishing, cancelling, releasing and reporting a full context are refused" do
+    change = @goal.project_changes.create!(name: "export-csv")
+    fish = create_agent(@goal, name: "Fish")
+    request = ChangeRequest.ask!(change:, kind: "explore", by: users(:two))
+    ChangeRequest.take!(project: @goal, agent: fish.user)
+    read = bearer("glnr_two_goal_read")
+    agent_read = bearer(issue_agent_token(fish, issuer: users(:two), access: :read))
+    events = change.events.count
+
+    [ [ api_project_change_requests_path(@goal, "export-csv"), read, { kind: "propose" } ],
+      [ claim_api_project_requests_path(@goal), agent_read, {} ],
+      [ finish_api_project_request_path(@goal, request), agent_read, { outcome: "done", comment: "Done" } ],
+      [ cancellation_api_project_request_path(@goal, request), read, {} ],
+      [ api_project_change_agent_release_path(@goal, "export-csv"), read, {} ],
+      [ context_full_api_project_requests_path(@goal), agent_read, {} ] ].each do |path, headers, params|
+      post path, params:, headers:, as: :json
+      assert_equal [ 403, "insufficient_scope" ], [ response.status, error_code ], path
+    end
+
+    assert_equal [ "taken", fish.user, false ], [ request.reload.state, change.reload.agent, change.blocked? ]
+    assert_equal [ 1, events, 0 ], [ change.requests.count, change.events.count, change.comments.count ]
+  end
+
   test "change thread of another project of the owner: 404" do
     change = @side.project_changes.create!(name: "theirs")
     change.files.create!(path: "proposal.md", text: "secret")
