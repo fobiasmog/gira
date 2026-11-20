@@ -23,7 +23,8 @@ class AppShellTest < ApplicationSystemTestCase
     assert_link "Dashboard"
     execute_script("window.__sameDocument = true")
 
-    within(".side-nav") { click_link "Goalner", href: "/app/projects/#{projects(:goal).id}/board" }
+    within(".side-nav") { click_button "Choose a project" }
+    within(".menu:popover-open") { click_link "Goalner" }
     within(".side-nav") { click_link "Changes" }
     assert_current_path "/app/projects/#{projects(:goal).id}/changes"
     assert evaluate_script("window.__sameDocument === true")
@@ -53,7 +54,7 @@ class AppShellTest < ApplicationSystemTestCase
 
     visit "/app"
     assert_link "Главная"
-    assert_link "Новый проект"
+    assert_button "Выберите проект"
     assert_equal "ru", evaluate_script("document.documentElement.lang")
   end
 
@@ -64,7 +65,8 @@ class AppShellTest < ApplicationSystemTestCase
 
     assert_no_link "Dashboard"
     click_button "Menu"
-    within("dialog[open]") { click_link "Goalner", href: "/app/projects/#{projects(:goal).id}/board" }
+    within("dialog[open]") { click_button "Choose a project" }
+    within(".menu:popover-open") { click_link "Goalner" }
     assert_no_selector "dialog[open]"
     assert_current_path "/app/projects/#{projects(:goal).id}/board"
   ensure
@@ -90,6 +92,18 @@ class AppShellTest < ApplicationSystemTestCase
     assert_no_selector ".menu:popover-open"
   end
 
+  test "the sidebar lists no projects below its sections: the switcher is the only list" do
+    Project.create!(title: "Mobile app", short_name: "MOB", owner: users(:one))
+    sign_in users(:one).email_address, PASSWORD
+    visit "/app/projects/#{projects(:goal).id}/board"
+
+    within(".side-nav") do
+      assert_no_link "Mobile app"
+      assert_no_link "New project"
+      assert_no_selector "h2", text: "Projects"
+    end
+  end
+
   test "create a project from the project switcher" do
     sign_in users(:one).email_address, PASSWORD
     visit "/app/projects/#{projects(:goal).id}/board"
@@ -107,7 +121,7 @@ class AppShellTest < ApplicationSystemTestCase
 
     within(".side-nav") do
       assert_button "Choose a project"
-      assert_link "Goalner"
+      assert_no_link "Goalner", href: "/app/projects/#{projects(:goal).id}/board"
       assert_no_link "Board"
       assert_no_link "Changes"
       assert_no_link "Team"
@@ -217,7 +231,6 @@ class AppShellTest < ApplicationSystemTestCase
     assert_sidebar_width 256
     within(".side-nav") do
       assert_operator label_width("Changes"), :>, 1
-      assert_link "Goalner", href: "/app/projects/#{projects(:goal).id}/board"
     end
     assert_equal "Collapse menu", evaluate_script("document.activeElement.textContent.trim()")
   end
@@ -244,7 +257,6 @@ class AppShellTest < ApplicationSystemTestCase
     click_button "Menu"
     within("dialog[open]") do
       assert_operator label_width("Changes"), :>, 1
-      assert_link "Goalner", href: "/app/projects/#{projects(:goal).id}/board"
       assert_no_button "Collapse menu"
       assert_no_button "Expand menu"
     end

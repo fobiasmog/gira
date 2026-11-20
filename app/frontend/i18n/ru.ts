@@ -30,7 +30,6 @@ export const ru: Messages = {
   navigation: {
     menu: "Меню",
     dashboard: "Главная",
-    projects: "Проекты",
     newProject: "Новый проект",
     board: "Доска",
     changes: "Изменения",

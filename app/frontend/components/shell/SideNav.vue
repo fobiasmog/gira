@@ -104,29 +104,6 @@ const isActive = (section: ProjectSection) => sectionOf(route.name) === section
       </ul>
     </section>
 
-    <!-- The switcher lists the same projects, so the rail leaves this out. -->
-    <section v-if="!collapsed" class="side-nav__section" aria-labelledby="projects-nav">
-      <h2 id="projects-nav" class="side-nav__heading">
-        <RouterLink :to="{ name: 'projects' }" class="side-nav__heading-link">{{ t("navigation.projects") }}</RouterLink>
-      </h2>
-      <ul role="list" class="side-nav__list">
-        <li v-for="project in list" :key="project.id">
-          <RouterLink
-            :to="{ name: 'board', params: { pid: project.id } }"
-            class="side-nav__link side-nav__project"
-            :class="{ 'is-current-project': current?.id === project.id }"
-          >
-            <span class="marker" :data-tone="toneOf(project.id)" /><span class="ellipsis">{{ project.title }}</span>
-          </RouterLink>
-        </li>
-        <li>
-          <RouterLink :to="{ name: 'project-new' }" class="side-nav__link" active-class="is-active">
-            <AppIcon name="add" :size="20" />{{ t("navigation.newProject") }}
-          </RouterLink>
-        </li>
-      </ul>
-    </section>
-
     <div class="grow" />
     <div class="side-nav__footer">
       <slot name="footer" />
@@ -212,24 +189,6 @@ const isActive = (section: ProjectSection) => sectionOf(route.name) === section
 
 .side-nav__section { display: grid; gap: var(--space-1); }
 
-.side-nav__heading {
-  padding-inline: var(--space-3);
-  color: var(--color-nav-heading);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.side-nav__heading-link {
-  border-radius: var(--radius-sm);
-  color: inherit;
-  text-decoration: none;
-
-  &:hover { color: var(--color-nav-strong); text-decoration: underline; }
-  &:focus-visible { outline-color: var(--color-nav-text); }
-}
-
 .side-nav__list { display: grid; gap: 2px; }
 
 .side-nav__link {
@@ -248,8 +207,6 @@ const isActive = (section: ProjectSection) => sectionOf(route.name) === section
   &:focus-visible { outline-color: var(--color-nav-text); outline-offset: 0; }
 }
 
-.side-nav__project .marker { margin-inline: 5px; }
-.side-nav__project.is-current-project { color: var(--color-nav-strong); font-weight: 500; }
 
 .side-nav__footer {
   display: grid;

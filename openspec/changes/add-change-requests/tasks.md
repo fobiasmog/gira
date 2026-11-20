@@ -43,6 +43,7 @@
 - [x] 4.12 Remove the count of done cards from the change tabs of the board, which the board summary shows (asked for in dogfooding), with the modified "Board change tabs" requirement of the `web-client` delta; verify with system tests that the tabs show no count.
 - [x] 4.13 Hide the board's layout switch for now, keeping the list layout at its address, and remove the header's "New task" (asked for in dogfooding), with the modified "Screens" requirement and the removed "New task from the board header" requirement of the `web-client` delta; verify with system tests that the board offers neither, and that the list layout still opens by its address.
 - [x] 4.14 Remove the field that adds a task from the changes screen's sections, since tasks are added on a change's board (asked for in dogfooding), with the modified "Changes screen" requirement of the `web-client` delta; verify with a system test that the section offers no such field and lists a task added on the board.
+- [x] 4.15 Remove the list of projects at the bottom of the sidebar, which the project switcher already lists with its new-project entry (asked for in dogfooding), with the modified "Collapsible sidebar" requirement of the `web-client` delta; verify with system tests that the sidebar lists no projects and that projects are opened from the switcher.
 
 ## 5. Worker
 

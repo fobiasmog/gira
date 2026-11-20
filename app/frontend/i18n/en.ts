@@ -43,7 +43,6 @@ export const en = {
   navigation: {
     menu: "Menu",
     dashboard: "Dashboard",
-    projects: "Projects",
     newProject: "New project",
     board: "Board",
     changes: "Changes",

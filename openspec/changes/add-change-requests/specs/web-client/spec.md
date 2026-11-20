@@ -64,6 +64,33 @@ While the change has an open request and the page is visible, the client SHALL r
 
 ## MODIFIED Requirements
 
+### Requirement: Collapsible sidebar
+On wide screens, the sidebar SHALL offer a control that collapses it to a narrow rail of icons, and from the rail a control that expands it again. The rail SHALL keep the logo, the project switcher (as the open project's initial), Dashboard, the open project's sections and "Write to us". Each of these SHALL keep its accessible name and SHALL show its label as a tooltip. The rail SHALL still mark the active section. The sidebar SHALL list no projects of its own, expanded or not: the project switcher lists them (requirement "Project switcher"). The content area SHALL take the width the sidebar gives up. The choice SHALL be remembered in the browser across reloads. When browser storage is unavailable, the sidebar SHALL start expanded. The narrow-screen navigation SHALL always show the full sidebar and SHALL NOT offer the collapse control.
+
+#### Scenario: Collapse the sidebar
+- **WHEN** a member on a wide screen with the "Goalner" board open activates "Collapse menu"
+- **THEN** the sidebar narrows to icons, the section labels are no longer visible, the "Changes" link is still reachable by its name, and the board area is wider than before
+
+#### Scenario: Navigate from the rail
+- **WHEN** the sidebar is collapsed and the member activates the "Changes" icon
+- **THEN** the changes screen opens and its icon is marked as the active section
+
+#### Scenario: Switch project from the rail
+- **WHEN** the sidebar is collapsed and the member activates the project switcher
+- **THEN** the menu of the member's projects opens, and choosing one opens its board
+
+#### Scenario: Expand the sidebar
+- **WHEN** the sidebar is collapsed and the member activates "Expand menu"
+- **THEN** the full sidebar with labels is shown again, and keyboard focus stays on the toggle
+
+#### Scenario: Choice remembered
+- **WHEN** a member collapses the sidebar and reloads the page
+- **THEN** the sidebar is still collapsed
+
+#### Scenario: Narrow screen
+- **WHEN** a member who collapsed the sidebar opens the menu on a narrow screen
+- **THEN** the navigation shows full labels, with no collapse control
+
 ### Requirement: Changes screen
 The changes screen SHALL show each open change, newest first, as a collapsible section whose header shows its name as a link to the change's page (requirement "Change page"), its phase, a marker with an accessible name when it is waiting for people, its task counts and its actions, and whose body lists its tasks. The screen SHALL offer no field to add a task: tasks are added to a change on its board. Done tasks SHALL be marked as done in text, not only by colour. Each task SHALL offer a move menu listing the other open changes and "Other tasks", except a card whose mark is in its change's tasks text (spec `changes`, "Tasks in a change"), which SHALL offer no move menu. The screen SHALL offer a "New change" action. Archived changes SHALL be listed collapsed below, most recently archived first, each name linking to the change's page, and expanding one SHALL list its tasks.
 
