@@ -193,7 +193,7 @@ class OpenspecChange::TasksTextTest < ActiveSupport::TestCase
   end
 
   test "this change's own tasks.md reads as twenty items in seven sections, with every mark" do
-    text = read(Rails.root.join("openspec/changes/add-openspec-changes/tasks.md").read)
+    text = read(Rails.root.join("openspec/changes/archive/2026-11-16-add-openspec-changes/tasks.md").read)
 
     assert_equal 7, text.sections.size
     assert_equal 20, text.items.size
