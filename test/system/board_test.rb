@@ -57,7 +57,7 @@ class BoardTest < ApplicationSystemTestCase
 
     click_button "Actions for column Review"
     click_button "Rename column"
-    find_field("Column title").send_keys([ :control, "a" ], "QA", :enter)
+    find_field("Column title").set("QA").send_keys(:enter)
     assert_selector ".column h2", text: "QA"
 
     click_button "Actions for column Work"

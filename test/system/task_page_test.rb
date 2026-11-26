@@ -33,7 +33,7 @@ class TaskPageTest < ApplicationSystemTestCase
     visit_task
 
     click_button "Edit title"
-    find_field("Task title").send_keys([ :control, "a" ], "Plan the big release", :enter)
+    find_field("Task title").set("Plan the big release").send_keys(:enter)
     assert_selector "h1", text: "Plan the big release"
     eventually { @task.reload.title == "Plan the big release" }
 
@@ -166,7 +166,7 @@ class TaskPageTest < ApplicationSystemTestCase
       click_button "Comment actions"
       click_button "Edit comment"
     end
-    find(".comment textarea").send_keys([ :control, "a" ], "Updated plan")
+    find(".comment textarea").set("Updated plan")
     within(".comment") { click_button "Save" }
     within(".comment") { assert_text "Updated plan" }
     eventually { comment.reload.body == "Updated plan" }
