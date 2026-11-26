@@ -256,7 +256,9 @@ class ChangesTest < ApplicationSystemTestCase
 
     assert_no_selector "dialog[open]"
     assert_current_path board_path("/changes/fix-login")
-    assert_equal "fix-login", selected_tab.find(".ellipsis").text
+    # The address changes before the new change's board arrives; until then
+    # the previous tab stays selected, so wait rather than read it once.
+    assert_selector "[role=tablist] [role=tab][aria-selected=true] .ellipsis", exact_text: "fix-login"
     assert_equal %w[fix-login add-labels], all("[role=tablist] [role=tab] .ellipsis").map(&:text).first(2)
   end
 
