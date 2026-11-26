@@ -57,7 +57,7 @@ class BoardTest < ApplicationSystemTestCase
 
     click_button "Actions for column Review"
     click_button "Rename column"
-    find_field("Column title").send_keys([ :control, "a" ], "QA", :enter)
+    find_field("Column title").set("QA").send_keys(:enter)
     assert_selector ".column h2", text: "QA"
 
     click_button "Actions for column Work"
@@ -88,46 +88,13 @@ class BoardTest < ApplicationSystemTestCase
     within("article", text: "Late task") { assert_selector "time.card__deadline--overdue", text: "yesterday" }
   end
 
-  # Spec web-client, "Board sprint summary".
-  test "the board shows the active sprint's progress" do
-    sprint = @project.sprints.create!(title: "Sprint 14", starts_on: 6.days.ago.to_date, ends_on: 7.days.from_now.to_date)
-    sprint.activate!
-    9.times { |i| task("Open #{i}", i.even? ? :goal_todo : :goal_work, sprint: sprint) }
-    3.times { |i| task("Finished #{i}", :goal_done, sprint: sprint) }
-    task("Not in the sprint", :goal_todo)
-    visit_board
-
-    within("section[aria-label='Active sprint']") do
-      assert_link "Sprint 14", href: "/app/projects/#{@project.id}/sprints"
-      assert_selector ".sprint-summary__dates", text: /\b#{sprint.starts_on.day}\b.*\b#{sprint.ends_on.day}\b/
-      assert_text "3 of 12 done"
-      assert_selector "[role=progressbar][aria-valuenow='3'][aria-valuemax='12']"
-      assert_text "7 days left"
-    end
-    assert_no_text "Not in the sprint"
-
-    click_link "Sprint 14"
-    assert_current_path "/app/projects/#{@project.id}/sprints"
-  end
-
-  test "the sprint summary in Russian" do
-    @user.update!(lang: "ru")
-    sprint = @project.sprints.create!(title: "Спринт 3", starts_on: 4.days.ago.to_date, ends_on: 3.days.from_now.to_date)
-    sprint.activate!
-    visit_board
-
-    within("section[aria-label='Активный спринт']") do
-      assert_text "Готово 0 из 0"
-      assert_text "осталось 3 дня"
-    end
-  end
-
-  test "a board without an active sprint shows no sprint summary" do
+  test "the board of other tasks shows no change summary" do
     task("Plain task", :goal_todo)
     visit_board
 
     assert_text "Plain task"
-    assert_no_selector "section[aria-label='Active sprint']"
+    assert_selector "[role=tab][aria-selected=true]", text: "Other tasks"
+    assert_no_selector "section[aria-label='Change']"
     assert_equal [ "To Do", "Work", "Done" ], all(".column h2").map(&:text)
   end
 

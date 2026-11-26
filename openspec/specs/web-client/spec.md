@@ -21,11 +21,9 @@ The client SHALL be served under `/app` to signed-in users and SHALL support dee
 The client SHALL provide screens for:
 - a personal dashboard (own or a teammate's open tasks and upcoming deadlines);
 - the project list and project creation;
-- a project's board in kanban and list layouts;
-- backlog;
+- a project's board in kanban and list layouts, one change at a time;
 - task details;
-- sprints;
-- milestones and a single milestone;
+- changes;
 - members and invitations;
 - agents;
 - project settings (owner only);
@@ -45,6 +43,10 @@ The client SHALL provide screens for:
 #### Scenario: Agents entry
 - **WHEN** any member opens a project
 - **THEN** the project's sections include Agents
+
+#### Scenario: No sprints, backlog or milestones
+- **WHEN** any member opens a project
+- **THEN** the project's sections include Changes, and include no Backlog, Sprints or Milestones
 
 ### Requirement: Language and formatting
 The client SHALL display all interface text in the signed-in user's language (`en` or `ru`), and SHALL format dates, relative days (yesterday/today/tomorrow) and counted nouns according to that language's rules.
@@ -93,8 +95,8 @@ In production the client SHALL report unexpected errors to the configured error 
 All interactive controls SHALL be operable by keyboard with a visible focus indicator; icon-only buttons SHALL have accessible names; dialogs SHALL be modal (focus contained, background inert) and close with Escape, returning focus to the control that opened them.
 
 #### Scenario: Close a dialog with Escape
-- **WHEN** a keyboard user opens the "new sprint" dialog and presses Escape
-- **THEN** the dialog closes and focus returns to the "new sprint" button
+- **WHEN** a keyboard user opens the "new change" dialog and presses Escape
+- **THEN** the dialog closes and focus returns to the "new change" button
 
 ### Requirement: Supported browsers
 The client SHALL fully work in the latest two major versions of Chrome, Edge, Firefox and Safari (desktop and iOS) and in Chrome for Android. Features newer than that baseline SHALL only enhance behaviour and SHALL NOT be required for any task to be completed.
@@ -118,28 +120,58 @@ The client's directly declared runtime dependencies SHALL be exactly `vue`, `vue
 - **WHEN** a module of the single-page application imports `swagger-ui-dist`
 - **THEN** the CI check fails and names the importing file
 
-### Requirement: Board sprint summary
-When the project has an active sprint, the board SHALL show above its columns the sprint's title as a link to the sprints screen, its start and end dates, how many of the tasks on the board are in the done column out of all tasks on the board (as text and as a progress bar), and how many days remain until the end date. Without an active sprint, no sprint summary SHALL be shown.
+### Requirement: Board change tabs
+Above the board, in both layouts, the client SHALL show a tab for each open change of the project, newest first, then an "Other tasks" tab for the board of other tasks (spec `project-board`), then a "New change" action. Each change tab SHALL show the change's name and how many of its cards are in the done column out of all its cards. The tabs SHALL be exposed to assistive technology as a tab list, with the shown tab marked as selected. Choosing a tab SHALL show that board, and a task added on it SHALL be created in that change, or in no change on "Other tasks". The shown tab SHALL be part of the page address, so that reloading or sharing the address shows the same tab. Without a tab in the address, the board SHALL show the newest open change, or "Other tasks" when there is no open change. An address that names a change that is not open SHALL show that default tab together with a message that the change is archived or does not exist.
 
-#### Scenario: Sprint in progress
-- **WHEN** today is 19 October, the active sprint "Sprint 14" runs from 13 to 26 October, and the board holds 12 tasks of which 3 are in the done column
-- **THEN** the board shows "Sprint 14" linking to the sprints screen, the dates 13–26 October, "3 of 12 done" with a progress bar at 25%, and "7 days left"
+#### Scenario: Switch change
+- **WHEN** a member viewing the board of `add-labels` chooses the tab `export-csv`
+- **THEN** the board shows the tasks of `export-csv`, the tab `export-csv` is marked as selected, and the page address names `export-csv`
 
-#### Scenario: Last day of the sprint
-- **WHEN** today is the active sprint's end date
-- **THEN** the summary says it is the sprint's last day instead of a number of days
+#### Scenario: Default tab
+- **WHEN** a member opens the board of TEST, whose newest open change is `fix-login`, from the navigation
+- **THEN** the tab `fix-login` is shown
 
-#### Scenario: Sprint past its end date
-- **WHEN** the active sprint's end date is before today
-- **THEN** the summary says the sprint has ended
+#### Scenario: No open change
+- **WHEN** a member opens the board of a project without open changes
+- **THEN** "Other tasks" is shown, and the tab row holds only "Other tasks" and "New change"
 
-#### Scenario: Russian day count
-- **WHEN** a Russian-language user views a board whose active sprint ends in 3 days
-- **THEN** the remaining time reads «осталось 3 дня»
+#### Scenario: Reload
+- **WHEN** a member reloads the page while the tab `export-csv` is shown
+- **THEN** the board of `export-csv` is shown again
 
-#### Scenario: No active sprint
-- **WHEN** a member opens the board of a project without an active sprint
-- **THEN** no sprint summary is shown and the columns are shown as before
+#### Scenario: Archived change in the address
+- **WHEN** a member opens an address naming `add-labels` after `add-labels` was archived
+- **THEN** the default tab is shown with a message that `add-labels` is archived or does not exist
+
+#### Scenario: Add a task to a change's board
+- **WHEN** a member adds "Fix flaky test" to the column "To Do" on the board of `add-labels`
+- **THEN** the task belongs to `add-labels` and appears on its board
+
+### Requirement: Board change summary
+While a change's tab is shown, the board SHALL show above its columns the change's name as a link to the changes screen, how many of the cards on the board are in the done column out of all cards on the board (as text and as a progress bar), and an "Archive" action. The board of other tasks SHALL show no summary.
+
+#### Scenario: Change in progress
+- **WHEN** the board of `add-labels` holds 4 cards of which 1 is in the done column
+- **THEN** the summary shows `add-labels` linking to the changes screen, "1 of 4 done" with a progress bar at 25%, and "Archive"
+
+#### Scenario: Other tasks
+- **WHEN** a member shows the "Other tasks" tab
+- **THEN** no change summary is shown
+
+### Requirement: Archiving a change
+Archiving a change, from the board summary or the changes screen, SHALL ask for confirmation in a dialog. When the change has root tasks that are not in the done column, the dialog SHALL say how many there are, that agents may still be working on them, and that they stay with the archived change and leave the board. Archiving SHALL stay possible either way. After a change is archived from its board, the board SHALL show the default tab (requirement "Board change tabs").
+
+#### Scenario: Unfinished cards
+- **WHEN** a member chooses "Archive" for `add-labels`, which has 3 cards that are not in the done column
+- **THEN** the dialog warns that 3 cards are not done and will stay with the archived change, and the member can still archive it
+
+#### Scenario: Everything done
+- **WHEN** a member chooses "Archive" for a change whose cards are all in the done column
+- **THEN** the dialog asks for confirmation and shows no warning
+
+#### Scenario: After archiving
+- **WHEN** a member confirms archiving `add-labels` from its board
+- **THEN** the tab `add-labels` is gone and the board shows the default tab
 
 ### Requirement: New task from the board header
 The board in kanban layout SHALL offer a "New task" action next to the layout switch. Activating it SHALL open the add-task field of the first column and move keyboard focus into it; the task is created there as with the column's own add action. When the board has no columns, the action SHALL NOT be offered.
@@ -165,7 +197,7 @@ The navigation SHALL show the open project's title and short name as a control t
 
 #### Scenario: No project open
 - **WHEN** a user opens the dashboard without having opened a project in this page load
-- **THEN** the switcher invites them to choose a project and no Board, Backlog or other project section links are shown
+- **THEN** the switcher invites them to choose a project and no Board, Changes or other project section links are shown
 
 ### Requirement: Subtask progress on the task page
 The task page SHALL show, for a task that has subtasks, how many of them are done out of the total, as text and as a progress bar. A task without subtasks SHALL show no progress bar.
@@ -182,7 +214,7 @@ The task page SHALL show, for a task that has subtasks, how many of them are don
 Every label and every project SHALL be shown with a colour that depends only on its identity, so that it is the same on every screen, for every member and across sessions. A colour SHALL never be the only way to identify a label or project: its title SHALL always be shown next to it.
 
 #### Scenario: Same label everywhere
-- **WHEN** a task with the label "Design" is shown as a board card, as a backlog row and on its task page
+- **WHEN** a task with the label "Design" is shown as a board card, as a row on the changes screen and on its task page
 - **THEN** the label chip has the same colours in all three places
 
 #### Scenario: Same colour for every member
@@ -209,11 +241,11 @@ On wide screens, the sidebar SHALL offer a control that collapses it to a narrow
 
 #### Scenario: Collapse the sidebar
 - **WHEN** a member on a wide screen with the "Goalner" board open activates "Collapse menu"
-- **THEN** the sidebar narrows to icons, the section labels and the project list are no longer visible, the "Backlog" link is still reachable by its name, and the board area is wider than before
+- **THEN** the sidebar narrows to icons, the section labels and the project list are no longer visible, the "Changes" link is still reachable by its name, and the board area is wider than before
 
 #### Scenario: Navigate from the rail
-- **WHEN** the sidebar is collapsed and the member activates the "Backlog" icon
-- **THEN** the backlog opens and its icon is marked as the active section
+- **WHEN** the sidebar is collapsed and the member activates the "Changes" icon
+- **THEN** the changes screen opens and its icon is marked as the active section
 
 #### Scenario: Switch project from the rail
 - **WHEN** the sidebar is collapsed and the member activates the project switcher
@@ -231,58 +263,39 @@ On wide screens, the sidebar SHALL offer a control that collapses it to a narrow
 - **WHEN** a member who collapsed the sidebar opens the menu on a narrow screen
 - **THEN** the navigation shows full labels and the project list, with no collapse control
 
-### Requirement: Backlog screen
-The backlog screen SHALL list the project's backlog tasks, each showing its column, with a field that adds a task to the backlog. Each task SHALL offer a move menu listing the project's open sprints and, only while a sprint is active, the board's columns. Below the list, a collapsed "Done" group SHALL show the number of done tasks in no sprint and list them when expanded.
+### Requirement: Changes screen
+The changes screen SHALL show each open change, newest first, as a collapsible section whose header shows its name, task counts and actions, and whose body lists its tasks with a field that adds a task to that change. Done tasks SHALL be marked as done in text, not only by colour. Each task SHALL offer a move menu listing the other open changes and "Other tasks", except a card whose mark is in its change's tasks text (spec `changes`, "Tasks in a change"), which SHALL offer no move menu. The screen SHALL offer a "New change" action. Archived changes SHALL be listed collapsed below, most recently archived first, and expanding one SHALL list its tasks.
 
-#### Scenario: Add a backlog task during a sprint
-- **WHEN** a member types "Dark mode" into the backlog's add field while a sprint is active
-- **THEN** the task is listed in the backlog on the first column and is not shown on the board
+#### Scenario: Add a task to a change
+- **WHEN** a member expands `export-csv` and types "Rate limiting" into its add field
+- **THEN** the task is listed under `export-csv` and appears on the board of `export-csv`
 
-#### Scenario: Move a task into a planned sprint
-- **WHEN** a member chooses "Sprint 3" in TEST-1's move menu
-- **THEN** TEST-1 leaves the backlog list and is listed under "Sprint 3" on the sprints screen
+#### Scenario: Move a task to other tasks
+- **WHEN** a member chooses "Other tasks" in the move menu of TEST-9, which is listed under `fix-login`
+- **THEN** TEST-9 leaves `fix-login` and is shown on the board of other tasks with its column unchanged
 
-#### Scenario: Put a task on the board
-- **WHEN** a member chooses the column "Work" in TEST-1's move menu while "Sprint 1" is active
-- **THEN** TEST-1 leaves the backlog list and appears at the end of "Work" on the board
+#### Scenario: Card of tasks.md
+- **WHEN** a member views the section of `add-labels`, whose cards were created by importing it
+- **THEN** those cards offer no move menu, and a task added to `add-labels` by hand does offer one
 
-#### Scenario: No active sprint
-- **WHEN** a member opens a task's move menu while no sprint is active
-- **THEN** the menu lists the open sprints and no board columns
+#### Scenario: Archived change
+- **WHEN** a member expands the archived change `fix-login` below the open changes
+- **THEN** its tasks are listed, done ones marked as done
 
-#### Scenario: Done tasks outside sprints
-- **WHEN** a member opens the backlog while 2 tasks in no sprint are in the done column
-- **THEN** the backlog list does not contain them, a collapsed "Done (2)" group is shown below it, and expanding the group lists both tasks
+### Requirement: New change dialog
+The "New change" action, on the board and on the changes screen, SHALL open a dialog that asks for the change's name. As the member types, the dialog SHALL turn capital letters into lowercase and spaces into hyphens, and it SHALL show the allowed format. A validation error from the server SHALL be shown next to the field. After a change is created from the board, the board SHALL show that change.
 
-### Requirement: Sprint planning screen
-The sprints screen SHALL show each non-archived sprint, newest first, as a collapsible section whose header shows its title, dates, task counts and actions, and whose body lists its tasks with a field that adds a task to that sprint. Done tasks SHALL be marked as done and carried-over tasks SHALL name the sprint holding their copy. Each task SHALL offer a move menu listing the other open sprints and the backlog. Archived sprints SHALL be listed collapsed below.
+#### Scenario: Typing a name
+- **WHEN** a member types "Export CSV" into the name field
+- **THEN** the field holds `export-csv`
 
-#### Scenario: Plan a task
-- **WHEN** a member expands "Sprint 3" and types "Rate limiting" into its add field
-- **THEN** the task is listed under "Sprint 3" and appears neither on the board nor in the backlog
+#### Scenario: Name taken
+- **WHEN** a member submits the name `add-labels` while an open change has that name
+- **THEN** the dialog stays open and shows the server's error next to the name field
 
-#### Scenario: Move a planned task back to the backlog
-- **WHEN** a member chooses "Backlog" in the move menu of TEST-9, which is listed under "Sprint 3"
-- **THEN** TEST-9 leaves "Sprint 3" and is listed in the backlog with its column unchanged
-
-#### Scenario: Active sprint
-- **WHEN** a member opens the sprints screen while "Sprint 1" is active
-- **THEN** "Sprint 1" is marked as active and its section lists the tasks shown on the board
-
-#### Scenario: Done and carried-over tasks in a sprint section
-- **WHEN** a member expands "Sprint 2", which holds the done task GOAL-5 and the task GOAL-3 that was carried over into "Sprint 3"
-- **THEN** GOAL-5 is marked as done in text, not only by colour, and GOAL-3 is marked "Carried to Sprint 3"
-
-### Requirement: Move to backlog from the board
-The board SHALL offer moving a task to the backlog only while a sprint is active.
-
-#### Scenario: Move to backlog during a sprint
-- **WHEN** a member chooses "Move to backlog" for GOAL-4 on the board while "Sprint 1" is active
-- **THEN** GOAL-4 disappears from the board and is listed in the backlog
-
-#### Scenario: No active sprint
-- **WHEN** a member opens a task's menu on the board while no sprint is active
-- **THEN** no "Move to backlog" action is offered
+#### Scenario: From the board
+- **WHEN** a member creates the change `fix-login` from the board's "New change" action
+- **THEN** the dialog closes and the board shows the tab `fix-login`
 
 ### Requirement: API tokens screen
 The settings SHALL include an API tokens screen that lists the user's tokens and creates one from a name, one of the user's projects, read-only or read-write access, an expiry of 7, 30, 90 or 365 days, and the current password. A new token's value SHALL be shown once, with a copy control and a warning that it will not be shown again. Revoking SHALL ask for confirmation. The screen SHALL link to the API documentation.
@@ -370,14 +383,3 @@ Wherever the client shows a user, an agent SHALL carry a visible marker with an 
 #### Scenario: Assignee picker
 - **WHEN** a member opens the assignee picker of a task in a project with agent Fish and deleted agent Owl
 - **THEN** Fish is offered with the agent marker, and Owl is not offered
-
-### Requirement: OpenSpec work in a sprint being archived
-The sprint archive dialog SHALL warn when the sprint holds cards of OpenSpec changes (spec `openspec-changes`) that are not in the done column. The warning SHALL name each such change with its number of unfinished cards, and SHALL say that agents may be working on them and that cards carried over lose their checklist and their link to the change. Archiving SHALL stay possible, with or without carrying tasks over. A sprint without such cards SHALL show no warning.
-
-#### Scenario: Unfinished OpenSpec cards
-- **WHEN** a member opens the archive dialog of "Openspec integration", which holds three cards of `add-labels` that are not done
-- **THEN** the dialog warns that 3 cards of `add-labels` are unfinished, and the member can still archive the sprint
-
-#### Scenario: Nothing unfinished
-- **WHEN** a member opens the archive dialog of a sprint whose OpenSpec cards are all done
-- **THEN** the dialog shows no warning

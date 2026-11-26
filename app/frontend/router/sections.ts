@@ -12,10 +12,13 @@ export interface ProjectSection {
 }
 
 export const projectSections: ProjectSection[] = [
-  { name: "board", label: "navigation.board", icon: "view_kanban", also: ["board-list", "task"] },
-  { name: "backlog", label: "navigation.backlog", icon: "inbox" },
-  { name: "sprints", label: "navigation.sprints", icon: "sprint" },
-  { name: "milestones", label: "navigation.milestones", icon: "flag", also: ["milestone"] },
+  {
+    name: "board",
+    label: "navigation.board",
+    icon: "view_kanban",
+    also: ["board-other", "board-change", "board-list", "board-list-other", "board-list-change", "task"],
+  },
+  { name: "changes", label: "navigation.changes", icon: "flag" },
   { name: "members", label: "navigation.members", icon: "group" },
   { name: "agents", label: "navigation.agents", icon: "robot" },
   { name: "archive", label: "navigation.archive", icon: "archive", also: ["archived-task"] },

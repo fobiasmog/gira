@@ -67,13 +67,41 @@ class OpenapiErrorsContract < OpenapiContractTest
 
   test "409 keys_missing for a re-import of an OpenSpec change without its marks" do
     text = "## 1. Model\n- [ ] 1.1 Add the table\n"
-    OpenspecChange::Import.new(project: projects(:goal), user: users(:two), name: "add-labels", artifacts: { "tasks" => text }).run!
+    Change::Import.new(project: projects(:goal), user: users(:two), name: "add-labels", artifacts: { "tasks" => text }).run!
 
     post api_project_openspec_changes_path(projects(:goal)), params: { name: "add-labels", artifacts: { tasks: text } }, headers: bearer("glnr_two_goal_read_write"), as: :json
 
     assert_response :conflict
     assert_equal "keys_missing", error_code
-    assert_match(/goalner:GOAL-\d+/, response.parsed_body["tasks"])
+    assert_match(/goalner:GOAL-\d+/, response.parsed_body["tasks_text"])
+  end
+
+  test "422 validation_failed for a change name that an open change has" do
+    projects(:goal).project_changes.create!(name: "add-labels")
+
+    post api_project_changes_path(projects(:goal)), params: { name: "add-labels" }, headers: bearer("glnr_two_goal_read_write"), as: :json
+
+    assert_response :unprocessable_content
+    assert_equal "validation_failed", error_code
+    assert response.parsed_body.dig("error", "fields", "name").present?
+  end
+
+  test "404 not_found for the board of an archived change" do
+    projects(:goal).project_changes.create!(name: "add-labels").archive!
+
+    get api_project_board_path(projects(:goal), change_id: "add-labels"), headers: bearer("glnr_two_goal_read")
+
+    assert_response :not_found
+    assert_equal "not_found", error_code
+  end
+
+  test "422 validation_failed for moving a card of tasks.md to another change" do
+    change = Change::Import.new(project: projects(:goal), user: users(:two), name: "add-labels", artifacts: { "tasks" => "## 1. A\n- [ ] 1.1 B\n" }).run!.change
+
+    put api_project_task_change_path(projects(:goal), change.tasks.roots.first), params: { change_id: nil }, headers: bearer("glnr_two_goal_read_write"), as: :json
+
+    assert_response :unprocessable_content
+    assert response.parsed_body.dig("error", "fields", "change").present?
   end
 
   test "422 validation_failed for an OpenSpec text with a foreign mark, naming its line" do

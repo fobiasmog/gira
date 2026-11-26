@@ -47,9 +47,8 @@ watch(() => [props.projectId, props.taskId] as const, async ([projectId, taskId]
       <div v-if="task.status"><dt>{{ t("task.status") }}</dt><dd>{{ task.status.title }}</dd></div>
       <div><dt>{{ t("task.assignee") }}</dt><dd class="row"><UserAvatar :user="task.assignee" :size="20" />{{ task.assignee?.name ?? t("task.unassigned") }}<AgentChip :user="task.assignee" /></dd></div>
       <div v-if="task.deadline"><dt>{{ t("task.deadline") }}</dt><dd>{{ formatDateTime(language, task.deadline) }}</dd></div>
-      <div v-if="task.milestone"><dt>{{ t("task.milestone") }}</dt><dd>{{ task.milestone.title }}</dd></div>
       <div v-if="task.label"><dt>{{ t("task.label") }}</dt><dd>{{ task.label.title }}</dd></div>
-      <div v-if="task.sprint"><dt>{{ t("task.sprint") }}</dt><dd>{{ task.sprint.title }}</dd></div>
+      <div v-if="task.change"><dt>{{ t("task.inChange") }}</dt><dd>{{ task.change.name }}</dd></div>
     </dl>
 
     <section class="stack" aria-labelledby="archived-description">

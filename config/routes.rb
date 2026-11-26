@@ -82,18 +82,15 @@ Rails.application.routes.draw do
             resources :subtasks, only: %i[index create]
             resource :completion, only: %i[update destroy]
             resource :label, only: %i[update destroy]
-            resource :sprint, only: :update
+            resource :change, only: :update
             resources :comments, only: %i[index create]
           end
         end
         resources :labels, only: %i[index create]
-        resources :openspec_changes, only: %i[show create], param: :name
-        resources :milestones, only: %i[index show create destroy] do
-          resource :recovery, only: :create, module: :milestones
-        end
-        resources :sprints, only: %i[index create] do
-          scope module: :sprints do
-            resource :activation, only: :create
+        resources :openspec_changes, only: :create
+        # A change in a path is its id or an open change's name.
+        resources :changes, only: %i[index show create] do
+          scope module: :changes do
             resource :archival, only: :create
             resources :tasks, only: :index
           end

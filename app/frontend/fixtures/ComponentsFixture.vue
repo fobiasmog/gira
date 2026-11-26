@@ -14,7 +14,7 @@ import { useUiStore } from "../stores/ui.ts"
 // components.
 const ui = useUiStore()
 const dialogOpen = ref(false)
-const sprintName = ref("")
+const changeName = ref("")
 const picked = ref("nothing")
 const notes = ref("")
 const wide = useMediaQuery("(min-width: 800px)")
@@ -25,11 +25,11 @@ const wide = useMediaQuery("(min-width: 800px)")
     <h1>Component fixtures</h1>
 
     <section class="row">
-      <button type="button" class="button" @click="dialogOpen = true">New sprint</button>
-      <AppDialog v-model:open="dialogOpen" title="New sprint">
-        <AppField label="Sprint name">
+      <button type="button" class="button" @click="dialogOpen = true">New change</button>
+      <AppDialog v-model:open="dialogOpen" title="New change">
+        <AppField label="Change name">
           <template #default="{ control }">
-            <input v-model="sprintName" v-bind="control" class="input">
+            <input v-model="changeName" v-bind="control" class="input">
           </template>
         </AppField>
         <template #actions>

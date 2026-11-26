@@ -1,5 +1,6 @@
 # A task (spec tasks). Every task is in a column; root tasks are ordered
-# within their column and sprint, and subtasks hang off exactly one root task.
+# within their column and change, and subtasks hang off exactly one root task
+# and belong to its change (spec changes, "Tasks in a change").
 class Task < ApplicationRecord
   KEY_FORMAT = /\A[A-Z][A-Z0-9]*-(\d+)\z/
 
@@ -8,41 +9,38 @@ class Task < ApplicationRecord
   belongs_to :assignee, class_name: "User", optional: true
   belongs_to :status
   belongs_to :parent, class_name: "Task", optional: true
-  belongs_to :sprint, optional: true
-  belongs_to :milestone, optional: true
+  belongs_to :change, optional: true
   belongs_to :label, optional: true
-  belongs_to :origin_task, class_name: "Task", optional: true
-  # Set only by an OpenSpec import (spec openspec-changes).
-  belongs_to :openspec_change, optional: true
   has_many :subtasks, -> { kept.order(:id) }, class_name: "Task", foreign_key: :parent_id, inverse_of: :parent
   has_many :comments, dependent: :destroy
 
   # Contiguous positions from 0 among the root tasks of one column within one
-  # sprint (or none).
-  acts_as_list scope: %i[project_id status_id sprint_id parent_id], top_of_list: 0, add_new_at: :bottom
+  # change (or none).
+  acts_as_list scope: %i[project_id status_id change_id parent_id], top_of_list: 0, add_new_at: :bottom
 
   scope :kept, -> { where(archived_at: nil) }
   scope :archived, -> { where.not(archived_at: nil) }
   scope :roots, -> { where(parent_id: nil) }
-  # In no sprint; the backlog lists these unless they are done (spec project-board).
-  scope :in_backlog, -> { where(sprint_id: nil) }
   scope :not_done, -> { left_joins(:status).where(statuses: { done: [ false, nil ] }) }
   scope :done, -> { joins(:status).where(statuses: { done: true }) }
-  # Board, backlog and sprint lists: by column order, then position in the column.
+  # Boards and change lists: by column order, then position in the column.
   scope :in_column_order, -> { joins(:status).order("statuses.position", :position) }
 
   validates :title, presence: true, length: { maximum: 255 }
   validates :description, length: { maximum: 100_000 }
   validate :references_belong_to_project
   validate :assignee_is_member, if: :assignee_id_changed?
-  validate :milestone_is_not_deleted, if: :milestone_id_changed?
-  validate :sprint_is_open_and_task_is_root, if: :sprint_id_changed?
+  validate :change_is_open, if: :change_id_changed?
+  validate :subtask_follows_its_card, if: :change_id_changed?
+  validate :card_of_tasks_md_stays, if: :change_id_changed?, on: :update
   validate :parent_is_a_root_task, if: :parent_id_changed?
   validate :archived_tasks_are_read_only, on: :update
 
   before_validation :default_to_first_column, on: :create
+  before_validation :take_parents_change, if: -> { parent && (new_record? || parent_id_changed?) }
   before_create :assign_number
   before_save :track_completion, if: :status_id_changed?
+  after_update :move_subtasks_with_card, if: -> { root? && saved_change_to_change_id? }
 
   def self.find_by_ref!(ref)
     if (number = ref.to_s[KEY_FORMAT, 1])
@@ -68,7 +66,7 @@ class Task < ApplicationRecord
     status&.done? || false
   end
 
-  # Archives the task: it leaves the board, backlog and every list, and stays
+  # Archives the task: it leaves the board and every list, and stays
   # readable in the project's archive.
   def archive!
     transaction do
@@ -95,7 +93,7 @@ class Task < ApplicationRecord
     # record of another project (design.md, Decision 7). An unknown id is
     # rejected the same way as a foreign one.
     def references_belong_to_project
-      %i[status milestone label sprint parent].each do |name|
+      %i[status label change parent].each do |name|
         next if self[:"#{name}_id"].nil?
 
         record = public_send(name)
@@ -115,15 +113,30 @@ class Task < ApplicationRecord
       end
     end
 
-    def milestone_is_not_deleted
-      errors.add(:milestone, :deleted) if milestone&.deleted?
+    # No task is put into an archived change, a subtask included; tasks
+    # already in one stay there.
+    def change_is_open
+      errors.add(:change, :archived) if change&.archived?
     end
 
-    def sprint_is_open_and_task_is_root
-      return unless sprint
+    def subtask_follows_its_card
+      errors.add(:change, :subtask) if parent && change_id != parent.change_id
+    end
 
-      errors.add(:sprint, :archived) if sprint.archived?
-      errors.add(:sprint, :subtask) if parent_id
+    # tasks.md owns the card: removing its section and importing again is
+    # the way out (replace-sprints-with-changes design.md, decision 3).
+    def card_of_tasks_md_stays
+      errors.add(:change, :in_tasks_md) if in_tasks_md_in_database
+    end
+
+    def take_parents_change
+      self.change_id = parent.change_id
+    end
+
+    # Archived subtasks too, so that every task of a change carries its id.
+    # Positions stay contiguous: the card's subtasks all move together.
+    def move_subtasks_with_card
+      Task.where(parent_id: id).update_all(change_id: change_id, updated_at: Time.current)
     end
 
     def parent_is_a_root_task

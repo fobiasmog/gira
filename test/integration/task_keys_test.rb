@@ -28,7 +28,7 @@ class TaskKeysTest < ActionDispatch::IntegrationTest
     assert_equal [ "By key" ], response.parsed_body.map { |comment| comment["body"] }
   end
 
-  test "subtasks, placement, sprint and label by key" do
+  test "subtasks, placement, change and label by key" do
     post api_project_task_subtasks_path(@project, @card.key), params: { title: "Another" }, as: :json
     assert_response :created
     get api_project_task_subtasks_path(@project, @card.key)
@@ -38,10 +38,10 @@ class TaskKeysTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal statuses(:goal_work), @card.reload.status
 
-    sprint = @project.sprints.create!(title: "S1", starts_on: Date.current, ends_on: 1.week.from_now)
-    put api_project_task_sprint_path(@project, @card.key), params: { sprint_id: sprint.id }, as: :json
+    change = @project.project_changes.create!(name: "s1")
+    put api_project_task_change_path(@project, @card.key), params: { change_id: change.id }, as: :json
     assert_response :success
-    assert_equal sprint, @card.reload.sprint
+    assert_equal change, @card.reload.change
 
     label = @project.labels.create!(title: "ci")
     put api_project_task_label_path(@project, @card.key), params: { label_id: label.id }, as: :json

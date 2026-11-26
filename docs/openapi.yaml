@@ -7,8 +7,7 @@ info:
   version: "1"
   description: |
     The part of the Goalner API that personal API tokens can use: tasks,
-    comments, labels, milestones, sprints and file downloads in the token's
-    project.
+    comments, labels, changes and file downloads in the token's project.
 
     Create a token in the app under Settings → API tokens, then send it in the
     `Authorization: Bearer <token>` header. A token reaches one project, and
@@ -21,10 +20,14 @@ info:
     MCP only does not work here. List an agent's own work with
     `GET /api/projects/{project_id}/tasks?view=assigned`.
 
-    Agents that plan with OpenSpec push a change's `tasks.md` with
-    `POST /api/projects/{project_id}/openspec_changes`, and save the marked
-    text it returns; see that operation for the whole loop. Every request
-    that names a task takes its id or its key, such as `GOAL-12`.
+    Work is grouped into changes: a project holds many open changes at once,
+    each with its own tasks and board, and a change is archived when it is
+    done. Agents that plan with OpenSpec push a change's `tasks.md` with
+    `POST /api/projects/{project_id}/openspec_changes`, which fills the
+    change of that name, and save the marked text it returns; see that
+    operation for the whole loop. Every request that names a task takes its
+    id or its key, such as `GOAL-12`, and every request that names a change
+    in its path takes its id or, for an open change, its name.
 
     Errors use one JSON envelope: `{ "error": { "code", "message", "fields" } }`.
 
@@ -40,19 +43,17 @@ tags:
   - name: Projects
     description: The token's project, its board and its members.
   - name: Tasks
-    description: Tasks, their placement on the board, label and sprint.
+    description: Tasks, their placement on the board, label and change.
   - name: Subtasks
     description: Subtasks of a root task, and their completion.
   - name: Comments
     description: Markdown comments on tasks, with file attachments.
   - name: Labels
     description: The project's labels.
-  - name: Milestones
-    description: Milestones group tasks across sprints.
-  - name: Sprints
-    description: Time-boxed sprints; the board shows the active one.
+  - name: Changes
+    description: Changes, the pieces of work of a project, each with its own tasks and board. Any number of them can be open; none is "active".
   - name: OpenSpec
-    description: OpenSpec changes, whose tasks.md sections become cards and whose items become their subtasks.
+    description: Importing an OpenSpec change's tasks.md into the change of that name, whose sections become cards and whose items become their subtasks.
   - name: Files
     description: Downloads of the attachments and avatars linked from other responses.
 
@@ -121,11 +122,20 @@ paths:
       tags: [Projects]
       summary: The board
       description: |
-        Everything the board shows in one response: the columns, the root tasks
-        of the active sprint (or the tasks in no sprint when no sprint is
-        active), the members and the labels.
+        Everything a board shows in one response: the columns, the root tasks
+        of one open change (or, without `change_id`, the tasks in no change),
+        done ones included, the members, the labels, and the project's open
+        changes for choosing another board.
       parameters:
         - $ref: "#/components/parameters/ProjectId"
+        - name: change_id
+          in: query
+          description: |
+            The change whose board to show: its id, or the name of an open
+            change such as `add-labels`. Omit it for the tasks in no change.
+            An archived change has no board (404).
+          schema:
+            $ref: "#/components/schemas/ChangeRef"
       responses:
         "200":
           description: The board.
@@ -200,15 +210,18 @@ paths:
         - name: view
           in: query
           description: |
-            - `board` (default): root tasks on the board, the active sprint's or, when none is active, those in no sprint, in column order;
-            - `backlog`: open root tasks in no sprint, in column order;
-            - `backlog_done`: done root tasks in no sprint, most recently completed first;
+            - `board` (default): root tasks on a board, done ones included, in column order: those of the change named by `change_id`, or those in no change;
             - `archived`: archived tasks, newest first;
-            - `assigned`: the tasks assigned to the token's owner that are neither archived nor done, subtasks included (see `parent_id`), whatever their sprint, by column and then by number.
+            - `assigned`: the tasks assigned to the token's owner that are neither archived nor done, subtasks included (see `parent_id`), whatever their change, by column and then by number.
           schema:
             type: string
-            enum: [board, backlog, backlog_done, archived, assigned]
+            enum: [board, archived, assigned]
             default: board
+        - name: change_id
+          in: query
+          description: For `view=board`, the change whose board to list (its id, or an open change's name). An archived change has no board (404).
+          schema:
+            $ref: "#/components/schemas/ChangeRef"
       responses:
         "200":
           description: Task cards.
@@ -229,9 +242,9 @@ paths:
       tags: [Tasks]
       summary: Create a task
       description: |
-        A task created with a column (`status_id`) joins the active sprint, unless
-        `sprint_id` is given (`null` for no sprint). A task created without a
-        column goes to the first column, in no sprint.
+        A task goes into the change named by `change_id`, which must be an open
+        change of the project, or into no change without it. A task created
+        without a column (`status_id`) goes to the first column.
       parameters:
         - $ref: "#/components/parameters/ProjectId"
       requestBody:
@@ -420,12 +433,16 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
-  /api/projects/{project_id}/tasks/{task_id}/sprint:
+  /api/projects/{project_id}/tasks/{task_id}/change:
     put:
-      operationId: setTaskSprint
+      operationId: setTaskChange
       tags: [Tasks]
-      summary: Put a root task into a sprint, or take it out
-      description: The API also accepts PATCH.
+      summary: Put a root task into a change, move it to another, or take it out
+      description: |
+        The task keeps its column, and its subtasks follow it. A card in its
+        change's `tasks.md` (`in_tasks_md`) stays in its change: to drop it,
+        remove its section from `tasks.md` and import again. The API also
+        accepts PATCH.
       parameters:
         - $ref: "#/components/parameters/ProjectId"
         - $ref: "#/components/parameters/TaskId"
@@ -436,9 +453,9 @@ paths:
             schema:
               type: object
               properties:
-                sprint_id:
+                change_id:
                   type: [integer, "null"]
-                  description: An open sprint of the same project, or `null` (or nothing) for no sprint.
+                  description: An open change of the same project, or `null` (or nothing) to take the task out of its change.
       responses:
         "200":
           description: The task.
@@ -745,168 +762,32 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
-  /api/projects/{project_id}/milestones:
+  /api/projects/{project_id}/changes:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
     get:
-      operationId: listMilestones
-      tags: [Milestones]
-      summary: List milestones
-      parameters:
-        - name: view
-          in: query
-          description: "`deleted` lists deleted milestones, which can be recovered; otherwise the current ones."
-          schema:
-            type: string
-            enum: [deleted]
-      responses:
-        "200":
-          description: The milestones, oldest first.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Milestone"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-    post:
-      operationId: createMilestone
-      tags: [Milestones]
-      summary: Create a milestone
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [title]
-              properties:
-                title:
-                  type: string
-                  minLength: 1
-                  maxLength: 100
-      responses:
-        "201":
-          description: The milestone.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Milestone"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/InsufficientScope"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "422":
-          $ref: "#/components/responses/ValidationFailed"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-
-  /api/projects/{project_id}/milestones/{id}:
-    parameters:
-      - $ref: "#/components/parameters/ProjectId"
-      - name: id
-        in: path
-        required: true
-        description: A milestone that is not deleted.
-        schema:
-          type: integer
-    get:
-      operationId: showMilestone
-      tags: [Milestones]
-      summary: Show a milestone with its tasks
-      responses:
-        "200":
-          description: The milestone and its tasks, by number.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MilestoneDetail"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-    delete:
-      operationId: deleteMilestone
-      tags: [Milestones]
-      summary: Delete a milestone
-      description: Its tasks keep the reference, so recovering the milestone restores the grouping.
-      responses:
-        "204":
-          description: Deleted.
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/InsufficientScope"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-
-  /api/projects/{project_id}/milestones/{milestone_id}/recovery:
-    post:
-      operationId: recoverMilestone
-      tags: [Milestones]
-      summary: Recover a deleted milestone
-      parameters:
-        - $ref: "#/components/parameters/ProjectId"
-        - name: milestone_id
-          in: path
-          required: true
-          description: A deleted milestone.
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: The recovered milestone.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Milestone"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/InsufficientScope"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-
-  /api/projects/{project_id}/sprints:
-    parameters:
-      - $ref: "#/components/parameters/ProjectId"
-    get:
-      operationId: listSprints
-      tags: [Sprints]
-      summary: List sprints
+      operationId: listChanges
+      tags: [Changes]
+      summary: List changes
       parameters:
         - name: view
           in: query
           description: |
-            - `all` (default): sprints that are not archived;
-            - `available`: the active sprint and those that have not started;
-            - `archived`: archived sprints.
+            - `open` (default): open changes, newest first;
+            - `archived`: archived changes, most recently archived first.
           schema:
             type: string
-            enum: [all, available, archived]
-            default: all
+            enum: [open, archived]
+            default: open
       responses:
         "200":
-          description: The sprints, newest first.
+          description: The changes, with their task counts.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Sprint"
+                  $ref: "#/components/schemas/Change"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -914,41 +795,32 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
     post:
-      operationId: createSprint
-      tags: [Sprints]
-      summary: Create a sprint
+      operationId: createChange
+      tags: [Changes]
+      summary: Create a change
+      description: |
+        An open change with no tasks. Name it as its OpenSpec change folder is
+        named. No two open changes of a project share a name, but a new change
+        may take the name of an archived one. Importing an OpenSpec change
+        (`importOpenspecChange`) creates its change too, so creating it first
+        is only needed to add tasks by hand before the first import.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [title, starts_on, ends_on]
+              required: [name]
               properties:
-                title:
-                  type: string
-                  minLength: 1
-                  maxLength: 100
-                starts_on:
-                  type: string
-                  format: date
-                ends_on:
-                  type: string
-                  format: date
-                  description: Not before `starts_on`.
-                activate:
-                  type: boolean
-                  description: Make it the active sprint.
-                carry_over:
-                  type: boolean
-                  description: Copy the unfinished tasks of the active sprint into it.
+                name:
+                  $ref: "#/components/schemas/ChangeName"
       responses:
         "201":
-          description: The sprint.
+          description: The change.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Sprint"
+                $ref: "#/components/schemas/Change"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -960,84 +832,79 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
-  /api/projects/{project_id}/sprints/{sprint_id}/activation:
-    post:
-      operationId: activateSprint
-      tags: [Sprints]
-      summary: Make a sprint the active one
-      parameters:
-        - $ref: "#/components/parameters/ProjectId"
-        - $ref: "#/components/parameters/SprintId"
-      responses:
-        "200":
-          description: The sprint, now active.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Sprint"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/InsufficientScope"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-
-  /api/projects/{project_id}/sprints/{sprint_id}/archival:
-    post:
-      operationId: archiveSprint
-      tags: [Sprints]
-      summary: Archive a sprint
-      parameters:
-        - $ref: "#/components/parameters/ProjectId"
-        - $ref: "#/components/parameters/SprintId"
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                carry_to_sprint_id:
-                  type: integer
-                  description: Another sprint of the project to copy the unfinished tasks into.
-      responses:
-        "200":
-          description: The archived sprint.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Sprint"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/InsufficientScope"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "422":
-          $ref: "#/components/responses/ValidationFailed"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-
-  /api/projects/{project_id}/sprints/{sprint_id}/tasks:
+  /api/projects/{project_id}/changes/{id}:
     get:
-      operationId: listSprintTasks
-      tags: [Sprints]
-      summary: List a sprint's tasks
-      description: Root tasks that are not archived, done ones included, in column order.
+      operationId: showChange
+      tags: [Changes]
+      summary: Show a change with its cards and its tasks.md
+      description: |
+        The change, its cards that are not archived, in column order, and the
+        `tasks.md` text its last import returned, in which every item whose
+        subtask is now done is checked. For a change never imported, the text,
+        importer and import time are `null`.
       parameters:
         - $ref: "#/components/parameters/ProjectId"
-        - $ref: "#/components/parameters/SprintId"
+        - $ref: "#/components/parameters/ChangeIdAsId"
       responses:
         "200":
-          description: The sprint's task cards.
+          description: The change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/changes/{change_id}/archival:
+    post:
+      operationId: archiveChange
+      tags: [Changes]
+      summary: Archive a change
+      description: |
+        Whatever the state of its tasks. They stay with the archived change and
+        leave every board, and no task can be put into it any more. Archiving
+        an archived change changes nothing.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/ChangeId"
+      responses:
+        "200":
+          description: The archived change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Change"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/changes/{change_id}/tasks:
+    get:
+      operationId: listChangeTasks
+      tags: [Changes]
+      summary: List a change's tasks
+      description: Root tasks that are not archived, done ones included, in column order. Archived changes too.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/ChangeId"
+      responses:
+        "200":
+          description: The change's task cards.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/SprintTaskCard"
+                  $ref: "#/components/schemas/TaskCard"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1053,35 +920,42 @@ paths:
       tags: [OpenSpec]
       summary: Import an OpenSpec change
       description: |
-        Creates or updates an OpenSpec change from the text of its `tasks.md`.
-        Each `##` section becomes a card titled `<change>: <section>`, and each
-        checkbox item a subtask of that card; items before the first section
-        go on a card `<change>: Tasks`. New cards join the active sprint, if
-        any, and carry a milestone named after the change.
+        Fills the project's open change of that name from the text of its
+        `tasks.md`, and creates the change when there is none: you may create
+        it first (`createChange`) or let the first import create it. Each `##`
+        section becomes a card titled `<change>: <section>`, and each checkbox
+        item a subtask of that card; items before the first section go on a
+        card `<change>: Tasks`. All of them belong to the change, so they show
+        on its board, and they stay in it.
 
-        The response's `tasks` is the same text with every heading and item
-        marked with its task's key, such as `<!-- goalner:GOAL-12 -->`, and the
-        items done in Goalner checked. Save it into `tasks.md`: later imports
-        match sections and items by these marks, so renumbering or rewording
-        keeps each task with its assignee and comments. A re-import whose text
-        carries no mark at all is refused with 409 `keys_missing`, which
-        carries the marked text to save.
+        The response's `tasks_text` is the same text with every heading and
+        item marked with its task's key, such as `<!-- goalner:GOAL-12 -->`,
+        and the items done in Goalner checked. Save it into `tasks.md`: later
+        imports match sections and items by these marks, so renumbering or
+        rewording keeps each task with its assignee and comments. A re-import
+        whose text carries no mark at all is refused with 409 `keys_missing`,
+        which carries the marked text to save.
 
         How an agent works through a change:
-        1. Import the change, and save the returned `tasks` into `tasks.md`.
+        1. Import the change, and save the returned `tasks_text` into `tasks.md`.
         2. Take a card assigned to you (`listTasks` with `view=assigned`), and
            work through its subtasks in order.
         3. Complete each subtask (`completeSubtask`, with the key from its
            mark), check its box in `tasks.md`, and commit.
         4. Move the card to the done column (`placeTask`).
-        5. Import again, and save the returned `tasks`.
+        5. Import again, and save the returned `tasks_text`.
+        6. When the change is done, archive it (`archiveChange`).
 
         A checked item completes its subtask, a subtask done in Goalner is
         checked in the returned text, and an import never reopens anything.
-        Tasks whose marks are gone from the text are archived. The text is the
+        Tasks whose marks are gone from the text are archived. Tasks added to
+        the change by hand are left alone, unless a mark names one, which
+        makes it that section's card or that item's subtask. The text is the
         source of titles and descriptions; discuss in comments.
 
-        The first import of a name answers 201, later ones 200.
+        An import that creates the change answers 201, one into an open change
+        200. The marks of an archived change are refused: its name may be
+        taken by a new change, which starts without marks.
       requestBody:
         required: true
         content:
@@ -1090,17 +964,17 @@ paths:
               $ref: "#/components/schemas/OpenspecImport"
       responses:
         "201":
-          description: The change, imported for the first time.
+          description: The change, created by this import.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/OpenspecChange"
+                $ref: "#/components/schemas/ChangeDetail"
         "200":
-          description: The change, imported again.
+          description: The change, which was open already.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/OpenspecChange"
+                $ref: "#/components/schemas/ChangeDetail"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1109,47 +983,15 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           description: |
-            The change already has tasks, but the text carries none of their
-            marks: the text the last import returned was not saved. Nothing
-            changed.
+            The change already has `tasks.md` cards, but the text carries none
+            of their marks: the text the last import returned was not saved.
+            Nothing changed.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OpenspecKeysMissing"
         "422":
           $ref: "#/components/responses/ValidationFailed"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-
-  /api/projects/{project_id}/openspec_changes/{name}:
-    parameters:
-      - $ref: "#/components/parameters/ProjectId"
-      - name: name
-        in: path
-        required: true
-        description: The change's name, such as `add-agents`.
-        schema:
-          type: string
-          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
-          maxLength: 100
-    get:
-      operationId: showOpenspecChange
-      tags: [OpenSpec]
-      summary: Show an OpenSpec change
-      description: |
-        The change with its marked `tasks.md` text as last imported, in which
-        every item whose subtask is now done is checked, and its cards.
-      responses:
-        "200":
-          description: The change.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OpenspecChange"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
 
@@ -1238,12 +1080,20 @@ components:
       schema:
         type: [integer, string]
         pattern: "^([1-9][0-9]*|[A-Z][A-Z0-9]*-[1-9][0-9]*)$"
-    SprintId:
-      name: sprint_id
+    ChangeId:
+      name: change_id
       in: path
       required: true
+      description: The change's id, or the name of an open change such as `add-labels`. A value made only of digits is an id.
       schema:
-        type: integer
+        $ref: "#/components/schemas/ChangeRef"
+    ChangeIdAsId:
+      name: id
+      in: path
+      required: true
+      description: The change's id, or the name of an open change such as `add-labels`. A value made only of digits is an id.
+      schema:
+        $ref: "#/components/schemas/ChangeRef"
     SignedId:
       name: signed_id
       in: path
@@ -1447,26 +1297,10 @@ components:
         title:
           type: string
 
-    SprintSummary:
-      type: object
-      additionalProperties: false
-      required: [id, title, starts_on, ends_on]
-      properties:
-        id:
-          type: integer
-        title:
-          type: string
-        starts_on:
-          type: string
-          format: date
-        ends_on:
-          type: string
-          format: date
-
     Board:
       type: object
       additionalProperties: false
-      required: [project, columns, tasks, members, labels, active_sprint]
+      required: [project, columns, tasks, members, labels, change, changes]
       properties:
         project:
           $ref: "#/components/schemas/Project"
@@ -1486,15 +1320,21 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Label"
-        active_sprint:
+        change:
+          description: The change whose board this is, or `null` for the tasks in no change.
           oneOf:
-            - $ref: "#/components/schemas/SprintSummary"
+            - $ref: "#/components/schemas/ChangeReference"
             - type: "null"
+        changes:
+          type: array
+          description: The project's open changes, newest first.
+          items:
+            $ref: "#/components/schemas/Change"
 
     TaskCardFields:
       type: object
-      required: [id, number, key, title, status_id, position, parent_id, sprint_id, milestone_id, label_id, assignee_id,
-        deadline, important, completed_at, archived_at, openspec_change, subtask_count, subtask_done_count, comment_count]
+      required: [id, number, key, title, status_id, position, parent_id, change_id, change, in_tasks_md, label_id, assignee_id,
+        deadline, important, completed_at, archived_at, subtask_count, subtask_done_count, comment_count]
       properties:
         id:
           type: integer
@@ -1515,10 +1355,18 @@ components:
         parent_id:
           type: [integer, "null"]
           description: For a subtask, its root task.
-        sprint_id:
+        change_id:
           type: [integer, "null"]
-        milestone_id:
-          type: [integer, "null"]
+          description: The change the task belongs to; a subtask always belongs to its card's.
+        change:
+          oneOf:
+            - $ref: "#/components/schemas/ChangeReference"
+            - type: "null"
+        in_tasks_md:
+          type: boolean
+          description: |
+            Whether the task's mark is in its change's `tasks.md`, so that
+            imports update it. Such a card stays in its change.
         label_id:
           type: [integer, "null"]
         assignee_id:
@@ -1535,11 +1383,6 @@ components:
         archived_at:
           type: [string, "null"]
           format: date-time
-        openspec_change:
-          description: The OpenSpec change whose import made the task, for its cards and subtasks.
-          oneOf:
-            - $ref: "#/components/schemas/OpenspecChangeReference"
-            - type: "null"
         subtask_count:
           type: integer
         subtask_done_count:
@@ -1554,18 +1397,15 @@ components:
       unevaluatedProperties: false
 
     TaskDetail:
-      description: A task with its description, people, column, label, sprint, milestone and subtasks.
+      description: A task with its description, people, column, label, change and subtasks.
       allOf:
         - $ref: "#/components/schemas/TaskCardFields"
         - type: object
-          required: [description, origin_task_id, created_at, creator, assignee, status, milestone, label, sprint, subtasks]
+          required: [description, created_at, creator, assignee, status, label, subtasks]
           properties:
             description:
               type: string
               description: Markdown.
-            origin_task_id:
-              type: [integer, "null"]
-              description: For a copy carried over from another sprint, the task it was copied from.
             created_at:
               type: string
               format: date-time
@@ -1585,17 +1425,9 @@ components:
                 id: { type: integer }
                 title: { type: string }
                 done: { type: boolean }
-            milestone:
-              oneOf:
-                - $ref: "#/components/schemas/Reference"
-                - type: "null"
             label:
               oneOf:
                 - $ref: "#/components/schemas/Label"
-                - type: "null"
-            sprint:
-              oneOf:
-                - $ref: "#/components/schemas/Reference"
                 - type: "null"
             subtasks:
               type: array
@@ -1616,15 +1448,20 @@ components:
           type: boolean
           description: Whether the subtask is in the done column.
 
-    Reference:
-      type: object
-      additionalProperties: false
-      required: [id, title]
-      properties:
-        id: { type: integer }
-        title: { type: string }
+    ChangeName:
+      type: string
+      minLength: 1
+      maxLength: 100
+      pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+      description: Groups of lowercase Latin letters and digits joined by single hyphens, such as `add-labels`.
 
-    OpenspecChangeReference:
+    ChangeRef:
+      type: [integer, string]
+      pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+      maxLength: 100
+      description: A change's id, or the name of an open change. A value made only of digits is an id.
+
+    ChangeReference:
       type: object
       additionalProperties: false
       required: [id, name]
@@ -1632,16 +1469,75 @@ components:
         id: { type: integer }
         name: { type: string }
 
+    TaskCounts:
+      type: object
+      additionalProperties: false
+      required: [by_status, total]
+      description: The change's root tasks that are not archived; subtasks are not counted.
+      properties:
+        by_status:
+          type: object
+          description: Per column id.
+          additionalProperties:
+            type: integer
+        total:
+          type: integer
+
+    ChangeFields:
+      type: object
+      required: [id, name, archived_at, task_counts]
+      properties:
+        id: { type: integer }
+        name:
+          type: string
+          description: The change's name, which is the name of its OpenSpec folder, such as `add-labels`.
+        archived_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the change was archived; `null` while it is open.
+        task_counts:
+          $ref: "#/components/schemas/TaskCounts"
+
+    Change:
+      description: A change as lists show it.
+      allOf:
+        - $ref: "#/components/schemas/ChangeFields"
+      unevaluatedProperties: false
+
+    ChangeDetail:
+      description: A change with its cards and its last OpenSpec import.
+      allOf:
+        - $ref: "#/components/schemas/ChangeFields"
+        - type: object
+          required: [imported_by, imported_at, tasks_text, cards]
+          properties:
+            imported_by:
+              description: Who imported the change last; `null` until the first import.
+              oneOf:
+                - $ref: "#/components/schemas/UserCard"
+                - type: "null"
+            imported_at:
+              type: [string, "null"]
+              format: date-time
+            tasks_text:
+              type: [string, "null"]
+              description: |
+                The change's `tasks.md` with every heading and item marked with its
+                task's key, and the items done in Goalner checked. Save it into
+                `tasks.md`. `null` until the first import.
+            cards:
+              type: array
+              description: The change's cards that are not archived, in column order.
+              items:
+                $ref: "#/components/schemas/TaskCard"
+      unevaluatedProperties: false
+
     OpenspecImport:
       type: object
       required: [name, artifacts]
       properties:
         name:
-          type: string
-          minLength: 1
-          maxLength: 100
-          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
-          description: The change's OpenSpec name, which is the name of its folder under `openspec/changes/`.
+          $ref: "#/components/schemas/ChangeName"
         artifacts:
           type: object
           additionalProperties: false
@@ -1655,50 +1551,10 @@ components:
                 with the marks of earlier imports. At most 50 sections and 500
                 items.
 
-    OpenspecChange:
-      type: object
-      additionalProperties: false
-      required: [id, name, milestone, imported_by, imported_at, tasks, cards]
-      properties:
-        id: { type: integer }
-        name:
-          type: string
-          description: The change's OpenSpec name, such as `add-agents`.
-        milestone:
-          description: The milestone that groups the change's cards. Its counts are of cards, not of subtasks.
-          type: object
-          additionalProperties: false
-          required: [id, title, total, done]
-          properties:
-            id: { type: integer }
-            title: { type: string }
-            total:
-              type: integer
-              description: Tasks in the milestone that are not archived.
-            done:
-              type: integer
-              description: Of those, the tasks in the done column.
-        imported_by:
-          $ref: "#/components/schemas/UserCard"
-        imported_at:
-          type: string
-          format: date-time
-        tasks:
-          type: string
-          description: |
-            The change's `tasks.md` with every heading and item marked with its
-            task's key, and the items done in Goalner checked. Save it into
-            `tasks.md`.
-        cards:
-          type: array
-          description: The change's cards that are not archived, in column order.
-          items:
-            $ref: "#/components/schemas/TaskCard"
-
     OpenspecKeysMissing:
       type: object
       additionalProperties: false
-      required: [error, tasks]
+      required: [error, tasks_text]
       properties:
         error:
           type: object
@@ -1710,9 +1566,9 @@ components:
               enum: [keys_missing]
             message:
               type: string
-        tasks:
+        tasks_text:
           type: string
-          description: The change's marked text, as `showOpenspecChange` returns it. Save it into `tasks.md`, redo your edits, and import again.
+          description: The change's marked text, as `showChange` returns it. Save it into `tasks.md`, redo your edits, and import again.
 
     TaskCreate:
       type: object
@@ -1733,16 +1589,14 @@ components:
         assignee_id:
           type: [integer, "null"]
           description: A member of the project.
-        milestone_id:
-          type: [integer, "null"]
         status_id:
           type: [integer, "null"]
           description: The column; the first column when omitted.
         label_id:
           type: [integer, "null"]
-        sprint_id:
+        change_id:
           type: [integer, "null"]
-          description: An open sprint of the project, or `null` for none.
+          description: An open change of the project, or `null` (or nothing) for no change.
 
     TaskUpdate:
       type: object
@@ -1760,8 +1614,6 @@ components:
           type: boolean
         assignee_id:
           type: [integer, "null"]
-        milestone_id:
-          type: [integer, "null"]
 
     Placement:
       type: object
@@ -1774,10 +1626,7 @@ components:
           type: integer
           minimum: 0
           default: 0
-          description: The position in the column, from 0; larger values put the task last.
-        sprint_id:
-          type: [integer, "null"]
-          description: Moves the task into this sprint, or out of its sprint with `null`, in the same operation. Omit it to keep the sprint.
+          description: The position in the column among the tasks of the same change, from 0; larger values put the task last.
 
     CommentBody:
       type: object
@@ -1825,81 +1674,3 @@ components:
         preview_url:
           type: [string, "null"]
           description: A smaller preview, for images and PDFs.
-
-    MilestoneFields:
-      type: object
-      required: [id, title, deleted_at, total, done]
-      properties:
-        id: { type: integer }
-        title: { type: string }
-        deleted_at:
-          type: [string, "null"]
-          format: date-time
-        total:
-          type: integer
-          description: Tasks in the milestone that are not archived.
-        done:
-          type: integer
-          description: Of those, the tasks in the done column.
-
-    Milestone:
-      allOf:
-        - $ref: "#/components/schemas/MilestoneFields"
-      unevaluatedProperties: false
-
-    MilestoneDetail:
-      allOf:
-        - $ref: "#/components/schemas/MilestoneFields"
-        - type: object
-          required: [tasks]
-          properties:
-            tasks:
-              type: array
-              items:
-                $ref: "#/components/schemas/TaskCard"
-      unevaluatedProperties: false
-
-    Sprint:
-      type: object
-      additionalProperties: false
-      required: [id, title, starts_on, ends_on, active, archived_at, task_counts]
-      properties:
-        id: { type: integer }
-        title: { type: string }
-        starts_on:
-          type: string
-          format: date
-        ends_on:
-          type: string
-          format: date
-        active:
-          type: boolean
-        archived_at:
-          type: [string, "null"]
-          format: date-time
-        task_counts:
-          type: object
-          additionalProperties: false
-          required: [by_status, total]
-          properties:
-            by_status:
-              type: object
-              description: Tasks that are not archived, per column id.
-              additionalProperties:
-                type: integer
-            total:
-              type: integer
-
-    SprintTaskCard:
-      description: A task card in a sprint's list.
-      allOf:
-        - $ref: "#/components/schemas/TaskCardFields"
-        - type: object
-          required: [carried_to]
-          properties:
-            carried_to:
-              description: The sprint holding the task's most recent carried-over copy.
-              oneOf:
-                - $ref: "#/components/schemas/Reference"
-                - type: "null"
-      unevaluatedProperties: false

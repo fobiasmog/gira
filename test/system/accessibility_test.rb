@@ -31,17 +31,15 @@ class AccessibilityTest < ApplicationSystemTestCase
     @project = projects(:goal)
     @user = users(:one)
     label = @project.labels.create!(title: "Backend")
-    sprint = @project.sprints.create!(title: "Sprint 1", starts_on: Date.current, ends_on: 7.days.from_now)
-    sprint.activate!
-    @task = @project.tasks.create!(title: "Accessible task", creator: @user, status: statuses(:goal_todo), label: label, sprint: sprint,
+    change = @project.project_changes.create!(name: "add-labels")
+    @task = @project.tasks.create!(title: "Accessible task", creator: @user, status: statuses(:goal_todo), label: label, change: change,
       assignee: users(:two), deadline: 2.days.from_now, important: true, description: "- [ ] item")
     @project.tasks.create!(title: "Subtask", creator: @user, parent: @task, status: statuses(:goal_todo))
     @task.comments.create!(author: @user, body: "A comment")
-    @project.tasks.create!(title: "Backlog task", creator: @user)
-    @project.tasks.create!(title: "Done outside sprints", creator: @user, status: statuses(:goal_done))
-    planned = @project.sprints.create!(title: "Sprint 2", starts_on: 8.days.from_now, ends_on: 14.days.from_now)
-    @project.tasks.create!(title: "Planned task", creator: @user, status: statuses(:goal_work), sprint: planned)
-    @milestone = @project.milestones.create!(title: "Release")
+    @project.tasks.create!(title: "Other task", creator: @user)
+    @project.tasks.create!(title: "Done in no change", creator: @user, status: statuses(:goal_done))
+    @project.project_changes.create!(name: "export-csv").archive!
+    Change::Import.new(project: @project, user: @user, name: "fix-login", artifacts: { "tasks" => "## 1. Form\n- [ ] 1.1 Field\n" }).run!
     @archived = @project.tasks.create!(title: "Archived task", creator: @user, status: statuses(:goal_done))
     @archived.archive!
     @project.invitations.create!(email: "pending@example.com", inviter: @user, token_digest: "x", expires_at: 1.day.from_now)
@@ -58,12 +56,11 @@ class AccessibilityTest < ApplicationSystemTestCase
       "/app" => "My tasks",
       "/app/projects" => "Projects",
       "/app/projects/new" => "New project",
-      "#{base}/board" => "Accessible task",
-      "#{base}/list" => "Accessible task",
-      "#{base}/backlog" => "Backlog task",
-      "#{base}/sprints" => "Sprint 1",
-      "#{base}/milestones" => "Release",
-      "#{base}/milestones/#{@milestone.id}" => "Release",
+      "#{base}/board/changes/add-labels" => "Accessible task",
+      "#{base}/list/changes/add-labels" => "Accessible task",
+      "#{base}/board/other" => "Other task",
+      "#{base}/board/changes/export-csv" => "is archived or does not exist",
+      "#{base}/changes" => "Accessible task",
       "#{base}/members" => "pending@example.com",
       "#{base}/agents" => "Accessible agent",
       "#{base}/settings" => "Project settings",
@@ -84,6 +81,19 @@ class AccessibilityTest < ApplicationSystemTestCase
     end
 
     assert_empty problems
+  end
+
+  test "close the new change dialog with Escape: focus returns to the new change button" do
+    sign_in @user.email_address, "correct horse battery"
+    visit "/app/projects/#{@project.id}/changes"
+
+    click_button "New change"
+    assert_selector "dialog[open]", text: "Name"
+    assert_empty evaluate_script(PROBLEMS)
+    find_field("Name").send_keys(:escape)
+
+    assert_no_selector "dialog[open]"
+    assert_equal "New change", evaluate_script("document.activeElement.textContent.trim()")
   end
 
   test "the OAuth consent page names its controls and labels its fields" do
@@ -136,7 +146,7 @@ class AccessibilityTest < ApplicationSystemTestCase
   test "keyboard walkthrough: every element reached with Tab shows where focus is" do
     sign_in @user.email_address, "correct horse battery"
     base = "/app/projects/#{@project.id}"
-    [ "#{base}/board", "#{base}/list", "#{base}/tasks/#{@task.key}", "#{base}/sprints", "#{base}/members", "/app/settings/profile" ].each do |path|
+    [ "#{base}/board", "#{base}/list", "#{base}/tasks/#{@task.key}", "#{base}/changes", "#{base}/members", "/app/settings/profile" ].each do |path|
       visit path
       assert_selector "h1"
       assert_empty unfocusable_indicators(40), "#{path} has focusable elements without a visible focus indicator"

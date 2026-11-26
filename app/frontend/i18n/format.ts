@@ -24,22 +24,6 @@ export function formatDate(lang: Language, value: string | Date, now = new Date(
   return cached(`date:${lang}:${options.year ?? ""}`, () => new Intl.DateTimeFormat(lang, options)).format(date)
 }
 
-// A YYYY-MM-DD date at local midnight (new Date("YYYY-MM-DD") would be UTC).
-export function parseDateOnly(value: string): Date {
-  const [year, month, day] = value.split("-").map(Number)
-  return new Date(year!, month! - 1, day!)
-}
-
-// Two YYYY-MM-DD dates as one range ("Oct 13 – 26"), with the year only when
-// either date is not in the current year.
-export function formatDateRange(lang: Language, start: string, end: string, now = new Date()): string {
-  const from = parseDateOnly(start)
-  const to = parseDateOnly(end)
-  const options: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" }
-  if (from.getFullYear() !== now.getFullYear() || to.getFullYear() !== now.getFullYear()) options.year = "numeric"
-  return cached(`range:${lang}:${options.year ?? ""}`, () => new Intl.DateTimeFormat(lang, options)).formatRange(from, to)
-}
-
 // "Monday, 19 October": the dashboard's date line.
 export function formatLongDate(lang: Language, value: Date): string {
   return cached(`long:${lang}`, () => new Intl.DateTimeFormat(lang, { weekday: "long", day: "numeric", month: "long" })).format(value)
