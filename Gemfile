@@ -56,7 +56,7 @@ group :mcp do
   gem "mcp", "1.8.2"
 
   # The encrypted connection token cache (add-mcp-oauth design.md, decision 9)
-  gem "redis", "~> 5.4"
+  gem "redis", "~> 6.1"
 end
 
 group :development, :test do
