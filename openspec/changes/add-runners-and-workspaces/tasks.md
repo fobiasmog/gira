@@ -36,7 +36,7 @@
 ## 5. Worker program
 
 - [ ] 5.1 Create `bin/goalner-worker` and `lib/goalner_worker/` with the standard library only, add `goalner_worker` to the `autoload_lib` ignore list, and build the test harness: a stand-in Goalner API in `test/support/` and a stand-in `claude` (through `CLAUDE_BIN`) that records its arguments and environment, writes stream-json, and finishes, fails, hangs or ignores SIGINT as told; verify that an empty worker test runs.
-- [ ] 5.2 Add `register` and the configuration file (`$XDG_CONFIG_HOME`, permissions 600 and 700, one entry per address, clones checked) and the refusal of a file readable by others; verify with tests for every scenario of "Register a runner" and "Configuration file safety".
+- [ ] 5.2 Add `register` and the configuration file: `$XDG_CONFIG_HOME`, permissions 600 and 700, one entry per address, `--token` optional for a saved address, clones merged and checked, the `openspec init` reminder, and the refusal of a file readable by others; verify with tests for every scenario of "Register a runner" and "Configuration file safety".
 - [ ] 5.3 Add starting by agent id: the arguments, choosing the runner, the local lock, the lease and its refusals, and projects without a clone (design decision 6); verify with tests for every scenario of "Start an agent by its id".
 - [ ] 5.4 Add waiting: a round of takes every 10 seconds, the backoff while Goalner is down, and leasing again after 401 at most once in 10 minutes; verify with tests for every scenario of "Waiting for a request", with the waits shortened by environment variables.
 - [ ] 5.5 Add attaching: creating or reusing the worktree from the project's clone and the base branch, the refusals, recording the workspace, recreating a missing worktree with the "files lost" note, and the attach hook; verify with tests against a temporary git repository for every scenario of "Attach to a workspace".
@@ -61,7 +61,15 @@
 
 ## 7. Workflow and docs
 
-- [ ] 7.1 Remove `.claude/skills/goalner-worker/`, and rewrite the README's "Running agents": creating a runner, registering each machine as its own runner, creating agents, `bin/goalner-worker <id>` from a checkout of `main`, the subscription login and `ANTHROPIC_API_KEY`, and the migration steps; verify that no file in the repository still mentions `/loop /goalner-worker`.
+- [ ] 7.1 Remove `.claude/skills/goalner-worker/`, and rewrite the README's "Running agents". It covers:
+  - creating a runner, and registering each machine as its own runner;
+  - preparing a project: clone its repository, run `openspec init` and commit it, make a first commit on `main` if the repository is empty, and register the clone with `bin/goalner-worker register --url … --clone <PROJECT>=<path>`;
+  - creating agents, and starting them with `bin/goalner-worker <id>` from a checkout of `main`;
+  - restarting running workers after registering a new project, and registering a clone again after its project's short name changes;
+  - the subscription login and `ANTHROPIC_API_KEY`;
+  - the migration steps.
+
+  Verify that no file in the repository still mentions `/loop /goalner-worker`.
 
 ## 8. End to end
 

@@ -5,7 +5,7 @@ Defines `bin/goalner-worker`, the program that runs any agent by its id on a mac
 ## ADDED Requirements
 
 ### Requirement: Register a runner
-`bin/goalner-worker register --url <Goalner address> --token <runner secret>` SHALL check the secret with Goalner (spec `agent-runners`, "Runner authentication"), then save the runner in the configuration file and print the runner's name. Options SHALL set the runner's workspaces root (`--workspaces <directory>`, by default `~/goalner/workspaces`) and the local clone of a project's repository (`--clone <project short name>=<path>`, repeatable). The configuration file SHALL be `goalner/runners.yml` in `$XDG_CONFIG_HOME`, or in `~/.config` when that is not set. It SHALL hold a list of runners, one per Goalner address. Registering SHALL replace the entry with the same address and keep the others. The worker SHALL create the file with permissions 600 and its directory with permissions 700. A secret that Goalner rejects, or a clone path that is not a git working copy, SHALL end the command with exit status 1 and an explanation, writing nothing.
+`bin/goalner-worker register --url <Goalner address> [--token <runner secret>]` SHALL check the runner's secret with Goalner (spec `agent-runners`, "Runner authentication"), then save the runner in the configuration file and print the runner's name and the projects it has clones for. `--token` SHALL be required for an address that has no runner in the configuration. For an address that has one, `--token` SHALL be optional: without it, the saved secret SHALL be checked and kept, so that a project can be added later without the secret, which Goalner showed only once. Options SHALL set the runner's workspaces root (`--workspaces <directory>`, by default `~/goalner/workspaces`) and the local clone of a project's repository (`--clone <project short name>=<path>`, repeatable). Registering again for an address SHALL keep the clones already saved, add the clones given, and replace the clone of a project given again. A new `--token` SHALL replace the saved secret, and a new `--workspaces` SHALL replace the saved root. The configuration file SHALL be `goalner/runners.yml` in `$XDG_CONFIG_HOME`, or in `~/.config` when that is not set. It SHALL hold a list of runners, one per Goalner address, and registering SHALL leave the other addresses' runners as they are. The worker SHALL create the file with permissions 600 and its directory with permissions 700. For every clone given whose working copy has no `openspec/` folder, the command SHALL print a reminder to run `openspec init` there and commit it before asking for steps, and SHALL save the clone all the same. The command SHALL end with exit status 1 and an explanation, writing nothing, when Goalner rejects the secret, when `--token` is missing for an address with no saved runner, or when a clone path is not a git working copy.
 
 #### Scenario: Register
 - **WHEN** a user runs `bin/goalner-worker register --url http://localhost:3000 --token glnr_runner_… --clone TEST=~/dev/goalner`
@@ -18,6 +18,18 @@ Defines `bin/goalner-worker`, the program that runs any agent by its id on a mac
 #### Scenario: Rejected secret
 - **WHEN** the user registers with a secret that Goalner rejects
 - **THEN** the command ends with exit status 1, says that Goalner rejected the secret, and `runners.yml` is unchanged
+
+#### Scenario: A project added later
+- **WHEN** the runner for `http://localhost:3000` is saved with a clone of TEST, and the user runs `bin/goalner-worker register --url http://localhost:3000 --clone MNT=~/dev/mynewthing` without `--token`
+- **THEN** the saved secret is checked with Goalner and kept, and the runner has clones of both TEST and MNT
+
+#### Scenario: Unknown address without a secret
+- **WHEN** the user registers `https://goalner.com`, which has no saved runner, without `--token`
+- **THEN** the command ends with exit status 1, says that the runner's secret is needed for a new address, and `runners.yml` is unchanged
+
+#### Scenario: No OpenSpec in the clone
+- **WHEN** the user registers the clone `~/dev/mynewthing` of MNT, which has no `openspec/` folder
+- **THEN** the command prints a reminder to run `openspec init` in `~/dev/mynewthing` and commit it, saves the clone, and ends with exit status 0
 
 ### Requirement: Configuration file safety
 The worker SHALL refuse to run when its configuration file can be read or written by other users of the machine, naming the file and the command that fixes its permissions. The worker SHALL never print a runner secret or a run token, and SHALL never put a runner secret into the environment of a process it starts.

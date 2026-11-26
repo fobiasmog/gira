@@ -126,6 +126,8 @@ New fields in existing responses:
 
 The configuration file is `runners.yml` in `$XDG_CONFIG_HOME/goalner/`, or `~/.config/goalner/`. The worker refuses to run when the file's mode allows group or others (`mode & 077`), as ssh does.
 
+`register` merges into the entry for its address. The secret is needed only the first time, because Goalner shows it once. Later calls, with `--clone` for a new project, check and keep the saved secret. Clones are prepared in advance on the machine, and registering is where their folders are named. For a clone without `openspec/`, `register` prints a reminder to run `openspec init`, but doesn't refuse: the folder may be set up later, before the first step is asked for.
+
 The worker runs a single-threaded loop. An `IO.select` on the run's output with a one-second timeout gives it a turn every second, for heartbeats, waits and signals. Runs are spawned with `pgroup: true`, so stopping a run also reaches the test servers and browsers it started.
 
 A run is started like this:
