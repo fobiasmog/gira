@@ -4,30 +4,42 @@ import AppDialog from "../ui/AppDialog.vue"
 import AppField from "../ui/AppField.vue"
 import AppTextarea from "../ui/AppTextarea.vue"
 import { ApiError } from "../../api/client.ts"
-import type { Change, FieldErrors } from "../../api/types.ts"
+import { activeAgents, agentsApi } from "../../api/agents.ts"
+import type { Change, FieldErrors, Id, ProjectAgent } from "../../api/types.ts"
 import { typedChangeName } from "../../composables/changes.ts"
 import { useUiStore } from "../../stores/ui.ts"
 import { t } from "../../i18n/index.ts"
+import { agentOption } from "./requestTexts.ts"
 
-// Asks for a new change's name and its idea (spec web-client, "New change
-// dialog"). The name is lowercased and spaces become hyphens as it is typed;
-// the server's validation errors are shown at their fields, and the dialog
-// stays open.
-const props = defineProps<{ create: (name: string, idea: string) => Promise<Change> }>()
+// Asks for a new change's name, its idea and its agent (spec web-client,
+// "New change dialog"). The name is lowercased and spaces become hyphens as
+// it is typed; the server's validation errors are shown at their fields,
+// and the dialog stays open. The agents are offered with their states, as
+// they are when the dialog opens.
+const props = defineProps<{ projectId: Id; create: (name: string, idea: string, agent: Id | null) => Promise<Change> }>()
 const open = defineModel<boolean>("open", { required: true })
 const emit = defineEmits<{ created: [change: Change] }>()
 
 const ui = useUiStore()
 const name = ref("")
 const idea = ref("")
+// "" for any free agent, or an agent's id.
+const agent = ref("")
+const agents = ref<ProjectAgent[]>([])
 const errors = ref<FieldErrors>({})
 const busy = ref(false)
 
-watch(open, (value) => {
+watch(open, async (value) => {
   if (!value) return
   name.value = ""
   idea.value = ""
+  agent.value = ""
   errors.value = {}
+  try {
+    agents.value = activeAgents(await agentsApi.inProject(props.projectId))
+  } catch (error) {
+    ui.fail(error)
+  }
 })
 
 // Keeps the caret where it was: the typed name has as many characters.
@@ -46,7 +58,7 @@ async function submit() {
   busy.value = true
   errors.value = {}
   try {
-    const change = await props.create(name.value.trim(), idea.value)
+    const change = await props.create(name.value.trim(), idea.value, agent.value ? Number(agent.value) : null)
     open.value = false
     emit("created", change)
   } catch (error) {
@@ -79,6 +91,14 @@ async function submit() {
       <AppField :label="t('changes.idea')" :hint="t('changes.ideaHint')" :errors="errors.idea">
         <template #default="{ control }">
           <AppTextarea v-model="idea" v-bind="control" />
+        </template>
+      </AppField>
+      <AppField :label="t('changes.agent')" :hint="t('changes.agentHint')" :errors="errors.agent">
+        <template #default="{ control }">
+          <select v-model="agent" v-bind="control" class="input">
+            <option value="">{{ t("changes.anyAgent") }}</option>
+            <option v-for="candidate in agents" :key="candidate.id" :value="String(candidate.id)">{{ agentOption(candidate) }}</option>
+          </select>
         </template>
       </AppField>
     </form>

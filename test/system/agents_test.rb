@@ -58,6 +58,7 @@ class AgentsTest < ApplicationSystemTestCase
       config = JSON.parse(find_field("MCP client configuration").value)
       assert_equal [ Oauth.resource, "Bearer #{token}" ], [ config.dig("mcpServers", "goalner", "url"), config.dig("mcpServers", "goalner", "headers", "Authorization") ]
       assert_link "How to connect an MCP client", href: "/docs/mcp"
+      assert_text "its worktrees included: sessions there act as Fish."
       assert_no_link "API reference" # an MCP-only token does not work at the API
 
       execute_script("navigator.clipboard.writeText = async (text) => { window.__copied = text }")
@@ -75,6 +76,21 @@ class AgentsTest < ApplicationSystemTestCase
     agent = Agent.joins(:user).find_by!(users: { name: "Fish" })
     assert @project.member?(agent.user)
     assert_equal [ "runner", "read_write", "mcp", @user ], agent.tokens.sole.values_at(:name, :access, :channels, :issuer)
+  end
+
+  test "agent states: Fish online and on export-csv, Owl offline with its last check-in, and Newt never checked in" do
+    fish = create_agent(@project, name: "Fish").user
+    owl = create_agent(@project, name: "Owl").user
+    create_agent(@project, name: "Newt")
+    @project.project_changes.create!(name: "export-csv", phase: "exploring").update!(agent: fish, agent_taken_at: Time.current)
+    @project.memberships.find_by!(user: fish).update!(checked_in_at: 1.minute.ago)
+    @project.memberships.find_by!(user: owl).update!(checked_in_at: 2.hours.ago)
+
+    visit_agents
+
+    within(".agent", text: "Fish") { assert_selector ".agent__state--online", text: "Online · on export-csv" }
+    within(".agent", text: "Owl") { assert_selector ".agent__state", text: /\AOffline · last check-in .+\z/ }
+    within(".agent", text: "Newt") { assert_selector ".agent__state", text: "Offline · never checked in" }
   end
 
   test "a token that works at the API links to the API documentation" do

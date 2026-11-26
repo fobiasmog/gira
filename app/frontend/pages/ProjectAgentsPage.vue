@@ -15,9 +15,11 @@ import type { FieldErrors, ProjectAgent } from "../api/types.ts"
 import { useProjectsStore } from "../stores/projects.ts"
 import { useUiStore } from "../stores/ui.ts"
 import { language, t, tc } from "../i18n/index.ts"
-import { formatDate } from "../i18n/format.ts"
+import { formatDate, formatDateTime } from "../i18n/format.ts"
+import { agentState } from "../composables/changes.ts"
 
-// Spec web-client, "Agents screen": the project's agents, for every member.
+// Spec web-client, "Agents screen": the project's agents, for every member,
+// each online or offline with its last check-in and the change it is on.
 // Agents are created here with their first token, added from other projects,
 // renamed, given tokens, removed, deleted and restored.
 const props = defineProps<{ projectId: number }>()
@@ -111,6 +113,14 @@ async function destroy() {
   }
 }
 
+// Online and free or on a change, or offline with its last check-in.
+function stateText(agent: ProjectAgent): string {
+  const state = agentState(agent)
+  if (state.kind === "free") return t("agents.stateFree")
+  if (state.kind === "busy") return state.change ? t("agents.stateOn", { change: state.change }) : t("agents.stateOnElsewhere")
+  return agent.checked_in_at ? t("agents.stateOffline", { date: formatDateTime(language.value, agent.checked_in_at) }) : t("agents.stateNever")
+}
+
 async function restore(agent: ProjectAgent) {
   try {
     await agentsApi.restore(agent.id)
@@ -137,6 +147,7 @@ async function restore(agent: ProjectAgent) {
         <UserAvatar :user="agent" :size="36" />
         <div class="grow">
           <p class="agent__name break-word">{{ agent.name }}</p>
+          <p class="small break-word agent__state" :class="{ 'agent__state--online': agent.online }">{{ stateText(agent) }}</p>
           <p class="small muted break-word">{{ agent.email_address }}</p>
           <p class="small muted break-word">
             {{ t("agents.createdBy", { name: agent.created_by.name, date: formatDate(language, agent.created_at) }) }} ·
@@ -229,6 +240,8 @@ async function restore(agent: ProjectAgent) {
 }
 
 .agent__name { font-weight: 500; }
+.agent__state { color: var(--color-muted); }
+.agent__state--online { color: var(--color-text); font-weight: 500; }
 .deleted { display: grid; gap: var(--space-3); }
 
 .deleted__summary {

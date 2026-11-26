@@ -162,6 +162,43 @@ class Api::Projects::AgentsControllerTest < ActionDispatch::IntegrationTest
     assert_equal [ false, true ], agents[2].values_at("deleted", "removable")
   end
 
+  # Check-ins (spec change-requests)
+
+  test "agent states: online with its check-in and change, offline, and never checked in" do
+    fish = create_agent(@project, name: "Fish").user
+    owl = create_agent(@project, name: "Owl").user
+    create_agent(@project, name: "Newt")
+    travel_to(2.hours.ago) { ChangeRequest.take!(project: @project, agent: owl) }
+    change = @project.project_changes.create!(name: "export-csv")
+    ChangeRequest.ask!(change:, kind: "explore", by: @user)
+    travel_to(1.minute.ago) { ChangeRequest.take!(project: @project, agent: fish) }
+
+    get api_project_agents_path(@project)
+
+    agents = response.parsed_body.index_by { |agent| agent["name"] }
+    assert_equal [ true, { "id" => change.id, "name" => "export-csv", "project_id" => @project.id } ], agents["Fish"].values_at("online", "working_on")
+    assert agents["Fish"]["checked_in_at"].present?
+    assert_equal [ false, nil ], agents["Owl"].values_at("online", "working_on")
+    assert_equal @project.memberships.find_by!(user: owl).checked_in_at.as_json, agents["Owl"]["checked_in_at"]
+    assert_equal [ false, nil, nil ], agents["Newt"].values_at("online", "checked_in_at", "working_on")
+  end
+
+  test "an agent on a change of a project the member does not share: busy, with the change unnamed" do
+    fish = create_agent(@project, name: "Fish", created_by: users(:one)).user
+    projects(:side).memberships.create!(user: fish)
+    theirs = projects(:side).project_changes.create!(name: "theirs")
+    theirs.update!(agent: fish, agent_taken_at: Time.current)
+
+    sign_in_as users(:one)
+    get api_project_agents_path(@project)
+
+    assert_equal({ "id" => nil, "name" => nil, "project_id" => nil }, response.parsed_body.sole["working_on"])
+
+    sign_in_as users(:two)
+    get api_project_agents_path(@project)
+    assert_equal "theirs", response.parsed_body.sole.dig("working_on", "name")
+  end
+
   test "the list is for members only, and not for tokens" do
     create_agent(@project)
 

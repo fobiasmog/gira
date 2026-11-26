@@ -10,8 +10,13 @@ import { useMeStore } from "../../stores/me.ts"
 import { useUiStore } from "../../stores/ui.ts"
 import { t } from "../../i18n/index.ts"
 
-const props = defineProps<{ post: (body: string, files: File[]) => Promise<void> }>()
-const body = ref("")
+// note: a line about what posting does. The text can be bound with
+// v-model:body, so that the page can send it along with something else.
+const props = defineProps<{
+  post: (body: string, files: File[]) => Promise<void>
+  note?: string | null
+}>()
+const body = defineModel<string>("body", { default: "" })
 const files = ref<File[]>([])
 const serverErrors = ref<string[]>([])
 const busy = ref(false)
@@ -86,6 +91,7 @@ async function submit() {
           </div>
         </template>
       </AppField>
+      <p v-if="note" class="comment-form__note">{{ note }}</p>
     </div>
   </form>
 </template>
@@ -94,6 +100,7 @@ async function submit() {
 .comment-form { display: flex; align-items: flex-start; gap: var(--space-3); }
 .comment-form__avatar { margin-block-start: var(--space-1); }
 .comment-form__body { flex-grow: 1; min-inline-size: 0; }
+.comment-form__note { margin-block-start: var(--space-1); color: var(--color-muted); font-size: var(--text-xs); }
 
 /* The text and its actions share one bordered box; the box is the field's
    visible boundary, so it takes the control border and the focus ring. */

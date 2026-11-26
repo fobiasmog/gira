@@ -1,0 +1,53 @@
+#!/usr/bin/env ruby
+# The PreCompact hook of the goalner-worker skill (spec change-requests,
+# "Full context"; add-change-requests design.md, decision 13). Claude Code
+# runs it just before it would compact a worker's session. It tells Goalner
+# that the agent's context is full, in every project the agent's token
+# reaches; the agent is on at most one open change, so at most one project
+# blocks it. When Goalner answers that the agent is blocked, the hook exits
+# with 2, which stops the compaction; otherwise it exits with 0 and the
+# compaction runs.
+#
+# It reads the agent's token from GOALNER_TOKEN, which must work at the API
+# (an agent token issued for "API and MCP"), and Goalner's address from
+# GOALNER_URL (default http://localhost:3000). When Goalner cannot be asked,
+# it blocks the compaction too: a summary would lose the context the agent
+# was kept on its change for, and a person sees why in the session.
+require "json"
+require "net/http"
+require "uri"
+
+BASE = URI(ENV.fetch("GOALNER_URL", "http://localhost:3000"))
+TOKEN = ENV["GOALNER_TOKEN"].to_s
+
+def block!(message)
+  warn message
+  exit 2
+end
+
+def call(method, path)
+  uri = BASE.dup.tap { |u| u.path = path }
+  request = (method == :get ? Net::HTTP::Get : Net::HTTP::Post).new(uri)
+  request["Authorization"] = "Bearer #{TOKEN}"
+  request["Accept"] = "application/json"
+  response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https", open_timeout: 5, read_timeout: 10) { |http| http.request(request) }
+  raise "#{method.upcase} #{path} answered #{response.code}" unless response.is_a?(Net::HTTPSuccess)
+
+  JSON.parse(response.body)
+end
+
+$stdin.read # The hook's input, which names nothing Goalner needs.
+block!("GOALNER_TOKEN is not set, so Goalner cannot be told that this agent's context is full. Compaction stopped.") if TOKEN.empty?
+
+begin
+  blocked = call(:get, "/api/projects").select do |project|
+    call(:post, "/api/projects/#{Integer(project.fetch("id"))}/requests/context_full").fetch("blocked")
+  end
+rescue StandardError => error
+  block!("Could not tell Goalner that this agent's context is full (#{error.message}). Compaction stopped.")
+end
+
+if blocked.any?
+  block!("This agent's context is full: Goalner blocked its change, and the compaction was stopped. " \
+    "Stop working on the change and do not finish its request; a person will release you.")
+end

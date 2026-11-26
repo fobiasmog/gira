@@ -125,7 +125,7 @@ class McpChangeToolsTest < McpIntegrationTest
   test "the conversation tools take what agents send: a phase or an idea, a path, a comment body" do
     tools = listed_tools
 
-    assert_equal %w[idea phase], tools.fetch("updateChange").dig("inputSchema", "properties").keys.without("project_id", "id").sort
+    assert_equal %w[agent idea phase], tools.fetch("updateChange").dig("inputSchema", "properties").keys.without("project_id", "id").sort
     assert_includes tools.fetch("showChangeFile").dig("inputSchema", "required"), "path"
     assert_includes tools.fetch("createChangeComment").dig("inputSchema", "required"), "body"
     assert_match(/Ask your questions about a change here/, tools.fetch("createChangeComment")["description"])
@@ -158,6 +158,63 @@ class McpChangeToolsTest < McpIntegrationTest
     assert_equal [ [ "phase", "exploring" ], [ "import", nil ], [ "phase", "proposed" ] ], change.events.map { [ it.kind, it.phase ] }
     assert change.events.all? { it.actor == fish.user }
     assert_equal fish.user, change.comments.sole.author
+  end
+
+  # Requests (add-change-requests, task 3.2)
+
+  REQUEST_TOOLS = %w[createRequest claimRequest finishRequest cancelRequest releaseChangeAgent reportContextFull].freeze
+
+  test "the request tools are listed, write, and tell agents what each kind asks for" do
+    tools = listed_tools
+
+    assert_empty REQUEST_TOOLS - tools.keys
+    REQUEST_TOOLS.each { |name| assert_equal false, tools.fetch(name).dig("annotations", "readOnlyHint"), name }
+    assert_equal %w[project_id], tools.fetch("claimRequest").dig("inputSchema", "required")
+    assert_equal %w[project_id id outcome comment], tools.fetch("finishRequest").dig("inputSchema", "required")
+    assert_match(/`reply`: read the comments posted since your last finished request/, tools.fetch("claimRequest")["description"])
+    assert_includes tools.fetch("createChange").dig("inputSchema", "properties").keys, "agent"
+  end
+
+  test "claimRequest with an agent's token and nothing waiting: {\"request\": null} as JSON text" do
+    fish = create_agent(projects(:goal), name: "Fish")
+    token = issue_agent_token(fish, issuer: users(:one), channels: %w[mcp])
+
+    result = call_tool("claimRequest", { project_id: projects(:goal).id }, token:)
+
+    assert_not result["isError"], text(result)
+    assert_equal({ "request" => nil }, JSON.parse(text(result)))
+  end
+
+  test "claimRequest with a person's token: a tool error with the code agents_only" do
+    project = projects(:goal)
+    request = ChangeRequest.ask!(change: project.project_changes.create!(name: "export-csv"), kind: "explore", by: users(:one))
+
+    result = call_tool("claimRequest", { project_id: project.id })
+
+    assert result["isError"]
+    assert_match(/agents_only/, text(result))
+    assert_equal "waiting", request.reload.state
+  end
+
+  test "an agent takes a request and finishes it, and the comment is the agent's" do
+    project = projects(:goal)
+    change = project.project_changes.create!(name: "export-csv")
+    fish = create_agent(project, name: "Fish")
+    token = issue_agent_token(fish, issuer: users(:one), channels: %w[mcp])
+    body(call_tool("createRequest", { project_id: project.id, change_id: "export-csv", kind: "explore" }))
+
+    taken = body(call_tool("claimRequest", { project_id: project.id }, token:))["request"]
+    assert_equal [ "explore", "taken", "export-csv", "exploring" ], [ taken["kind"], taken["state"], taken.dig("change", "name"), taken.dig("change", "phase") ]
+
+    finished = body(call_tool("finishRequest", { project_id: project.id, id: taken["id"], outcome: "done", comment: "Archived tasks too?" }, token:))
+    assert_equal [ "done", "Fish" ], [ finished["state"], finished.dig("finished_by", "name") ]
+    assert_equal [ [ "Archived tasks too?", fish.user ] ], change.comments.map { [ it.body, it.author ] }
+
+    assert_equal({ "blocked" => true }, body(call_tool("reportContextFull", { project_id: project.id }, token:)))
+    released = body(call_tool("releaseChangeAgent", { project_id: project.id, change_id: "export-csv" }))
+    assert_nil released["agent"]
+    waiting = body(call_tool("createRequest", { project_id: project.id, change_id: "export-csv", kind: "propose" }))
+    assert_equal "cancelled", body(call_tool("cancelRequest", { project_id: project.id, id: waiting["id"] }))["state"]
   end
 
   test "Done cannot be chosen through MCP either" do

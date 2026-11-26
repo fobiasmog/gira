@@ -215,6 +215,23 @@ class Api::Projects::ChangesControllerTest < ActionDispatch::IntegrationTest
     assert_equal yesterday.as_json, response.parsed_body["archived_at"]
   end
 
+  test "archive with an open request: archived, the request cancelled by the member, and Fish free" do
+    change = create_change("export-csv")
+    change.update!(phase: "proposed")
+    fish = create_agent(@project).user
+    ChangeRequest.ask!(change:, kind: "implement", by: users(:two))
+    request = ChangeRequest.take!(project: @project, agent: fish)
+
+    post api_project_change_archival_path(@project, "export-csv")
+
+    assert_response :success
+    assert_nil response.parsed_body["request"]
+    assert change.reload.archived?
+    assert_equal [ "cancelled", users(:one) ], [ request.reload.state, request.finished_by ]
+    ChangeRequest.ask!(change: create_change("fix-login"), kind: "explore", by: users(:one))
+    assert_equal "fix-login", ChangeRequest.take!(project: @project, agent: fish).change.name
+  end
+
   test "archiving a change of another project: 404, and it stays open" do
     foreign = create_change("theirs", project: projects(:side))
 
@@ -402,6 +419,52 @@ class Api::Projects::ChangesControllerTest < ActionDispatch::IntegrationTest
     assert_equal false, response.parsed_body["waiting_for_people"]
   end
 
+  # Open request and agent of a change (spec change-requests)
+
+  test "taken request in the list: the explore request, taken by Fish, with its times, and Fish on the change" do
+    change = create_change("export-csv")
+    fish = create_agent(@project).user
+    ChangeRequest.ask!(change:, kind: "explore", by: users(:one))
+    ChangeRequest.take!(project: @project, agent: fish)
+
+    get api_project_changes_path(@project)
+
+    listed = response.parsed_body.sole
+    request = listed["request"]
+    assert_equal [ "explore", "taken", "User One", "Fish", nil ], [ request["kind"], request["state"], request.dig("requested_by", "name"), request.dig("taken_by", "name"), request["finished_by"] ]
+    assert request["created_at"].present? && request["taken_at"].present?
+    assert_equal({ "id" => change.id, "name" => "export-csv", "phase" => "exploring" }, request["change"])
+    assert_equal [ "Fish", true, nil ], listed["agent"].then { |agent| [ agent.dig("user", "name"), agent["on"], agent["blocked_at"] ] }
+    assert listed.dig("agent", "since").present?
+  end
+
+  test "no open request: null; picked agent: not yet on the change" do
+    login = create_change("fix-login")
+    ChangeRequest.ask!(change: login, kind: "explore", by: users(:one)).cancel!(by: users(:one))
+    fish = create_agent(@project).user
+    @project.project_changes.create!(name: "add-tags", agent: fish)
+
+    get api_project_change_path(@project, "fix-login")
+    assert_equal [ nil, nil ], response.parsed_body.values_at("request", "agent")
+
+    get api_project_change_path(@project, "add-tags")
+    assert_equal [ "Fish", false, nil ], response.parsed_body["agent"].then { |agent| [ agent.dig("user", "name"), agent["on"], agent["since"] ] }
+  end
+
+  test "a request from start to end: asked, taken, the move to Exploring and done, in order" do
+    change = create_change("export-csv")
+    fish = create_agent(@project).user
+    travel_to(Time.zone.parse("2026-11-18 14:00")) { ChangeRequest.ask!(change:, kind: "explore", by: users(:one)) }
+    request = travel_to(Time.zone.parse("2026-11-18 14:05")) { ChangeRequest.take!(project: @project, agent: fish) }
+    travel_to(Time.zone.parse("2026-11-18 15:00")) { request.finish!(by: fish, outcome: "done", comment: "Questions") }
+
+    get api_project_change_path(@project, "export-csv")
+
+    entries = response.parsed_body["history"].map { |entry| entry.values_at("kind", "step", "state", "phase") + [ entry.dig("actor", "name") ] }
+    assert_equal [ [ "request", "explore", "asked", nil, "User One" ], [ "request", "explore", "taken", nil, "Fish" ],
+      [ "phase", nil, nil, "exploring", "Fish" ], [ "request", "explore", "done", nil, "Fish" ] ], entries
+  end
+
   test "Done while every card of a change in Implementing is in the done column, and out of Done when one leaves it" do
     change = create_change("add-labels")
     cards = 4.times.map { |i| create_task("Card #{i}", change:, status: i.zero? ? statuses(:goal_work) : statuses(:goal_done)) }
@@ -448,6 +511,10 @@ class Api::Projects::ChangesControllerTest < ActionDispatch::IntegrationTest
       change = create_change(name)
       create_task("Card", change:)
       change.comments.create!(author: fish, body: "?")
+      agent = create_agent(@project, name: "Agent #{name}").user
+      ChangeRequest.ask!(change:, kind: "explore", by: users(:one))
+      change.update!(agent:)
+      ChangeRequest.take!(project: @project, agent:)
     end
 
     add_change.("change-0")
@@ -456,6 +523,6 @@ class Api::Projects::ChangesControllerTest < ActionDispatch::IntegrationTest
     five = [ count_queries.(api_project_changes_path(@project)), count_queries.(api_project_board_path(@project)) ]
 
     assert_equal one, five
-    assert_equal 5, response.parsed_body["changes"].count { |change| change["waiting_for_people"] }
+    assert_equal 5, response.parsed_body["changes"].count { |change| change["request"] && change["agent"] }
   end
 end

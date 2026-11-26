@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "goalner": {
+      "type": "http",
+      "url": "${GOALNER_MCP_URL:-http://localhost:3100/mcp}",
+      "headers": { "Authorization": "Bearer ${GOALNER_TOKEN}" }
+    }
+  }
+}

@@ -14,6 +14,8 @@ class Comment < ApplicationRecord
   has_many_attached :attachments
 
   scope :kept, -> { where(deleted_at: nil) }
+  # Written by people, as opposed to agents.
+  scope :by_people, -> { where.not(author_id: Agent.select(:user_id)) }
   # With what CommentSerializer shows of each.
   scope :for_listing, -> { includes(author: [ :agent, { avatar_attachment: :blob } ], attachments_attachments: :blob) }
 

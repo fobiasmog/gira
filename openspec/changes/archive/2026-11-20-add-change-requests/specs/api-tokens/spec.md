@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Endpoints available to tokens
-Tokens SHALL be accepted only by endpoints explicitly opened to them: reading the project, its board, its columns and its member list; tasks and their subtasks, placement, completion, label, change and comments; editing and deleting comments; labels; changes, their comments and their files (spec `changes`, spec `comments` and spec `openspec-changes`); requests (spec `change-requests`); importing OpenSpec changes (spec `openspec-changes`); reading one's own profile; and file downloads. Every other endpoint SHALL answer a token with HTTP 403 and have no effect, including endpoints added later unless they are opened.
+Tokens SHALL be accepted only by endpoints explicitly opened to them: reading the project, its board, its columns and its member list; tasks and their subtasks, placement, completion, label, change and comments; editing and deleting comments; labels; changes, their comments and their files (spec `changes`, spec `comments` and spec `openspec-changes`); requests, releasing a change's agent and reporting a full context (spec `change-requests`); importing OpenSpec changes (spec `openspec-changes`); reading one's own profile; and file downloads. Every other endpoint SHALL answer a token with HTTP 403 and have no effect, including endpoints added later unless they are opened.
 
 #### Scenario: Project administration
 - **WHEN** a read-write token for GOAL renames or archives GOAL, creates a project, invites someone, removes a member, leaves GOAL, or adds, renames, moves or deletes a column
@@ -56,9 +56,9 @@ Tokens SHALL be accepted only by endpoints explicitly opened to them: reading th
 - **THEN** each request receives HTTP 403 with the code `insufficient_scope` and nothing changes
 
 #### Scenario: Requests
-- **WHEN** a read-write token for GOAL asks for an explore request on a change, and an agent's read-write token for GOAL takes it and finishes it
+- **WHEN** a read-write token for GOAL asks for an explore request on a change, an agent's read-write token for GOAL takes it and finishes it, and the first token releases the agent
 - **THEN** each request succeeds
 
 #### Scenario: Requests with a read-only token
-- **WHEN** a read-only token for GOAL asks for a request, takes one, finishes one or cancels one
+- **WHEN** a read-only token for GOAL asks for a request, takes one, finishes one, cancels one, releases a change's agent or reports a full context
 - **THEN** each request receives HTTP 403 with the code `insufficient_scope` and nothing changes

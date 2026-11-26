@@ -361,33 +361,4 @@
     text-align: center;
     color: var(--color-muted);
   }
-
-  /* A new-task field and its button as one bar (changes screen); the bar is
-     the field's visible boundary, so it takes the control border and the
-     focus ring. */
-  .new-bar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
-    border: 1px solid var(--color-control-border);
-    border-radius: var(--radius-card);
-    background: var(--color-surface);
-
-    &:hover { border-color: var(--color-main-dark); }
-    &:has(.new-bar__input:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 0; border-color: var(--color-primary); }
-  }
-
-  .new-bar__icon { color: var(--color-muted); }
-
-  .new-bar__input,
-  .new-bar__input:hover,
-  .new-bar__input:focus-visible,
-  .new-bar__input:focus-within {
-    flex-grow: 1;
-    padding-inline: 0;
-    border: none;
-    outline: none;
-    background: none;
-  }
 }

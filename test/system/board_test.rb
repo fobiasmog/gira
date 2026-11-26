@@ -98,39 +98,16 @@ class BoardTest < ApplicationSystemTestCase
     assert_equal [ "To Do", "Work", "Done" ], all(".column h2").map(&:text)
   end
 
-  # Spec web-client, "New task from the board header".
-  test "add a task from the board header" do
-    visit_board
-
-    click_button "New task"
-    assert_equal "Task title", evaluate_script("document.activeElement.getAttribute('aria-label')")
-    assert_equal "To Do", evaluate_script("document.activeElement.closest('.column').querySelector('h2').textContent")
-    find_field("Task title").send_keys("From the header", :enter)
-
-    within(".column", text: "To Do") { assert_text "From the header" }
-    assert_equal statuses(:goal_todo), Task.find_by!(title: "From the header").status
-  end
-
-  test "Escape closes the field opened from the header without creating a task" do
-    visit_board
-
-    click_button "New task"
-    assert_field "Task title"
-    find_field("Task title").send_keys(:escape)
-
-    assert_no_field "Task title"
-    assert_equal 0, @project.tasks.count
-  end
-
-  test "the header offers no new task in the list layout or without columns" do
+  test "the board header has the project's title, and no layout switch or New task" do
     sign_in @user.email_address, "correct horse battery"
-    visit "/app/projects/#{@project.id}/list"
-    assert_selector "h2", text: "To Do"
-    assert_no_button "New task"
-
-    @project.statuses.destroy_all
     visit "/app/projects/#{@project.id}/board"
-    assert_button "Add column"
-    assert_no_button "New task"
+    assert_selector "h2", text: "To Do"
+
+    within(".board-header") do
+      assert_selector "h1", text: @project.title
+      assert_no_link "List"
+      assert_no_button "New task"
+    end
+    assert_no_selector "nav[aria-label='Layout']"
   end
 end

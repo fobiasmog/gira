@@ -162,6 +162,57 @@ class Api::Projects::Changes::CommentsControllerTest < ActionDispatch::Integrati
     assert_equal "Old", comment.reload.body
   end
 
+  # Reply requests (spec change-requests; add-change-requests design.md,
+  # decision 7)
+
+  test "answer to an agent's questions: a waiting reply request asked for by the member" do
+    ChangeRequest.ask!(change: @change, kind: "explore", by: users(:one))
+    ChangeRequest.take!(project: @project, agent: @fish.user).finish!(by: @fish.user, outcome: "done", comment: "Archived tasks too?")
+
+    post api_project_change_comments_path(@project, "export-csv"), params: { body: "No archived tasks." }, as: :json
+
+    assert_response :created
+    reply = @change.reload.open_request
+    assert_equal [ "reply", "waiting", users(:one) ], [ reply.kind, reply.state, reply.requested_by ]
+    assert_equal false, waiting?
+  end
+
+  test "an agent's comment and a comment in Idea create no request" do
+    post api_project_change_comments_path(@project, "export-csv"), params: { body: "Thoughts" }, as: :json
+    assert_response :created
+    @change.update!(phase: "exploring")
+    post api_project_change_comments_path(@project, "export-csv"), params: { body: "Question" }, headers: fish_headers, as: :json
+    assert_response :created
+
+    assert_empty @change.requests
+  end
+
+  test "comment while a request is taken: no request yet, and the implement request stays taken by Fish" do
+    @change.update!(phase: "proposed")
+    ChangeRequest.ask!(change: @change, kind: "implement", by: users(:one))
+    request = ChangeRequest.take!(project: @project, agent: @fish.user)
+
+    post api_project_change_comments_path(@project, "export-csv"), params: { body: "Also handle empty files." }, as: :json
+
+    assert_response :created
+    assert_equal [ request ], @change.requests.to_a
+    assert_equal [ "taken", @fish.user ], [ request.reload.state, request.taken_by ]
+  end
+
+  test "a comment with an attachment asks for a reply too, and a refused one asks for nothing" do
+    @change.update!(phase: "exploring")
+    svg = file_upload("<svg xmlns='http://www.w3.org/2000/svg'/>", "x.svg", "image/svg+xml")
+    post api_project_change_comments_path(@project, "export-csv"), params: { body: "x", attachments: [ svg ] }
+    assert_response :unprocessable_content
+    assert_empty @change.requests
+
+    post api_project_change_comments_path(@project, "export-csv"), params: { body: "See the screenshot", attachments: [ image_upload(format: "png") ] }
+
+    assert_response :created
+    assert_equal 1, thread.sole["attachments"].size
+    assert_equal [ "reply" ], @change.requests.pluck(:kind)
+  end
+
   test "a deleted comment no longer counts for waiting" do
     @change.comments.create!(author: @fish.user, body: "?")
     answer = @change.comments.create!(author: users(:one), body: "Yes")

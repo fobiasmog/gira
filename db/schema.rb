@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_18_090000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_18_100100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -98,9 +98,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_090000) do
     t.string "phase"
     t.string "paths", array: true
     t.datetime "created_at", null: false
+    t.bigint "agent_id"
     t.index ["actor_id"], name: "index_change_events_on_actor_id"
     t.index ["change_id"], name: "index_change_events_on_change_id"
-    t.check_constraint "kind::text = 'phase'::text AND (phase::text = ANY (ARRAY['idea'::character varying, 'exploring'::character varying, 'proposed'::character varying, 'implementing'::character varying]::text[])) AND paths IS NULL OR kind::text = 'import'::text AND phase IS NULL AND paths IS NOT NULL", name: "change_events_kind"
+    t.check_constraint "kind::text = 'phase'::text AND (phase::text = ANY (ARRAY['idea'::character varying, 'exploring'::character varying, 'proposed'::character varying, 'implementing'::character varying]::text[])) AND paths IS NULL AND agent_id IS NULL OR kind::text = 'import'::text AND phase IS NULL AND paths IS NOT NULL AND agent_id IS NULL OR kind::text = 'release'::text AND phase IS NULL AND paths IS NULL AND agent_id IS NOT NULL OR kind::text = 'block'::text AND phase IS NULL AND paths IS NULL AND agent_id IS NULL", name: "change_events_kind"
   end
 
   create_table "change_files", force: :cascade do |t|
@@ -110,6 +111,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_090000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["change_id", "path"], name: "index_change_files_on_change_id_and_path", unique: true
+  end
+
+  create_table "change_requests", force: :cascade do |t|
+    t.bigint "change_id", null: false
+    t.string "kind", null: false
+    t.string "state", default: "waiting", null: false
+    t.bigint "requested_by_id", null: false
+    t.bigint "taken_by_id"
+    t.bigint "finished_by_id"
+    t.datetime "taken_at"
+    t.datetime "finished_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["change_id"], name: "index_change_requests_on_change_id"
+    t.index ["change_id"], name: "index_change_requests_open", unique: true, where: "((state)::text = ANY ((ARRAY['waiting'::character varying, 'taken'::character varying])::text[]))"
+    t.index ["created_at", "id"], name: "index_change_requests_waiting", where: "((state)::text = 'waiting'::text)"
+    t.index ["finished_by_id"], name: "index_change_requests_on_finished_by_id"
+    t.index ["requested_by_id"], name: "index_change_requests_on_requested_by_id"
+    t.index ["taken_by_id"], name: "index_change_requests_on_taken_by_id"
+    t.check_constraint "kind::text = ANY (ARRAY['explore'::character varying, 'propose'::character varying, 'implement'::character varying, 'archive'::character varying, 'reply'::character varying]::text[])", name: "change_requests_kind"
+    t.check_constraint "state::text = ANY (ARRAY['waiting'::character varying, 'taken'::character varying, 'done'::character varying, 'failed'::character varying, 'cancelled'::character varying]::text[])", name: "change_requests_state"
   end
 
   create_table "changes", force: :cascade do |t|
@@ -123,9 +145,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_090000) do
     t.datetime "updated_at", null: false
     t.text "idea"
     t.string "phase", default: "idea", null: false
+    t.bigint "agent_id"
+    t.datetime "agent_taken_at"
+    t.datetime "agent_blocked_at"
+    t.index ["agent_id"], name: "index_changes_on_agent_id"
+    t.index ["agent_id"], name: "index_changes_on_agent_id_on", unique: true, where: "((agent_taken_at IS NOT NULL) AND (archived_at IS NULL))"
     t.index ["imported_by_id"], name: "index_changes_on_imported_by_id"
     t.index ["project_id", "name"], name: "index_changes_on_project_id_and_name_open", unique: true, where: "(archived_at IS NULL)"
     t.index ["project_id"], name: "index_changes_on_project_id"
+    t.check_constraint "(agent_taken_at IS NULL OR agent_id IS NOT NULL) AND (agent_blocked_at IS NULL OR agent_taken_at IS NOT NULL)", name: "changes_agent"
     t.check_constraint "phase::text = ANY (ARRAY['idea'::character varying, 'exploring'::character varying, 'proposed'::character varying, 'implementing'::character varying]::text[])", name: "changes_phase"
   end
 
@@ -171,6 +199,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_090000) do
     t.bigint "user_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "checked_in_at"
     t.index ["project_id", "user_id"], name: "index_memberships_on_project_id_and_user_id", unique: true
     t.index ["user_id"], name: "index_memberships_on_user_id"
   end
@@ -470,8 +499,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_090000) do
   add_foreign_key "api_tokens", "users", column: "issuer_id"
   add_foreign_key "change_events", "changes"
   add_foreign_key "change_events", "users", column: "actor_id"
+  add_foreign_key "change_events", "users", column: "agent_id"
   add_foreign_key "change_files", "changes"
+  add_foreign_key "change_requests", "changes"
+  add_foreign_key "change_requests", "users", column: "finished_by_id"
+  add_foreign_key "change_requests", "users", column: "requested_by_id"
+  add_foreign_key "change_requests", "users", column: "taken_by_id"
   add_foreign_key "changes", "projects"
+  add_foreign_key "changes", "users", column: "agent_id"
   add_foreign_key "changes", "users", column: "imported_by_id"
   add_foreign_key "comments", "changes"
   add_foreign_key "comments", "tasks"

@@ -8,7 +8,7 @@ import ArchiveChangeDialog from "../components/changes/ArchiveChangeDialog.vue"
 import NewChangeDialog from "../components/changes/NewChangeDialog.vue"
 import PhasePill from "../components/changes/PhasePill.vue"
 import WaitingMarker from "../components/changes/WaitingMarker.vue"
-import type { Change, TaskCard } from "../api/types.ts"
+import type { Change, Id, TaskCard } from "../api/types.ts"
 import { countsProgress, unfinished } from "../composables/changes.ts"
 import { boardLocation, changeLocation } from "../router/routes.ts"
 import { OTHER_TAB, useBoardStore } from "../stores/board.ts"
@@ -86,18 +86,6 @@ function syncBoard(card: TaskCard) {
   if (board.projectId === props.projectId) board.upsertCard(card)
 }
 
-const newTitles = ref<Record<number, string>>({})
-
-async function addTask(change: Change) {
-  const title = (newTitles.value[change.id] ?? "").trim()
-  if (!title) return
-  try {
-    syncBoard(await store.addTask(props.projectId, change.id, title))
-    newTitles.value[change.id] = ""
-  } catch (error) {
-    ui.fail(error)
-  }
-}
 
 // Into another open change, or out of its change (null).
 async function moveTask(task: TaskCard, target: Change | null) {
@@ -110,7 +98,7 @@ async function moveTask(task: TaskCard, target: Change | null) {
 }
 
 const creating = ref(false)
-const createChange = (name: string, idea: string) => store.create(props.projectId, name, idea)
+const createChange = (name: string, idea: string, agent: Id | null) => store.create(props.projectId, name, idea, agent)
 
 // Archive dialog.
 const archiving = ref<Change | null>(null)
@@ -210,17 +198,6 @@ async function archive() {
           </template>
           <p v-else class="small muted">{{ t("common.loading") }}</p>
 
-          <form class="new-bar" @submit.prevent="addTask(change)">
-            <AppIcon name="add" :size="20" class="new-bar__icon" />
-            <input
-              v-model="newTitles[change.id]"
-              class="input new-bar__input"
-              maxlength="255"
-              :aria-label="t('changes.newTask', { name: change.name })"
-              :placeholder="t('changes.newTask', { name: change.name })"
-            >
-            <button type="submit" class="button">{{ t("common.create") }}</button>
-          </form>
         </div>
       </li>
     </ul>
@@ -268,7 +245,7 @@ async function archive() {
       </ul>
     </details>
 
-    <NewChangeDialog v-model:open="creating" :create="createChange" @created="(change) => ui.toast(t('changes.created', { name: change.name }))" />
+    <NewChangeDialog v-model:open="creating" :project-id="projectId" :create="createChange" @created="(change) => ui.toast(t('changes.created', { name: change.name }))" />
     <ArchiveChangeDialog v-model:open="archiveOpen" :change="archiving" :unfinished="unfinishedCards" :on-confirm="archive" />
   </section>
 </template>

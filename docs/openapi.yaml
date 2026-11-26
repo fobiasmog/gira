@@ -32,6 +32,13 @@ info:
     a task takes its id or its key, such as `GOAL-12`, and every request that
     names a change in its path takes its id or, for an open change, its name.
 
+    People ask for the steps of a change with requests, and a pool of agents
+    takes them: an agent takes a request with `claimRequest`, does the step,
+    and finishes it with `finishRequest`, which posts its comment in the
+    change's thread. The agent that takes a change's first request stays on
+    it until the change is archived or a person releases it, so the agent
+    that asked a question gets its answer as a `reply` request.
+
     Errors use one JSON envelope: `{ "error": { "code", "message", "fields" } }`.
 
 servers:
@@ -55,6 +62,8 @@ tags:
     description: The project's labels.
   - name: Changes
     description: Changes, the pieces of work of a project, each with its idea, phase, thread, history, OpenSpec files, tasks and board. Any number of them can be open; none is "active".
+  - name: Requests
+    description: Requests for the steps of a change, which agents of the project take and finish one at a time, one agent per change.
   - name: OpenSpec
     description: Importing an OpenSpec change's files into the change of that name; the sections of its tasks.md become cards and its items their subtasks.
   - name: Files
@@ -807,7 +816,9 @@ paths:
         No two open changes of a project share a name, but a new change may
         take the name of an archived one. Importing an OpenSpec change
         (`importOpenspecChange`) creates its change too, in the phase
-        Proposed and without an idea.
+        Proposed and without an idea. Pick the agent that will work on it in
+        `agent`, or leave it out for any free agent; picking asks for no
+        step (`createRequest` does).
       requestBody:
         required: true
         content:
@@ -820,6 +831,8 @@ paths:
                   $ref: "#/components/schemas/ChangeName"
                 idea:
                   $ref: "#/components/schemas/ChangeIdea"
+                agent:
+                  $ref: "#/components/schemas/ChangeAgentPick"
       responses:
         "201":
           description: The change.
@@ -845,7 +858,7 @@ paths:
       summary: Show a change with its idea, history, files, cards and tasks.md
       description: |
         The change with its idea, its phase, whether it is waiting for people,
-        its history oldest first, the paths of its OpenSpec files (read one
+        its open request and its agent, its history oldest first, the paths of its OpenSpec files (read one
         with `showChangeFile`), its cards that are not archived, in column
         order, and the `tasks.md` text its last import returned, in which
         every item whose subtask is now done is checked. For a change never
@@ -870,9 +883,9 @@ paths:
     patch:
       operationId: updateChange
       tags: [Changes]
-      summary: Move a change to another phase, or edit its idea
+      summary: Move a change to another phase, edit its idea, or pick its agent
       description: |
-        Send `phase`, `idea`, or both. Move the change as your work on it
+        Send `phase`, `idea`, `agent`, or any of them. Move the change as your work on it
         moves: to `exploring` when you start exploring its idea, and to
         `implementing` when you are told to implement it. Importing it moves
         a change in Idea or Exploring to Proposed by itself. Any of `idea`,
@@ -883,8 +896,10 @@ paths:
         the phase the change is in records nothing.
 
         The idea can only be changed while the change is in Idea: corrections
-        later go into its thread (`createChangeComment`). An archived change
-        cannot be changed. The API also accepts PUT.
+        later go into its thread (`createChangeComment`). The agent can be
+        picked or cleared only while no agent is on the change; release it
+        first (`releaseChangeAgent`). An archived change cannot be changed.
+        The API also accepts PUT.
       parameters:
         - $ref: "#/components/parameters/ProjectId"
         - $ref: "#/components/parameters/ChangeIdAsId"
@@ -919,8 +934,9 @@ paths:
       summary: Archive a change
       description: |
         Whatever the state of its tasks. They stay with the archived change and
-        leave every board, and no task can be put into it any more. Archiving
-        an archived change changes nothing.
+        leave every board, and no task can be put into it any more. Its open
+        request is cancelled, which frees its agent. Archiving an archived
+        change changes nothing.
       parameters:
         - $ref: "#/components/parameters/ProjectId"
         - $ref: "#/components/parameters/ChangeId"
@@ -1009,7 +1025,10 @@ paths:
         Ask your questions about a change here, and report a step you have
         finished; then wait for an answer in the thread. While the newest
         comment of the thread was written by an agent, the change is shown as
-        waiting for people. The comment's author is the token's owner. Attach
+        waiting for people. A person's comment on a change past Idea that has
+        no open request asks the change's agent, or any free agent, to reply
+        (a request of the kind `reply`). The comment's author is the token's
+        owner. Attach
         up to 10 files of at most 10 MB each (PNG, JPEG, GIF, WebP, PDF, plain
         text, CSV or ZIP) by sending `multipart/form-data`. Archived changes
         cannot be commented on.
@@ -1050,6 +1069,280 @@ paths:
           $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/changes/{change_id}/requests:
+    post:
+      operationId: createRequest
+      tags: [Requests]
+      summary: Ask for the next step of a change
+      description: |
+        Asks the change's agent, or the first free agent of the project, to
+        do one step of the change, given as `kind`:
+        - `explore`: read the idea, the thread and the code, then ask your
+          questions by finishing with them, or write the proposal if nothing
+          is unclear;
+        - `propose`: write the OpenSpec change and import every file of it
+          (`importOpenspecChange`);
+        - `implement`: work the change's cards until they are done, or finish
+          as failed with what blocks you;
+        - `archive`: archive the OpenSpec change, sync its specs and commit;
+          finishing it as done archives the change in Goalner.
+
+        Requests of the kind `reply` come from people's comments and cannot
+        be asked for. A change has at most one open request, waiting or
+        taken: a waiting `reply` request is replaced by the new one, and any
+        other open request, or an archived change, refuses it. `comment`, if
+        given, is posted in the change's thread as yours and asks for no
+        reply of its own. A change with an agent picked waits for that agent;
+        one with no agent waits for the first free agent.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/ChangeId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind:
+                  type: string
+                  enum: [explore, propose, implement, archive]
+                  description: The step to ask for.
+                comment:
+                  type: string
+                  minLength: 1
+                  maxLength: 10000
+                  description: Markdown, posted in the change's thread as yours.
+      responses:
+        "201":
+          description: The request, waiting.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Request"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/changes/{change_id}/agent_release:
+    post:
+      operationId: releaseChangeAgent
+      tags: [Requests]
+      summary: Release the agent of a change
+      description: |
+        Takes the change away from its agent, for example when the agent's
+        terminal is gone or its context is full. The change's taken request
+        is cancelled, its block ends, and the change has no agent, so its
+        waiting request, if any, goes to the first free agent. The release is
+        recorded in the change's history. A change with no agent is left as
+        it is; an archived change cannot be changed.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/ChangeId"
+      responses:
+        "200":
+          description: The change, as `showChange` returns it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/requests/claim:
+    post:
+      operationId: claimRequest
+      tags: [Requests]
+      summary: Take the next request for you, or none
+      description: |
+        For agents. Takes the next request of this project for you and
+        returns it as `{"request": {...}}`, or `{"request": null}` when there
+        is none; the answer is always 200. You get the first of:
+        1. a request you took earlier and have not finished: resume it;
+        2. the waiting request of the change you are on;
+        3. when you are on no open change: the oldest waiting request of a
+           change that has you picked;
+        4. when you are on no open change: the oldest waiting request of a
+           change with no agent.
+
+        Taking a change's first request puts you on that change until it is
+        archived or a person releases you, and while you are on it you get
+        only its requests. Taking `explore` moves a change in Idea to
+        Exploring, and taking `implement` moves it to Implementing. What each
+        kind asks you to do:
+        - `explore`: read the idea, the thread and the code, then ask your
+          questions by finishing with them, or write the proposal if nothing
+          is unclear;
+        - `propose`: write the OpenSpec change and import every file of it
+          (`importOpenspecChange`);
+        - `reply`: read the comments posted since your last finished request
+          on this change, and answer or revise;
+        - `implement`: work the change's cards until they are done, or finish
+          as failed with what blocks you;
+        - `archive`: archive the OpenSpec change, sync its specs and commit;
+          finishing it as done archives the change in Goalner.
+
+        Read the change (`showChange`) and its thread
+        (`listChangeComments`) before you work, and finish with
+        `finishRequest`. Every call is your check-in in the project: you are
+        shown as online for 3 minutes after it, or as long as the server is configured to wait. A person's token gets 403
+        `agents_only`.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: The request you took, or `null`.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [request]
+                properties:
+                  request:
+                    oneOf:
+                      - $ref: "#/components/schemas/Request"
+                      - type: "null"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/AgentsOnly"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/requests/{id}/finish:
+    post:
+      operationId: finishRequest
+      tags: [Requests]
+      summary: Finish a request you took
+      description: |
+        Finishes a request you took as `done` or `failed`, with a comment
+        that is posted in the change's thread as yours: what you did and
+        where, the questions you need answered, or what blocked you.
+        Finishing an `archive` request as done archives the change. When a
+        person commented on the change while you worked, a `reply` request
+        for you is created at once. Refused, changing nothing, when the
+        request is not taken by you (a person may have cancelled it) or
+        comes without a comment.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome, comment]
+              properties:
+                outcome:
+                  type: string
+                  enum: [done, failed]
+                comment:
+                  type: string
+                  minLength: 1
+                  maxLength: 10000
+                  description: Markdown, posted in the change's thread as yours.
+      responses:
+        "200":
+          description: The finished request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Request"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/requests/{id}/cancellation:
+    post:
+      operationId: cancelRequest
+      tags: [Requests]
+      summary: Cancel an open request
+      description: |
+        Cancels a waiting or taken request; the agent that took it gets it no
+        more. A finished request is left as it is. The change keeps its
+        agent; release it with `releaseChangeAgent`.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: The request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Request"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/projects/{project_id}/requests/context_full:
+    post:
+      operationId: reportContextFull
+      tags: [Requests]
+      summary: Report that your context is full
+      description: |
+        For agents, when their context is about to be compacted. When you are
+        on an open change of this project, Goalner blocks it and answers
+        `{"blocked": true}`: you get none of its requests any more, your
+        taken request stays taken, and the change waits for people until a
+        person releases you; stop working on it. Otherwise the answer is
+        `{"blocked": false}` and nothing changes. A person's token gets 403
+        `agents_only`.
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Whether you are blocked.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [blocked]
+                properties:
+                  blocked:
+                    type: boolean
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/AgentsOnly"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
 
@@ -1283,6 +1576,13 @@ components:
       description: The change's id, or the name of an open change such as `add-labels`. A value made only of digits is an id.
       schema:
         $ref: "#/components/schemas/ChangeRef"
+    RequestId:
+      name: id
+      in: path
+      required: true
+      description: The request's id, as `claimRequest` returned it.
+      schema:
+        type: integer
     SignedId:
       name: signed_id
       in: path
@@ -1316,6 +1616,18 @@ components:
             error:
               code: insufficient_scope
               message: This API token is read-only.
+    AgentsOnly:
+      description: |
+        The token is read-only (`insufficient_scope`), or it is a person's
+        token, and only agents may do this (`agents_only`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: agents_only
+              message: Only agents can do this. Connect with an agent's token.
     NotFound:
       description: |
         The record does not exist, or is outside the token's project. Another
@@ -1374,7 +1686,7 @@ components:
           properties:
             code:
               type: string
-              enum: [invalid_token, invalid_service_key, insufficient_scope, not_found, validation_failed, rate_limited, internal_error]
+              enum: [invalid_token, invalid_service_key, insufficient_scope, agents_only, not_found, validation_failed, rate_limited, internal_error]
             message:
               type: string
               description: A human-readable message, in English.
@@ -1688,7 +2000,7 @@ components:
 
     ChangeFields:
       type: object
-      required: [id, name, archived_at, phase, waiting_for_people, task_counts]
+      required: [id, name, archived_at, phase, waiting_for_people, task_counts, request, agent]
       properties:
         id: { type: integer }
         name:
@@ -1702,9 +2014,22 @@ components:
           $ref: "#/components/schemas/ChangePhase"
         waiting_for_people:
           type: boolean
-          description: Whether the newest comment of the change's thread was written by an agent. Never true for an archived change.
+          description: |
+            Whether the change waits for people: its agent's context is full,
+            or it has no open request and the newest comment of its thread
+            was written by an agent. Never true for an archived change.
         task_counts:
           $ref: "#/components/schemas/TaskCounts"
+        request:
+          description: The change's open request, waiting or taken; `null` when it has none.
+          oneOf:
+            - $ref: "#/components/schemas/Request"
+            - type: "null"
+        agent:
+          description: The change's agent, picked or on the change; `null` for any free agent.
+          oneOf:
+            - $ref: "#/components/schemas/ChangeAgent"
+            - type: "null"
 
     Change:
       description: A change as lists show it.
@@ -1723,7 +2048,9 @@ components:
               $ref: "#/components/schemas/ChangeIdea"
             history:
               type: array
-              description: Every phase move and import of the change, oldest first.
+              description: |
+                Every phase move, import, request asked for, taken, finished
+                and cancelled, release and block of the change, oldest first.
               items:
                 $ref: "#/components/schemas/ChangeEvent"
             files:
@@ -1771,27 +2098,139 @@ components:
           description: The phase to move the change to.
         idea:
           $ref: "#/components/schemas/ChangeIdea"
+        agent:
+          $ref: "#/components/schemas/ChangeAgentPick"
+
+    ChangeAgentPick:
+      type: [integer, "null"]
+      description: |
+        The user id of an agent of the project (`listMembers`, where `agent`
+        is true) to pick for the change, or `null` for any free agent.
+        Refused while an agent is on the change.
+
+    ChangeAgent:
+      type: object
+      additionalProperties: false
+      required: [user, "on", since, blocked_at]
+      properties:
+        user:
+          $ref: "#/components/schemas/UserCard"
+        "on":
+          type: boolean
+          description: |
+            True once the agent took the change's first request: every request
+            of the change goes to it until the change is archived or the agent
+            is released. False while the agent is only picked.
+        since:
+          type: [string, "null"]
+          format: date-time
+          description: When the agent took the change's first request.
+        blocked_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            Since when the change is blocked because the agent's context is
+            full (`reportContextFull`); `null` when it is not. A blocked
+            change gives its agent no request until a person releases it.
+
+    Request:
+      type: object
+      additionalProperties: false
+      required: [id, kind, state, change, requested_by, taken_by, finished_by, created_at, taken_at, finished_at]
+      properties:
+        id: { type: integer }
+        kind:
+          $ref: "#/components/schemas/RequestKind"
+        state:
+          type: string
+          enum: [waiting, taken, done, failed, cancelled]
+          description: Waiting until an agent takes it, then taken, then done, failed or cancelled. A waiting or taken request is open.
+        change:
+          type: object
+          additionalProperties: false
+          required: [id, name, phase]
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            phase:
+              $ref: "#/components/schemas/ChangePhase"
+        requested_by:
+          $ref: "#/components/schemas/UserCard"
+        taken_by:
+          description: The agent that took it; `null` while it waits.
+          oneOf:
+            - $ref: "#/components/schemas/UserCard"
+            - type: "null"
+        finished_by:
+          description: The agent that finished it, or who cancelled it; `null` while it is open.
+          oneOf:
+            - $ref: "#/components/schemas/UserCard"
+            - type: "null"
+        created_at:
+          type: string
+          format: date-time
+          description: When it was asked for.
+        taken_at:
+          type: [string, "null"]
+          format: date-time
+        finished_at:
+          type: [string, "null"]
+          format: date-time
+          description: When it was finished or cancelled.
+
+    RequestKind:
+      type: string
+      enum: [explore, propose, implement, archive, reply]
+      description: |
+        The step asked for:
+        - `explore`: read the idea, the thread and the code, then ask
+          questions by finishing with them, or write the proposal if nothing
+          is unclear;
+        - `propose`: write the OpenSpec change and import every file of it;
+        - `implement`: work the change's cards until they are done, or finish
+          as failed with what blocks;
+        - `archive`: archive the OpenSpec change, sync its specs and commit;
+          finishing it as done archives the change in Goalner;
+        - `reply`: read the comments posted since the last finished request
+          on the change, and answer or revise. Created by people's comments.
 
     ChangeEvent:
       type: object
       additionalProperties: false
-      required: [kind, actor, phase, paths, created_at]
+      required: [kind, actor, phase, paths, agent, step, state, created_at]
       properties:
         kind:
           type: string
-          enum: [phase, import]
-          description: A move to another phase, or an import.
+          enum: [phase, import, request, release, block]
+          description: |
+            A move to another phase, an import, a step of a request, the
+            release of the change's agent, or a block because the agent's
+            context is full.
         actor:
           $ref: "#/components/schemas/UserCard"
         phase:
           type: [string, "null"]
           enum: [idea, exploring, proposed, implementing, null]
-          description: The phase moved to; `null` for an import.
+          description: The phase moved to; `null` for the other kinds.
         paths:
           type: [array, "null"]
-          description: The files the import brought, `tasks.md` included; `null` for a move.
+          description: The files the import brought, `tasks.md` included; `null` for the other kinds.
           items:
             type: string
+        agent:
+          description: The released agent; `null` for the other kinds.
+          oneOf:
+            - $ref: "#/components/schemas/UserCard"
+            - type: "null"
+        step:
+          description: The request's kind; `null` for the other kinds.
+          oneOf:
+            - $ref: "#/components/schemas/RequestKind"
+            - type: "null"
+        state:
+          type: [string, "null"]
+          enum: [asked, taken, done, failed, cancelled, null]
+          description: What happened to the request; `null` for the other kinds.
         created_at:
           type: string
           format: date-time

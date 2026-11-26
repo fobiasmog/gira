@@ -20,7 +20,7 @@ class ProjectsTest < ApplicationSystemTestCase
     project = Project.find_by!(title: "Moonshot")
     assert_current_path "/app/projects/#{project.id}/board"
     assert_selector ".column h2", text: "To Do"
-    within(".side-nav") { assert_link "Moonshot" }
+    assert_selector ".side-nav .switcher", text: "Moonshot"
   end
 
   test "validation error: the message is shown under the short-name field and the input is kept" do
