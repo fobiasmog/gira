@@ -65,6 +65,25 @@ class OpenapiErrorsContract < OpenapiContractTest
     assert response.parsed_body.dig("error", "fields", "title").present?
   end
 
+  test "409 keys_missing for a re-import of an OpenSpec change without its marks" do
+    text = "## 1. Model\n- [ ] 1.1 Add the table\n"
+    OpenspecChange::Import.new(project: projects(:goal), user: users(:two), name: "add-labels", artifacts: { "tasks" => text }).run!
+
+    post api_project_openspec_changes_path(projects(:goal)), params: { name: "add-labels", artifacts: { tasks: text } }, headers: bearer("glnr_two_goal_read_write"), as: :json
+
+    assert_response :conflict
+    assert_equal "keys_missing", error_code
+    assert_match(/goalner:GOAL-\d+/, response.parsed_body["tasks"])
+  end
+
+  test "422 validation_failed for an OpenSpec text with a foreign mark, naming its line" do
+    post api_project_openspec_changes_path(projects(:goal)), params: { name: "add-labels", artifacts: { tasks: "## 1. A\n- [ ] 1.1 B <!-- goalner:GOAL-9999 -->\n" } },
+      headers: bearer("glnr_two_goal_read_write"), as: :json
+
+    assert_response :unprocessable_content
+    assert_equal [ "Tasks line 2: the mark names no task of this project" ], response.parsed_body.dig("error", "fields", "tasks")
+  end
+
   test "429 rate_limited for the 301st request in a minute" do
     300.times { get api_me_path, headers: bearer("glnr_two_goal_read") }
 

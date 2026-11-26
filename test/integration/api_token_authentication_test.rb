@@ -177,6 +177,8 @@ class ApiTokenAuthenticationTest < ForgeryProtectedIntegrationTest
     api/projects/milestones#index
     api/projects/milestones#show
     api/projects/milestones/recoveries#create
+    api/projects/openspec_changes#create
+    api/projects/openspec_changes#show
     api/projects/sprints#create
     api/projects/sprints#index
     api/projects/sprints/activations#create

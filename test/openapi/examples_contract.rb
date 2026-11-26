@@ -9,6 +9,7 @@ class OpenapiExamplesContract < OpenapiContractTest
   include ImageFiles
 
   TOKEN = "glnr_two_goal_read_write"
+  OPENSPEC_TASKS = "## 1. Model\n\n- [x] 1.1 Add the table\n- [ ] 1.2 Add the model\n  - with validations\n\n## 2. API\n\n- [ ] 2.1 Add the routes\n"
 
   EXAMPLES = {
     "showProfile" => -> { get api_me_path, headers: token },
@@ -56,6 +57,14 @@ class OpenapiExamplesContract < OpenapiContractTest
     "activateSprint" => -> { post api_project_sprint_activation_path(@project, @planned), headers: token },
     "archiveSprint" => -> { post api_project_sprint_archival_path(@project, @sprint), params: { carry_to_sprint_id: @planned.id }, headers: token, as: :json },
     "listSprintTasks" => -> { get api_project_sprint_tasks_path(@project, @sprint), headers: token },
+
+    "importOpenspecChange" => -> do
+      post api_project_openspec_changes_path(@project), params: { name: "add-labels", artifacts: { tasks: OPENSPEC_TASKS } }, headers: token, as: :json
+    end,
+    "showOpenspecChange" => -> do
+      OpenspecChange::Import.new(project: @project, user: users(:two), name: "add-labels", artifacts: { "tasks" => OPENSPEC_TASKS }).run!
+      get api_project_openspec_change_path(@project, "add-labels"), headers: token
+    end,
 
     "downloadFile" => -> { get file_path(@attachment.signed_id), headers: token },
     "downloadFilePreview" => -> { get file_path(@attachment.signed_id, variant: "preview"), headers: token }
@@ -105,6 +114,23 @@ class OpenapiExamplesContract < OpenapiContractTest
     get api_project_members_path(@project), headers: headers
     assert_response :success
     assert_includes response.parsed_body.map { |member| member.values_at("name", "agent") }, [ "Fish", true ]
+  end
+
+  # Task requests take keys as well as ids (spec tasks, "Name a task by id
+  # or key in every task request").
+  test "completeSubtask and placeTask by key" do
+    put api_project_task_completion_path(@project, @subtask.key), headers: token
+    assert_response :success
+
+    put api_project_task_placement_path(@project, @task.key), params: { status_id: statuses(:goal_work).id }, headers: token, as: :json
+    assert_response :success
+  end
+
+  test "importOpenspecChange again: 200" do
+    post api_project_openspec_changes_path(@project), params: { name: "add-labels", artifacts: { tasks: OPENSPEC_TASKS } }, headers: token, as: :json
+    post api_project_openspec_changes_path(@project), params: { name: "add-labels", artifacts: { tasks: response.parsed_body["tasks"] } }, headers: token, as: :json
+
+    assert_response :ok
   end
 
   test "every documented operation has an example" do

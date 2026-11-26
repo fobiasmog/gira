@@ -23,6 +23,6 @@ class Api::Projects::Tasks::CommentsController < Api::BaseController
 
   private
     def set_task
-      @task = @project.tasks.find(params[:task_id])
+      @task = @project.tasks.find_by_ref!(params[:task_id])
     end
 end

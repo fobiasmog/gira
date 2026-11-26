@@ -73,7 +73,15 @@ module GoalnerMcp
 
       unavailable "redirected with #{status}; check GOALNER_API_URL and X-Forwarded-Proto" if status.between?(300, 399)
       unavailable "answered #{status}" if status >= 500
-      Response.new(status: status, body: response_body)
+      Response.new(status: status, body: self.class.utf8(response_body))
+    end
+
+    # The API answers JSON, which is UTF-8 (RFC 8259), but Net::HTTP tags a
+    # body holding any non-ASCII byte as binary, and a binary string in a tool
+    # result fails to serialize: the client would be told "Internal error"
+    # about a call the API carried out. Bytes that are not UTF-8 become U+FFFD.
+    def self.utf8(body)
+      body.to_s.dup.force_encoding(Encoding::UTF_8).scrub
     end
 
     # Net::HTTP with one keep-alive connection per thread: 2 seconds to

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_13_090100) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_16_090100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -189,6 +189,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_090100) do
     t.datetime "first_authorized_at"
     t.index ["uid"], name: "index_oauth_applications_on_uid", unique: true
     t.check_constraint "registration::text = ANY (ARRAY['cimd'::character varying, 'dcr'::character varying]::text[])", name: "oauth_applications_registration"
+  end
+
+  create_table "openspec_changes", force: :cascade do |t|
+    t.bigint "project_id", null: false
+    t.string "name", null: false
+    t.bigint "milestone_id", null: false
+    t.text "tasks_text", default: "", null: false
+    t.bigint "imported_by_id", null: false
+    t.datetime "imported_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["imported_by_id"], name: "index_openspec_changes_on_imported_by_id"
+    t.index ["milestone_id"], name: "index_openspec_changes_on_milestone_id"
+    t.index ["project_id", "name"], name: "index_openspec_changes_on_project_id_and_name", unique: true
   end
 
   create_table "projects", force: :cascade do |t|
@@ -416,10 +430,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_090100) do
     t.datetime "archived_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "openspec_change_id"
     t.index ["assignee_id"], name: "index_tasks_on_assignee_id"
     t.index ["creator_id"], name: "index_tasks_on_creator_id"
     t.index ["label_id"], name: "index_tasks_on_label_id"
     t.index ["milestone_id"], name: "index_tasks_on_milestone_id"
+    t.index ["openspec_change_id"], name: "index_tasks_on_openspec_change_id"
     t.index ["origin_task_id"], name: "index_tasks_on_origin_task_id"
     t.index ["parent_id"], name: "index_tasks_on_parent_id"
     t.index ["project_id", "number"], name: "index_tasks_on_project_id_and_number", unique: true
@@ -464,6 +480,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_090100) do
   add_foreign_key "oauth_access_grants", "users", column: "resource_owner_id", on_delete: :cascade
   add_foreign_key "oauth_access_tokens", "oauth_applications", column: "application_id", on_delete: :cascade
   add_foreign_key "oauth_access_tokens", "users", column: "resource_owner_id", on_delete: :cascade
+  add_foreign_key "openspec_changes", "milestones"
+  add_foreign_key "openspec_changes", "projects"
+  add_foreign_key "openspec_changes", "users", column: "imported_by_id"
   add_foreign_key "projects", "users", column: "owner_id"
   add_foreign_key "sessions", "users"
   add_foreign_key "solid_queue_batch_executions", "solid_queue_batches", column: "batch_id", on_delete: :cascade
@@ -478,6 +497,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_090100) do
   add_foreign_key "statuses", "projects"
   add_foreign_key "tasks", "labels", on_delete: :nullify
   add_foreign_key "tasks", "milestones"
+  add_foreign_key "tasks", "openspec_changes"
   add_foreign_key "tasks", "projects"
   add_foreign_key "tasks", "sprints"
   add_foreign_key "tasks", "statuses"
