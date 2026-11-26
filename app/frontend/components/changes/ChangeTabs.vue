@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import AppIcon from "../ui/AppIcon.vue"
-import type { Change, ChangeReference, Column, TaskCard } from "../../api/types.ts"
+import PhasePill from "./PhasePill.vue"
+import WaitingMarker from "./WaitingMarker.vue"
+import type { Change, ChangePhase, ChangeReference, Column, TaskCard } from "../../api/types.ts"
 import { boardProgress, countsProgress, type ChangeProgress } from "../../composables/changes.ts"
 import { boardLocation, type BoardLayout } from "../../router/routes.ts"
 import type { BoardTab } from "../../stores/board.ts"
@@ -9,6 +11,7 @@ import { t } from "../../i18n/index.ts"
 
 // The board's tabs (spec web-client, "Board change tabs"): one per open
 // change, newest first, then the tasks in no change, then "New change". Each
+// change's tab shows its phase and whether it is waiting for people. Each
 // tab is a link, so the address names the tab; as in any tab list, the arrow
 // keys move between tabs and Enter or Space opens one.
 const props = defineProps<{
@@ -30,6 +33,8 @@ interface Tab {
   tab: BoardTab
   selected: boolean
   progress: ChangeProgress | null
+  phase: ChangePhase | null
+  waiting: boolean
 }
 
 const tabs = computed<Tab[]>(() => [
@@ -41,9 +46,13 @@ const tabs = computed<Tab[]>(() => [
       tab: { kind: "change", name: change.name } as BoardTab,
       selected,
       progress: selected ? boardProgress(props.columns, props.tasks) : countsProgress(props.columns, change.task_counts),
+      phase: change.phase,
+      waiting: change.waiting_for_people,
     }
   }),
-  { id: changeTabId(null), label: t("board.tabs.otherTasks"), tab: { kind: "other" }, selected: props.shown === null, progress: null },
+  {
+    id: changeTabId(null), label: t("board.tabs.otherTasks"), tab: { kind: "other" }, selected: props.shown === null, progress: null, phase: null, waiting: false,
+  },
 ])
 
 function onKey(event: KeyboardEvent) {
@@ -80,6 +89,8 @@ export function changeTabId(change: ChangeReference | null): string {
         @keydown.space.prevent="($event.currentTarget as HTMLElement).click()"
       >
         <span class="ellipsis">{{ tab.label }}</span>
+        <WaitingMarker v-if="tab.waiting" />
+        <PhasePill v-if="tab.phase" :phase="tab.phase" />
         <span v-if="tab.progress" class="change-tabs__count">
           <span aria-hidden="true">{{ tab.progress.done }}/{{ tab.progress.total }}</span>
           <span class="visually-hidden">{{ t("board.tabs.progress", { done: tab.progress.done, total: tab.progress.total }) }}</span>

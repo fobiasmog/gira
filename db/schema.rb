@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_17_090000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_18_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -91,6 +91,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_090000) do
     t.check_constraint "project_id IS NOT NULL AND oauth_access_token_id IS NULL AND issuer_id IS NULL AND channels IS NULL OR project_id IS NULL AND oauth_access_token_id IS NOT NULL AND issuer_id IS NULL AND channels IS NULL OR project_id IS NULL AND oauth_access_token_id IS NULL AND issuer_id IS NOT NULL AND channels IS NOT NULL AND (channels::text = ANY (ARRAY['api'::character varying, 'mcp'::character varying, 'api_mcp'::character varying]::text[]))", name: "api_tokens_kind"
   end
 
+  create_table "change_events", force: :cascade do |t|
+    t.bigint "change_id", null: false
+    t.bigint "actor_id", null: false
+    t.string "kind", null: false
+    t.string "phase"
+    t.string "paths", array: true
+    t.datetime "created_at", null: false
+    t.index ["actor_id"], name: "index_change_events_on_actor_id"
+    t.index ["change_id"], name: "index_change_events_on_change_id"
+    t.check_constraint "kind::text = 'phase'::text AND (phase::text = ANY (ARRAY['idea'::character varying, 'exploring'::character varying, 'proposed'::character varying, 'implementing'::character varying]::text[])) AND paths IS NULL OR kind::text = 'import'::text AND phase IS NULL AND paths IS NOT NULL", name: "change_events_kind"
+  end
+
+  create_table "change_files", force: :cascade do |t|
+    t.bigint "change_id", null: false
+    t.string "path", null: false
+    t.text "text", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["change_id", "path"], name: "index_change_files_on_change_id_and_path", unique: true
+  end
+
   create_table "changes", force: :cascade do |t|
     t.bigint "project_id", null: false
     t.string "name", null: false
@@ -100,20 +121,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_090000) do
     t.datetime "imported_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.text "idea"
+    t.string "phase", default: "idea", null: false
     t.index ["imported_by_id"], name: "index_changes_on_imported_by_id"
     t.index ["project_id", "name"], name: "index_changes_on_project_id_and_name_open", unique: true, where: "(archived_at IS NULL)"
     t.index ["project_id"], name: "index_changes_on_project_id"
+    t.check_constraint "phase::text = ANY (ARRAY['idea'::character varying, 'exploring'::character varying, 'proposed'::character varying, 'implementing'::character varying]::text[])", name: "changes_phase"
   end
 
   create_table "comments", force: :cascade do |t|
-    t.bigint "task_id", null: false
+    t.bigint "task_id"
     t.bigint "author_id", null: false
     t.text "body", null: false
     t.datetime "deleted_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "change_id"
     t.index ["author_id"], name: "index_comments_on_author_id"
+    t.index ["change_id"], name: "index_comments_on_change_id"
     t.index ["task_id"], name: "index_comments_on_task_id"
+    t.check_constraint "num_nonnulls(task_id, change_id) = 1", name: "comments_task_or_change"
   end
 
   create_table "invitations", force: :cascade do |t|
@@ -441,8 +468,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_090000) do
   add_foreign_key "api_tokens", "projects"
   add_foreign_key "api_tokens", "users"
   add_foreign_key "api_tokens", "users", column: "issuer_id"
+  add_foreign_key "change_events", "changes"
+  add_foreign_key "change_events", "users", column: "actor_id"
+  add_foreign_key "change_files", "changes"
   add_foreign_key "changes", "projects"
   add_foreign_key "changes", "users", column: "imported_by_id"
+  add_foreign_key "comments", "changes"
   add_foreign_key "comments", "tasks"
   add_foreign_key "comments", "users", column: "author_id"
   add_foreign_key "invitations", "projects"

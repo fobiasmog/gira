@@ -38,8 +38,11 @@ class AccessibilityTest < ApplicationSystemTestCase
     @task.comments.create!(author: @user, body: "A comment")
     @project.tasks.create!(title: "Other task", creator: @user)
     @project.tasks.create!(title: "Done in no change", creator: @user, status: statuses(:goal_done))
-    @project.project_changes.create!(name: "export-csv").archive!
-    Change::Import.new(project: @project, user: @user, name: "fix-login", artifacts: { "tasks" => "## 1. Form\n- [ ] 1.1 Field\n" }).run!
+    @archived_change = @project.project_changes.create!(name: "export-csv", idea: "An archived idea")
+    @archived_change.archive!
+    Change::Import.new(project: @project, user: @user, name: "fix-login",
+      artifacts: { "tasks" => "## 1. Form\n- [ ] 1.1 Field\n", "proposal" => "# Why\n", "specs" => { "login" => "## ADDED\n" } }).run!
+    @project.project_changes.find_by!(name: "fix-login").comments.create!(author: @user, body: "A change comment")
     @archived = @project.tasks.create!(title: "Archived task", creator: @user, status: statuses(:goal_done))
     @archived.archive!
     @project.invitations.create!(email: "pending@example.com", inviter: @user, token_digest: "x", expires_at: 1.day.from_now)
@@ -61,6 +64,9 @@ class AccessibilityTest < ApplicationSystemTestCase
       "#{base}/board/other" => "Other task",
       "#{base}/board/changes/export-csv" => "is archived or does not exist",
       "#{base}/changes" => "Accessible task",
+      "#{base}/changes/fix-login" => "A change comment",
+      "#{base}/changes/#{@archived_change.id}" => "An archived idea",
+      "#{base}/changes/no-such-change" => "is archived or does not exist",
       "#{base}/members" => "pending@example.com",
       "#{base}/agents" => "Accessible agent",
       "#{base}/settings" => "Project settings",

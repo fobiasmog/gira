@@ -2,27 +2,31 @@
 import { ref, watch } from "vue"
 import AppDialog from "../ui/AppDialog.vue"
 import AppField from "../ui/AppField.vue"
+import AppTextarea from "../ui/AppTextarea.vue"
 import { ApiError } from "../../api/client.ts"
 import type { Change, FieldErrors } from "../../api/types.ts"
 import { typedChangeName } from "../../composables/changes.ts"
 import { useUiStore } from "../../stores/ui.ts"
 import { t } from "../../i18n/index.ts"
 
-// Asks for a new change's name (spec web-client, "New change dialog"). The
-// name is lowercased and spaces become hyphens as it is typed; the server's
-// validation errors are shown at the field, and the dialog stays open.
-const props = defineProps<{ create: (name: string) => Promise<Change> }>()
+// Asks for a new change's name and its idea (spec web-client, "New change
+// dialog"). The name is lowercased and spaces become hyphens as it is typed;
+// the server's validation errors are shown at their fields, and the dialog
+// stays open.
+const props = defineProps<{ create: (name: string, idea: string) => Promise<Change> }>()
 const open = defineModel<boolean>("open", { required: true })
 const emit = defineEmits<{ created: [change: Change] }>()
 
 const ui = useUiStore()
 const name = ref("")
+const idea = ref("")
 const errors = ref<FieldErrors>({})
 const busy = ref(false)
 
 watch(open, (value) => {
   if (!value) return
   name.value = ""
+  idea.value = ""
   errors.value = {}
 })
 
@@ -42,7 +46,7 @@ async function submit() {
   busy.value = true
   errors.value = {}
   try {
-    const change = await props.create(name.value.trim())
+    const change = await props.create(name.value.trim(), idea.value)
     open.value = false
     emit("created", change)
   } catch (error) {
@@ -70,6 +74,11 @@ async function submit() {
             spellcheck="false"
             @input="onInput"
           >
+        </template>
+      </AppField>
+      <AppField :label="t('changes.idea')" :hint="t('changes.ideaHint')" :errors="errors.idea">
+        <template #default="{ control }">
+          <AppTextarea v-model="idea" v-bind="control" />
         </template>
       </AppField>
     </form>

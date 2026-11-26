@@ -37,7 +37,11 @@ class ChangesTest < ApplicationSystemTestCase
   end
 
   def change_section(name)
-    find(".change", text: name) { |section| section.find(".change__toggle").text == name }
+    find(".change", text: name) { |section| section.find(".change__name").text == name }
+  end
+
+  def waiting_for_people(change)
+    change.comments.create!(author: create_agent(@project, name: "Fish #{change.name}").user, body: "A question?")
   end
 
   # Board change tabs
@@ -120,6 +124,25 @@ class ChangesTest < ApplicationSystemTestCase
     assert_equal [ "0", "-1", "-1" ].sort, all("[role=tab]").map { |tab| tab[:tabindex] }.sort
   end
 
+  test "phase and waiting marker: each change tab shows its phase, and the marker when it is waiting for people" do
+    export = create_change("export-csv").tap { |change| change.update!(phase: "exploring") }
+    travel(-1.minute) { create_change("add-labels") }.update!(phase: "implementing")
+    waiting_for_people(export)
+    visit_board
+
+    export_tab = find("[role=tab]", text: "export-csv")
+    labels_tab = find("[role=tab]", text: "add-labels")
+    within(export_tab) do
+      assert_selector ".phase-pill", text: "Exploring"
+      assert_selector ".waiting-marker", text: "Waiting for you", visible: :all
+    end
+    within(labels_tab) do
+      assert_selector ".phase-pill", text: "Implementing"
+      assert_no_selector ".waiting-marker", visible: :all
+    end
+    assert_match(/Waiting for you/, export_tab[:textContent])
+  end
+
   test "add a task to a change's board: it belongs to that change" do
     labels = create_change("add-labels")
     visit_board("/changes/add-labels")
@@ -136,15 +159,16 @@ class ChangesTest < ApplicationSystemTestCase
 
   # Board change summary
 
-  test "a change in progress: its name links to the changes screen, with the cards done and Archive" do
-    labels = create_change("add-labels")
+  test "a change in progress: its name links to its page, with its phase, the cards done and Archive" do
+    labels = create_change("add-labels").tap { |change| change.update!(phase: "implementing") }
     3.times { |i| task("Open #{i}", change: labels, status: i.even? ? :goal_todo : :goal_work) }
     task("Finished", change: labels, status: :goal_done)
     task("Not in the change")
     visit_board("/changes/add-labels")
 
     within(summary) do
-      assert_link "add-labels", href: "/app/projects/#{@project.id}/changes"
+      assert_link "add-labels", href: "/app/projects/#{@project.id}/changes/add-labels"
+      assert_selector ".phase-pill", text: "Implementing"
       assert_text "1 of 4 done"
       assert_selector "[role=progressbar][aria-valuenow='1'][aria-valuemax='4']"
       assert_selector ".progress-bar__fill[style*='25%']"
@@ -154,7 +178,7 @@ class ChangesTest < ApplicationSystemTestCase
     assert_no_text "Not in the change"
 
     within(summary) { click_link "add-labels" }
-    assert_current_path "/app/projects/#{@project.id}/changes"
+    assert_current_path "/app/projects/#{@project.id}/changes/add-labels"
   end
 
   test "the board of other tasks has no summary" do
@@ -324,7 +348,7 @@ class ChangesTest < ApplicationSystemTestCase
       assert_text "2 tasks in total"
       assert_text "Work 1"
       assert_text "Done 1"
-      assert_selector "button[aria-expanded=true]", text: "add-labels"
+      assert_selector "button[aria-expanded=true][aria-label='Tasks of add-labels']"
       click_button "Archive add-labels"
     end
     within("dialog[open]") do
@@ -335,11 +359,80 @@ class ChangesTest < ApplicationSystemTestCase
     assert_text "“add-labels” was archived"
     assert_text "There are no open changes."
     find("summary", text: "Archived changes (1)").click
-    find("summary", text: "add-labels").click
     within(".archived-change", text: "add-labels") do
+      assert_link "add-labels", href: "/app/projects/#{@project.id}/changes/#{labels.id}"
+      assert_no_text "Unfinished"
+      click_button "Tasks of add-labels"
       assert_text "Unfinished"
       within(".row-list > li", text: "Finished") { assert_text "Done" }
     end
+  end
+
+  test "a section can be closed and opened again" do
+    labels = create_change("add-labels")
+    task("Model", change: labels)
+    visit "/app/projects/#{@project.id}/changes"
+
+    within(change_section("add-labels")) do
+      assert_text "Model"
+      click_button "Tasks of add-labels"
+      assert_selector "button[aria-expanded=false]"
+      assert_no_text "Model"
+      click_button "Tasks of add-labels"
+      assert_text "Model"
+    end
+  end
+
+  test "phase and waiting marker: a section header shows the phase, the marker, and the name linking to the page" do
+    export = create_change("export-csv").tap { |change| change.update!(phase: "proposed") }
+    travel(-1.minute) { create_change("fix-login") }
+    waiting_for_people(export)
+    visit "/app/projects/#{@project.id}/changes"
+
+    within(change_section("export-csv").find(".change__header")) do
+      assert_selector ".phase-pill", text: "Proposed"
+      assert_selector ".waiting-marker", visible: :all
+      assert_link "export-csv", href: "/app/projects/#{@project.id}/changes/export-csv"
+    end
+    within(change_section("fix-login").find(".change__header")) do
+      assert_selector ".phase-pill", text: "Idea"
+      assert_no_selector ".waiting-marker", visible: :all
+    end
+
+    click_link "export-csv"
+    assert_current_path "/app/projects/#{@project.id}/changes/export-csv"
+  end
+
+  test "with an idea: the change's page shows it" do
+    visit "/app/projects/#{@project.id}/changes"
+
+    click_button "New change"
+    within("dialog[open]") do
+      fill_in "Name", with: "export-csv"
+      fill_in "Idea", with: "People want a project's tasks as **CSV**."
+      click_button "Create change"
+    end
+
+    assert_text "Change “export-csv” created"
+    change_section("export-csv").click_link("export-csv")
+    within("section[aria-labelledby='change-idea']") do
+      assert_text "People want a project's tasks as CSV."
+      assert_selector "strong", text: "CSV"
+    end
+    assert_equal "People want a project's tasks as **CSV**.", @project.project_changes.find_by!(name: "export-csv").idea
+  end
+
+  test "an idea too long: the dialog stays open with the error at the idea" do
+    visit_board
+
+    click_button "New change"
+    within("dialog[open]") do
+      fill_in "Name", with: "export-csv"
+      find_field("Idea").execute_script("this.value = 'a'.repeat(100001); this.dispatchEvent(new Event('input'))")
+      click_button "Create change"
+      assert_invalid_field "Idea"
+    end
+    assert_equal 0, @project.project_changes.count
   end
 
   test "a new change from the changes screen" do

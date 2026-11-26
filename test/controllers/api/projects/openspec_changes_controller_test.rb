@@ -92,8 +92,8 @@ class Api::Projects::OpenspecChangesControllerTest < ActionDispatch::Integration
     post api_project_openspec_changes_path(@project), params: { name: "add-labels" }, as: :json
     assert_equal [ 422, [ "tasks" ] ], [ response.status, response.parsed_body.dig("error", "fields").keys ]
 
-    post api_project_openspec_changes_path(@project), params: { name: "add-labels", artifacts: { tasks: TEXT, proposal: "# Why" } }, as: :json
-    assert_equal [ 422, [ "Proposal is not an artifact Goalner imports" ] ], [ response.status, response.parsed_body.dig("error", "fields", "proposal") ]
+    post api_project_openspec_changes_path(@project), params: { name: "add-labels", artifacts: { tasks: TEXT, notes: "# Notes" } }, as: :json
+    assert_equal [ 422, [ "Notes is not an artifact Goalner imports" ] ], [ response.status, response.parsed_body.dig("error", "fields", "notes") ]
     assert_equal 0, Change.count
   end
 

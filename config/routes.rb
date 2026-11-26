@@ -88,11 +88,14 @@ Rails.application.routes.draw do
         end
         resources :labels, only: %i[index create]
         resources :openspec_changes, only: :create
-        # A change in a path is its id or an open change's name.
-        resources :changes, only: %i[index show create] do
+        # A change in a path is its id or an open change's name. One file of a
+        # change is named by ?path=, which holds slashes.
+        resources :changes, only: %i[index show create update] do
           scope module: :changes do
             resource :archival, only: :create
             resources :tasks, only: :index
+            resource :file, only: :show
+            resources :comments, only: %i[index create]
           end
         end
       end
