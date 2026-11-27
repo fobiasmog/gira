@@ -222,6 +222,8 @@ en:
           attributes:
             base:
               last_project: An agent cannot be removed from its only project. Delete it instead.
+            model:
+              invalid: "may hold only Latin letters, digits, dots, hyphens and underscores"
         api_token:
           attributes:
             base:
@@ -253,6 +255,24 @@ en:
           attributes:
             base:
               task_or_change: A comment belongs to a task or to a change
+        runner:
+          attributes:
+            base:
+              too_many: "You can have at most %{count} runners. Revoke one to create another."
+        workspace:
+          attributes:
+            base:
+              not_active: The workspace is not active
+              change_open: The change is open; its workspace is removed or kept only once the change is archived
+            path:
+              fixed: is fixed once the workspace is recorded
+            branch:
+              fixed: is fixed once the workspace is recorded
+            state:
+              inclusion: must be removed or kept
+              removed: is removed for good
+            head_commit:
+              invalid: must be 40 hexadecimal characters
         task:
           attributes:
             base:

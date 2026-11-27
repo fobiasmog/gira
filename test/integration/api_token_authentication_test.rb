@@ -224,6 +224,8 @@ class ApiTokenAuthenticationTest < ForgeryProtectedIntegrationTest
     RouteTable.routes.each do |route|
       path = RouteTable.sample_path(route)
       next unless path.start_with?("/api/") && !opened_to_tokens?(route)
+      # Runner endpoints know no API token at all: 401 (Api::Runners::LeasesControllerTest).
+      next if path.start_with?("/api/runner")
 
       RouteTable.verbs(route).each do |verb|
         process verb.downcase.to_sym, path, params: { title: "token" }, headers: bearer("glnr_two_goal_read_write"), as: :json

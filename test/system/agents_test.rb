@@ -20,9 +20,16 @@ class AgentsTest < ApplicationSystemTestCase
     click_button "Actions for #{name}"
   end
 
-  def fill_in_agent_form(name: "Fish", token: "runner", channel: "MCP only", access: "Read and write", password: PASSWORD)
+  def fill_in_agent_form(name: "Fish", model: nil, instructions: nil)
     within("dialog[open]") do
       fill_in "Agent name", with: name
+      fill_in "Model", with: model if model
+      fill_in "Instructions", with: instructions if instructions
+    end
+  end
+
+  def fill_in_token_form(token: "runner", channel: "MCP only", access: "Read and write", password: PASSWORD)
+    within("dialog[open]") do
       fill_in "Token name", with: token
       choose access
       choose channel
@@ -40,11 +47,50 @@ class AgentsTest < ApplicationSystemTestCase
     assert_current_path "/app/projects/#{@project.id}/agents"
   end
 
-  test "create with MCP: the value is shown once with a warning and an MCP client configuration, and the agent is listed" do
+  test "create: Fish is listed as not running, no token is shown, and the screen shows how to start Fish with its id" do
+    visit_agents
+    click_button "New agent"
+    fill_in_agent_form model: "opus", instructions: "Keep commits small."
+    click_button "Create agent"
+
+    assert_selector "dialog[open]", text: "Agent “Fish” created"
+    agent = Agent.joins(:user).find_by!(users: { name: "Fish" })
+    within("dialog[open]") do
+      assert_field "Register a clone of GOAL", with: "bin/goalner-worker register --clone GOAL=<path to the clone>"
+      assert_field "Start command", with: "bin/goalner-worker Fish"
+      assert_link "Settings, Runners"
+      assert_no_field "Token", exact: true
+      execute_script("navigator.clipboard.writeText = async (text) => { window.__copied = text }")
+      within(find_field("Start command").ancestor(".copy-field")) { click_button "Copy command" }
+      assert_equal "bin/goalner-worker Fish", evaluate_script("window.__copied")
+      click_button "Done"
+    end
+
+    within(".agent", text: "Fish") do
+      assert_text "Added by User Two"
+      assert_text "0 tokens"
+      assert_text "Not running"
+      assert_text "Model opus"
+    end
+    assert @project.member?(agent.user)
+    assert_equal [ "opus", "Keep commits small." ], [ agent.model, agent.instructions ]
+    assert_empty agent.tokens
+  end
+
+  test "create with MCP: creating shows no token, and issuing one shows its value once with a warning and an MCP client configuration" do
     visit_agents
     click_button "New agent"
     fill_in_agent_form
     click_button "Create agent"
+    within("dialog[open]") do
+      assert_no_field "Token", exact: true
+      click_button "Done"
+    end
+
+    open_actions "Fish"
+    click_button "Tokens"
+    fill_in_token_form
+    within("dialog[open]") { click_button "Issue token" }
 
     token = nil
     within("dialog[open]") do
@@ -60,21 +106,9 @@ class AgentsTest < ApplicationSystemTestCase
       assert_link "How to connect an MCP client", href: "/docs/mcp"
       assert_text "its worktrees included: sessions there act as Fish."
       assert_no_link "API reference" # an MCP-only token does not work at the API
-
-      execute_script("navigator.clipboard.writeText = async (text) => { window.__copied = text }")
-      click_button "Copy command"
-      assert_equal find_field("Add Goalner to Claude Code").value, evaluate_script("window.__copied")
-      click_button "Done"
     end
 
-    within(".agents") do
-      assert_text "Fish"
-      assert_text "Added by User Two"
-      assert_text "1 token"
-    end
-    assert_no_text token
     agent = Agent.joins(:user).find_by!(users: { name: "Fish" })
-    assert @project.member?(agent.user)
     assert_equal [ "runner", "read_write", "mcp", @user ], agent.tokens.sole.values_at(:name, :access, :channels, :issuer)
   end
 
@@ -93,11 +127,46 @@ class AgentsTest < ApplicationSystemTestCase
     within(".agent", text: "Newt") { assert_selector ".agent__state", text: "Offline · never checked in" }
   end
 
-  test "a token that works at the API links to the API documentation" do
+  test "where an agent runs: Fish runs on laptop of User One since its lease started, and Owl is not running" do
+    fish = create_agent(@project, name: "Fish")
+    create_agent(@project, name: "Owl")
+    laptop = Runner.issue(user: users(:one), name: "laptop").tap(&:save!)
+    lease = AgentLease.lease!(agent: fish, runner: laptop)
+
     visit_agents
-    click_button "New agent"
-    fill_in_agent_form channel: "API and MCP", access: "Read-only"
-    click_button "Create agent"
+
+    within(".agent", text: "Fish") { assert_selector ".agent__runs--running", text: /\ARuns on laptop of User One since .+\z/ }
+    within(".agent", text: "Owl") { assert_selector ".agent__runs", text: "Not running" }
+    assert lease.live?
+  end
+
+  test "start command: by name, quoted for the shell, from the agent's menu; by id when another agent shares the name" do
+    create_agent(@project, name: "Code Reviewer")
+    fish = create_agent(@project, name: "Fish")
+    create_agent(projects(:side), name: "fish").tap { |other| @project.memberships.create!(user: other.user) }
+    visit_agents
+
+    open_actions "Code Reviewer"
+    click_button "How to start"
+    within("dialog[open]") do
+      assert_selector "h2", text: "Start Code Reviewer"
+      assert_field "Register a clone of GOAL", with: "bin/goalner-worker register --clone GOAL=<path to the clone>"
+      assert_field "Start command", with: "bin/goalner-worker 'Code Reviewer'"
+      click_button "Done"
+    end
+
+    find("button[aria-label='Actions for Fish']").click
+    click_button "How to start"
+    within("dialog[open]") { assert_field "Start command", with: "bin/goalner-worker #{fish.user_id}" }
+  end
+
+  test "a token that works at the API links to the API documentation" do
+    create_agent(@project, name: "Fish")
+    visit_agents
+    open_actions "Fish"
+    click_button "Tokens"
+    fill_in_token_form channel: "API and MCP", access: "Read-only"
+    within("dialog[open]") { click_button "Issue token" }
 
     within("dialog[open]") do
       assert_link "API reference", href: "/api/docs"
@@ -106,19 +175,20 @@ class AgentsTest < ApplicationSystemTestCase
   end
 
   test "wrong password: the error is under the password field and the other fields keep their values" do
+    fish = create_agent(@project, name: "Fish")
     visit_agents
-    click_button "New agent"
-    fill_in_agent_form password: "wrong password"
-    click_button "Create agent"
+    open_actions "Fish"
+    click_button "Tokens"
+    fill_in_token_form password: "wrong password"
+    within("dialog[open]") { click_button "Issue token" }
 
     within("dialog[open]") do
       assert_invalid_field "Current password"
-      assert_field "Agent name", with: "Fish"
       assert_field "Token name", with: "runner"
       assert_checked_field "MCP only"
       assert_checked_field "Read and write"
     end
-    assert_equal 0, Agent.count
+    assert_empty fish.tokens
   end
 
   test "only project: removing is not offered where the agent has no other project, and deleting is" do
@@ -129,7 +199,7 @@ class AgentsTest < ApplicationSystemTestCase
 
     open_actions "Fish"
     assert_button "Tokens"
-    assert_button "Rename"
+    assert_button "Edit"
     assert_button "Delete"
     assert_no_button "Remove from the project"
     send_keys :escape
@@ -163,7 +233,7 @@ class AgentsTest < ApplicationSystemTestCase
     find("summary", text: "Deleted agents").click
     click_button "Restore Fish"
 
-    assert_text "Fish was restored. Issue a new token for it."
+    assert_text "Fish was restored."
     within(".agents") do
       assert_text "Fish"
       assert_text "0 tokens"
@@ -205,7 +275,7 @@ class AgentsTest < ApplicationSystemTestCase
     assert_equal [ "runner" ], fish.tokens.pluck(:name)
   end
 
-  test "add an agent from another project, and rename it" do
+  test "add an agent from another project, and edit its name, model and instructions" do
     owl = create_agent(projects(:side), name: "Owl")
     visit_agents
 
@@ -220,15 +290,31 @@ class AgentsTest < ApplicationSystemTestCase
     assert @project.member?(owl.user)
 
     open_actions "Owl"
-    click_button "Rename"
+    click_button "Edit"
     within("dialog[open]") do
       fill_in "Agent name", with: "Scout"
+      fill_in "Model", with: "opus 4"
+      fill_in "Instructions", with: "Ask before adding gems."
+      click_button "Save"
+      assert_invalid_field "Model"
+      fill_in "Model", with: "sonnet"
       click_button "Save"
     end
 
-    assert_text "Renamed to Scout"
-    within(".agents") { assert_text "Scout" }
-    assert_equal "Scout", owl.user.reload.name
+    assert_text "Scout was saved"
+    within(".agent", text: "Scout") { assert_text "Model sonnet" }
+    owl.reload
+    assert_equal [ "Scout", "sonnet", "Ask before adding gems." ], [ owl.user.name, owl.model, owl.instructions ]
+
+    open_actions "Scout"
+    click_button "Edit"
+    within("dialog[open]") do
+      assert_field "Instructions", with: "Ask before adding gems."
+      fill_in "Model", with: ""
+      click_button "Save"
+    end
+    assert_text "Scout was saved"
+    assert_nil owl.reload.model
   end
 
   # Spec web-client, "Strict CSP compatibility" and "Accessibility baseline",
@@ -248,25 +334,22 @@ class AgentsTest < ApplicationSystemTestCase
     find_button("New agent").send_keys(:enter)
     assert_selector "dialog[open]", text: "New agent"
     assert_equal "dialog", focused_dialog.call, "focus moves into the dialog"
-    fill_in_agent_form channel: "API and MCP"
-    find_field("Current password").send_keys(:enter)
-    within("dialog[open]") { assert_field "MCP client configuration" }
+    fill_in_agent_form
+    find_field("Agent name").send_keys(:enter)
+    within("dialog[open]") { assert_field "Start command" }
     find("dialog[open]").send_keys(:escape)
     assert_no_selector "dialog[open]"
     assert_equal "New agent", focused_label.call, "focus returns to the button that opened the dialog"
 
-    # The value is gone once the dialog is closed. The browser closes the
-    # dialog before the page hears of it, so wait for the page to drop it.
-    assert_no_selector ".reveal", visible: :all
+    # The form starts empty again once the dialog is closed. The browser
+    # closes the dialog before the page hears of it, so wait for the reset.
+    assert_no_field "Start command", visible: :all
     click_button "New agent"
-    within("dialog[open]") do
-      assert_field "Agent name", with: ""
-      assert_no_field "Token", exact: true
-    end
+    within("dialog[open]") { assert_field "Agent name", with: "" }
     find("dialog[open]").send_keys(:escape)
 
     # An agent's menu and the dialogs it opens.
-    { "Tokens" => "Tokens of Owl", "Rename" => "Rename Owl", "Delete" => "Delete Owl" }.each do |item, title|
+    { "How to start" => "Start Owl", "Tokens" => "Tokens of Owl", "Edit" => "Edit Owl", "Delete" => "Delete Owl" }.each do |item, title|
       find_button("Actions for Owl").send_keys(:enter)
       click_button item
       assert_selector "dialog[open]", text: title

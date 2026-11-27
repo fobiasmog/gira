@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Goalner's attach hook (spec agent-worker, "Goalner's workspace hooks";
+# add-runners-and-workspaces design.md, decision 7). bin/goalner-worker runs
+# it in a change's workspace before each run, with GOALNER_TEST_DB_SUFFIX set
+# to c<change id>. It installs the gems and JavaScript packages the
+# workspace needs, and prepares the change's test databases.
+#
+# It never creates, migrates or drops the development database, which every
+# worktree shares, so it does not use bin/setup: a branch's migrations reach
+# the change's test databases only. Safe to run more than once.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if [ -z "${GOALNER_TEST_DB_SUFFIX:-}" ]; then
+  echo "GOALNER_TEST_DB_SUFFIX is not set, so the shared test databases would be prepared. Run this through bin/goalner-worker." >&2
+  exit 1
+fi
+
+bundle check > /dev/null || bundle install
+if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
+  npm install
+  touch node_modules
+fi
+RAILS_ENV=test bin/rails db:prepare

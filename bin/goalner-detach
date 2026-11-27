@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Goalner's detach hook (spec agent-worker, "Goalner's workspace hooks";
+# add-runners-and-workspaces design.md, decision 7). bin/goalner-worker runs
+# it in an archived change's workspace before removing it, with
+# GOALNER_TEST_DB_SUFFIX set to c<change id>. It drops the change's test
+# databases: goalner_test_<suffix>, and goalner_test_<suffix>_<n> of parallel
+# test runs. It never touches the development database or other suffixes'
+# databases. Safe to run more than once.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if [ -z "${GOALNER_TEST_DB_SUFFIX:-}" ]; then
+  echo "GOALNER_TEST_DB_SUFFIX is not set, so the shared test databases would be dropped. Run this through bin/goalner-worker." >&2
+  exit 1
+fi
+
+RAILS_ENV=test bin/rails runner '
+  config = ActiveRecord::Base.configurations.configs_for(env_name: "test", name: "primary")
+  base = config.database
+  raise "unexpected test database #{base}" unless base.end_with?("_#{ENV.fetch("GOALNER_TEST_DB_SUFFIX")}")
+
+  ActiveRecord::Base.establish_connection(config.configuration_hash.merge(database: "postgres"))
+  connection = ActiveRecord::Base.connection
+  connection.select_values("SELECT datname FROM pg_database").grep(/\A#{Regexp.escape(base)}(_\d+)?\z/).sort.each do |name|
+    connection.drop_database(name)
+    puts "Dropped #{name}"
+  end
+'

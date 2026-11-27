@@ -212,4 +212,63 @@ class AgentTest < ActiveSupport::TestCase
       assert_match(/AGENT_ONLINE_SECONDS|invalid value for Integer/, err, value)
     end
   end
+
+  # Agent settings (add-runners-and-workspaces)
+
+  test "set settings: a model and instructions, kept exactly as written" do
+    agent = create_agent(projects(:goal))
+    instructions = "Keep commits small.\n\n  Ask before adding gems.  "
+
+    agent.update!(model: "opus", instructions:)
+
+    assert_equal [ "opus", instructions ], [ agent.reload.model, agent.instructions ]
+    assert agent.update(model: "claude-opus-5-5_x.1")
+  end
+
+  test "created with settings, or without: both are optional" do
+    heron = Agent.create_in!(projects(:goal), name: "Heron", created_by: users(:one), model: "sonnet", instructions: "Ask before adding gems.")
+    fish = create_agent(projects(:goal))
+
+    assert_equal [ "sonnet", "Ask before adding gems." ], [ heron.model, heron.instructions ]
+    assert_equal [ nil, nil ], [ fish.model, fish.instructions ]
+  end
+
+  test "clear the model and the instructions: empty is unset" do
+    agent = create_agent(projects(:goal))
+    agent.update!(model: "opus", instructions: "Keep commits small.")
+
+    agent.update!(model: "", instructions: "")
+    assert_equal [ nil, nil ], [ agent.reload.model, agent.instructions ]
+
+    agent.update!(model: "opus", instructions: "Keep commits small.")
+    agent.update!(model: nil, instructions: nil)
+    assert_equal [ nil, nil ], [ agent.reload.model, agent.instructions ]
+  end
+
+  test "invalid model or instructions: refused, and the settings are unchanged" do
+    agent = create_agent(projects(:goal))
+    agent.update!(model: "opus")
+
+    [ "opus 4", "opus[1m]", "модель", "a" * 101 ].each do |model|
+      assert_not agent.update(model:), model
+      assert agent.errors.include?(:model)
+      agent.reload
+    end
+    assert_not agent.update(instructions: "a" * 10_001)
+    agent.reload
+    assert agent.update(instructions: "a" * 10_000)
+    assert_equal "opus", agent.reload.model
+  end
+
+  test "the lease window is 5 minutes unless AGENT_LEASE_SECONDS sets it, and a value that is not a positive number refuses to boot" do
+    assert_equal 5.minutes, AgentLease.window
+
+    out, _err, status = Open3.capture3({ "AGENT_LEASE_SECONDS" => "600" }, "bin/rails", "runner", "puts AgentLease.window.to_i", chdir: Rails.root.to_s)
+    assert status.success?
+    assert_equal "600", out.strip
+
+    _out, err, status = Open3.capture3({ "AGENT_LEASE_SECONDS" => "0" }, "bin/rails", "runner", "puts :booted", chdir: Rails.root.to_s)
+    assert_not status.success?
+    assert_match(/AGENT_LEASE_SECONDS/, err)
+  end
 end

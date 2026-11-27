@@ -18,6 +18,12 @@
 # most one open change, and its change is blocked while its context is full
 # (add-change-requests design.md, decisions 2, 7, 8, 10 and 13). Picking,
 # releasing, blocking and archiving run under the project's lock.
+#
+# A change has a base branch, main for every change for now, and at most one
+# workspace on one runner (Workspace). The agent on it has a session for its
+# stint, a UUID that the worker continues the stint's conversation by; it
+# ends with the stint (add-runners-and-workspaces design.md, decisions 3 and
+# 8).
 class Change < ApplicationRecord
   NAME_FORMAT = /\A[a-z0-9]+(?:-[a-z0-9]+)*\z/
   NAME_LIMIT = 100
@@ -29,6 +35,8 @@ class Change < ApplicationRecord
   # anything else names an open change by its name (spec changes, "Open a
   # change").
   ID_FORMAT = /\A\d+\z/
+  # Every change's work starts from it for now; nobody chooses another.
+  BASE_BRANCH = "main"
 
   belongs_to :project
   belongs_to :imported_by, class_name: "User", optional: true
@@ -38,6 +46,7 @@ class Change < ApplicationRecord
   has_many :comments, dependent: :destroy
   has_many :requests, class_name: "ChangeRequest", dependent: :delete_all
   has_one :open_request, -> { unfinished }, class_name: "ChangeRequest", inverse_of: :change
+  has_one :workspace, dependent: :delete
   # The agent's user, picked or on the change.
   belongs_to :agent, class_name: "User", optional: true
 
@@ -60,6 +69,9 @@ class Change < ApplicationRecord
 
   # No idea is an empty idea.
   normalizes :idea, with: ->(idea) { idea.presence }
+
+  attribute :base_branch, default: BASE_BRANCH
+  attr_readonly :base_branch
 
   def self.valid_name?(name)
     name.is_a?(String) && name.length <= NAME_LIMIT && NAME_FORMAT.match?(name)
@@ -160,7 +172,17 @@ class Change < ApplicationRecord
       next if archived?
 
       open_request&.close!("cancelled", by:)
-      update!(archived_at: Time.current)
+      update!(archived_at: Time.current, agent_session_id: nil)
+    end
+  end
+
+  # Under the project's lock, gives the agent on the change a session for
+  # its stint when it has none (spec agent-workspaces, "Session of a
+  # stint"), as for a change it was on before sessions existed.
+  def give_session!
+    project.with_lock do
+      reload
+      update!(agent_session_id: SecureRandom.uuid) if agent_on? && !archived? && agent_session_id.nil?
     end
   end
 
@@ -175,7 +197,7 @@ class Change < ApplicationRecord
 
       released = agent
       open_request.close!("cancelled", by:) if open_request&.state == "taken"
-      update!(agent: nil, agent_taken_at: nil, agent_blocked_at: nil)
+      update!(agent: nil, agent_taken_at: nil, agent_blocked_at: nil, agent_session_id: nil)
       events.create!(kind: "release", actor: by, agent: released)
     end
   end

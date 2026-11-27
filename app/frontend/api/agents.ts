@@ -1,5 +1,5 @@
 import { api } from "./client.ts"
-import type { Agent, AgentChannel, AgentToken, ApiTokenAccess, Id, NewAgent, NewAgentToken, ProjectAgent, VisibleAgent } from "./types.ts"
+import type { Agent, AgentChannel, AgentSettings, AgentToken, ApiTokenAccess, Id, NewAgentToken, ProjectAgent, VisibleAgent } from "./types.ts"
 
 // Agents (spec agents; spec web-client, "Agents screen"). An agent's id is
 // its account's id, as in member lists.
@@ -15,11 +15,13 @@ export const agentsApi = {
   visible: () => api.get<VisibleAgent[]>("/agents"),
   // A project's agents, active and deleted.
   inProject: (projectId: Id) => api.get<ProjectAgent[]>(`/projects/${projectId}/agents`),
-  create: (projectId: Id, name: string, token: AgentTokenFields, currentPassword: string) =>
-    api.post<NewAgent>(`/projects/${projectId}/agents`, { name, token, current_password: currentPassword }),
+  // With no token and no password: a runner leases it, or a member issues it a token.
+  create: (projectId: Id, fields: { name: string; model: string | null; instructions: string | null }) =>
+    api.post<ProjectAgent>(`/projects/${projectId}/agents`, fields),
   addToProject: (projectId: Id, agentId: Id) => api.post<Agent>(`/projects/${projectId}/agent_memberships`, { agent_id: agentId }),
   removeFromProject: (projectId: Id, agentId: Id) => api.delete(`/projects/${projectId}/members/${agentId}`),
-  rename: (agentId: Id, name: string) => api.patch<Agent>(`/agents/${agentId}`, { name }),
+  // Its name, model and instructions, any of them.
+  update: (agentId: Id, settings: AgentSettings) => api.patch<Agent>(`/agents/${agentId}`, settings),
   delete: (agentId: Id) => api.delete(`/agents/${agentId}`),
   restore: (agentId: Id) => api.post<Agent>(`/agents/${agentId}/restoration`),
   tokens: (agentId: Id) => api.get<AgentToken[]>(`/agents/${agentId}/tokens`),
@@ -59,6 +61,31 @@ export function addableAgents(visible: VisibleAgent[], projectId: Id): VisibleAg
 // The list once agent replaces the entry with its id, or joins it, by name.
 export function withAgent<T extends Agent>(agents: T[], agent: T): T[] {
   return [...agents.filter((other) => other.id !== agent.id), agent].sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id)
+}
+
+// A word as a shell reads it: as it is when it holds nothing the shell
+// treats specially, otherwise in single quotes.
+export function shellWord(word: string): string {
+  return /^[A-Za-z0-9_.\/:@%+=-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`
+}
+
+// How to register a clone of a project's repository on a machine that runs
+// agents: once per machine, with the path to fill in.
+export function registerCloneCommand(projectShortName: string): string {
+  return `bin/goalner-worker register --clone ${projectShortName}=<path to the clone>`
+}
+
+// How to run an agent on a machine registered as a runner: by its name, or
+// by its id when another of the project's agents has the same name.
+export function startCommand(agent: Pick<Agent, "id" | "name">, agents: Pick<Agent, "id" | "name">[]): string {
+  const name = agent.name.trim().toLocaleLowerCase()
+  const shared = agents.some((other) => other.id !== agent.id && other.name.trim().toLocaleLowerCase() === name)
+  return `bin/goalner-worker ${shared || /^\d+$/.test(agent.name.trim()) ? agent.id : shellWord(agent.name)}`
+}
+
+// An optional setting as the server takes it: empty is unset.
+export function settingValue(value: string): string | null {
+  return value.trim() === "" ? null : value
 }
 
 // What to paste into a terminal to add Goalner to Claude Code with a token.

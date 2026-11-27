@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_18_100100) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_27_090300) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -42,12 +42,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_100100) do
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
   end
 
+  create_table "agent_leases", force: :cascade do |t|
+    t.bigint "agent_id", null: false
+    t.bigint "runner_id", null: false
+    t.datetime "renewed_at", null: false
+    t.datetime "ended_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["agent_id"], name: "index_agent_leases_live", unique: true, where: "(ended_at IS NULL)"
+    t.index ["agent_id"], name: "index_agent_leases_on_agent_id"
+    t.index ["runner_id"], name: "index_agent_leases_on_runner_id"
+  end
+
   create_table "agents", force: :cascade do |t|
     t.bigint "user_id", null: false
     t.bigint "created_by_id", null: false
     t.datetime "deleted_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "model"
+    t.text "instructions"
     t.index ["created_by_id"], name: "index_agents_on_created_by_id"
     t.index ["user_id"], name: "index_agents_on_user_id", unique: true
   end
@@ -82,13 +96,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_100100) do
     t.bigint "oauth_access_token_id"
     t.bigint "issuer_id"
     t.string "channels"
+    t.bigint "agent_lease_id"
+    t.index ["agent_lease_id"], name: "index_api_tokens_on_agent_lease_id", unique: true
     t.index ["expires_at"], name: "index_api_tokens_on_expires_at"
     t.index ["issuer_id"], name: "index_api_tokens_on_issuer_id"
     t.index ["oauth_access_token_id"], name: "index_api_tokens_on_oauth_access_token_id"
     t.index ["project_id"], name: "index_api_tokens_on_project_id"
     t.index ["token_digest"], name: "index_api_tokens_on_token_digest", unique: true
     t.index ["user_id"], name: "index_api_tokens_on_user_id"
-    t.check_constraint "project_id IS NOT NULL AND oauth_access_token_id IS NULL AND issuer_id IS NULL AND channels IS NULL OR project_id IS NULL AND oauth_access_token_id IS NOT NULL AND issuer_id IS NULL AND channels IS NULL OR project_id IS NULL AND oauth_access_token_id IS NULL AND issuer_id IS NOT NULL AND channels IS NOT NULL AND (channels::text = ANY (ARRAY['api'::character varying, 'mcp'::character varying, 'api_mcp'::character varying]::text[]))", name: "api_tokens_kind"
+    t.check_constraint "project_id IS NOT NULL AND oauth_access_token_id IS NULL AND issuer_id IS NULL AND channels IS NULL AND agent_lease_id IS NULL OR project_id IS NULL AND oauth_access_token_id IS NOT NULL AND issuer_id IS NULL AND channels IS NULL AND agent_lease_id IS NULL OR project_id IS NULL AND oauth_access_token_id IS NULL AND issuer_id IS NOT NULL AND channels IS NOT NULL AND (channels::text = ANY (ARRAY['api'::character varying, 'mcp'::character varying, 'api_mcp'::character varying]::text[]))", name: "api_tokens_kind"
   end
 
   create_table "change_events", force: :cascade do |t|
@@ -148,12 +164,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_100100) do
     t.bigint "agent_id"
     t.datetime "agent_taken_at"
     t.datetime "agent_blocked_at"
+    t.string "base_branch", default: "main", null: false
+    t.uuid "agent_session_id"
     t.index ["agent_id"], name: "index_changes_on_agent_id"
     t.index ["agent_id"], name: "index_changes_on_agent_id_on", unique: true, where: "((agent_taken_at IS NOT NULL) AND (archived_at IS NULL))"
     t.index ["imported_by_id"], name: "index_changes_on_imported_by_id"
     t.index ["project_id", "name"], name: "index_changes_on_project_id_and_name_open", unique: true, where: "(archived_at IS NULL)"
     t.index ["project_id"], name: "index_changes_on_project_id"
     t.check_constraint "(agent_taken_at IS NULL OR agent_id IS NOT NULL) AND (agent_blocked_at IS NULL OR agent_taken_at IS NOT NULL)", name: "changes_agent"
+    t.check_constraint "agent_session_id IS NULL OR agent_taken_at IS NOT NULL", name: "changes_agent_session"
     t.check_constraint "phase::text = ANY (ARRAY['idea'::character varying, 'exploring'::character varying, 'proposed'::character varying, 'implementing'::character varying]::text[])", name: "changes_phase"
   end
 
@@ -261,6 +280,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_100100) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["owner_id"], name: "index_projects_on_owner_id"
+  end
+
+  create_table "runners", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "name", null: false
+    t.string "token_digest", null: false
+    t.string "last_characters", null: false
+    t.datetime "last_contact_at"
+    t.datetime "revoked_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["token_digest"], name: "index_runners_on_token_digest", unique: true
+    t.index ["user_id"], name: "index_runners_on_user_id"
   end
 
   create_table "sessions", force: :cascade do |t|
@@ -487,12 +519,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_100100) do
     t.index ["email_address"], name: "index_users_on_email_address", unique: true
   end
 
+  create_table "workspaces", force: :cascade do |t|
+    t.bigint "change_id", null: false
+    t.bigint "runner_id", null: false
+    t.text "path", null: false
+    t.string "branch", null: false
+    t.string "base_branch", null: false
+    t.string "state", default: "active", null: false
+    t.string "head_commit"
+    t.boolean "uncommitted"
+    t.datetime "checkpoint_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["change_id"], name: "index_workspaces_on_change_id", unique: true
+    t.index ["runner_id"], name: "index_workspaces_on_runner_id"
+    t.check_constraint "(head_commit IS NULL) = (checkpoint_at IS NULL) AND (uncommitted IS NULL) = (checkpoint_at IS NULL)", name: "workspaces_checkpoint"
+    t.check_constraint "state::text = ANY (ARRAY['active'::character varying, 'kept'::character varying, 'removed'::character varying]::text[])", name: "workspaces_state"
+  end
+
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "agent_leases", "runners"
+  add_foreign_key "agent_leases", "users", column: "agent_id"
   add_foreign_key "agents", "users"
   add_foreign_key "agents", "users", column: "created_by_id"
   add_foreign_key "announcement_dismissals", "announcements"
   add_foreign_key "announcement_dismissals", "users"
+  add_foreign_key "api_tokens", "agent_leases"
   add_foreign_key "api_tokens", "oauth_access_tokens", on_delete: :cascade
   add_foreign_key "api_tokens", "projects"
   add_foreign_key "api_tokens", "users"
@@ -521,6 +574,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_100100) do
   add_foreign_key "oauth_access_tokens", "oauth_applications", column: "application_id", on_delete: :cascade
   add_foreign_key "oauth_access_tokens", "users", column: "resource_owner_id", on_delete: :cascade
   add_foreign_key "projects", "users", column: "owner_id"
+  add_foreign_key "runners", "users"
   add_foreign_key "sessions", "users"
   add_foreign_key "solid_queue_batch_executions", "solid_queue_batches", column: "batch_id", on_delete: :cascade
   add_foreign_key "solid_queue_batch_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
@@ -538,4 +592,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_100100) do
   add_foreign_key "tasks", "tasks", column: "parent_id"
   add_foreign_key "tasks", "users", column: "assignee_id"
   add_foreign_key "tasks", "users", column: "creator_id"
+  add_foreign_key "workspaces", "changes"
+  add_foreign_key "workspaces", "runners"
 end

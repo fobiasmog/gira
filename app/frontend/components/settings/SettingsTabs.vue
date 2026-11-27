@@ -10,6 +10,7 @@ const route = useRoute()
     <RouterLink :to="{ name: 'settings-profile' }" :aria-current="route.name === 'settings-profile' ? 'page' : undefined">{{ t("settings.profile") }}</RouterLink>
     <RouterLink :to="{ name: 'settings-security' }" :aria-current="route.name === 'settings-security' ? 'page' : undefined">{{ t("settings.security") }}</RouterLink>
     <RouterLink :to="{ name: 'settings-api-tokens' }" :aria-current="route.name === 'settings-api-tokens' ? 'page' : undefined">{{ t("settings.apiTokens") }}</RouterLink>
+    <RouterLink :to="{ name: 'settings-runners' }" :aria-current="route.name === 'settings-runners' ? 'page' : undefined">{{ t("settings.runners") }}</RouterLink>
     <RouterLink :to="{ name: 'settings-connected-apps' }" :aria-current="route.name === 'settings-connected-apps' ? 'page' : undefined">{{ t("settings.connectedApps") }}</RouterLink>
   </nav>
 </template>

@@ -1,7 +1,8 @@
 require "test_helper"
 
-# Spec agents, "Create an agent in a project", "Issue agent tokens" (limits)
-# and "Delete an agent" (the project's list). goal: one (owner) and two.
+# Spec agents, "Create an agent in a project", "Agent settings" and "Delete
+# an agent" (the project's list); spec agent-runners, "Leases in the agent
+# list". goal: one (owner) and two.
 # side: two (owner) and stranger.
 class Api::Projects::AgentsControllerTest < ActionDispatch::IntegrationTest
   setup do
@@ -10,9 +11,8 @@ class Api::Projects::AgentsControllerTest < ActionDispatch::IntegrationTest
     sign_in_as @user
   end
 
-  def create_agent_request(project: @project, token: {}, **overrides)
-    params = { name: "Fish", token: { name: "runner", access: "read_write", channels: %w[api mcp] }.merge(token), current_password: PASSWORD }
-    post api_project_agents_path(project), params: params.merge(overrides), as: :json
+  def create_agent_request(project: @project, **overrides)
+    post api_project_agents_path(project), params: { name: "Fish" }.merge(overrides), as: :json
   end
 
   def field_errors
@@ -23,52 +23,54 @@ class Api::Projects::AgentsControllerTest < ActionDispatch::IntegrationTest
     assert_no_difference [ -> { Agent.count }, -> { User.count }, -> { ApiToken.count }, -> { Membership.count } ], &block
   end
 
-  test "create: the agent joins the project at once and its first token's value is returned" do
-    assert_difference [ -> { Agent.count }, -> { ApiToken.of_agents.count } ], 1 do
-      create_agent_request
+  test "create: the agent joins the project at once, with no token and no settings" do
+    assert_difference -> { Agent.count }, 1 do
+      assert_no_difference -> { ApiToken.count } do
+        create_agent_request
+      end
     end
 
     assert_response :created
     body = response.parsed_body
     agent = Agent.find_by!(user_id: body["id"])
     assert @project.member?(agent.user)
-    assert_equal [ "Fish", true, false, 1, false ], body.values_at("name", "agent", "deleted", "token_count", "removable")
+    assert_equal [ "Fish", true, false, 0, false, nil, nil, nil ], body.values_at("name", "agent", "deleted", "token_count", "removable", "model", "instructions", "lease")
     assert_match(/\A[a-z]+-[a-z]+-\d{4}@agents\.goalner\.com\z/, body["email_address"])
     assert_equal [ @user.id, "User Two" ], body["created_by"].values_at("id", "name")
     assert_nil body["deleted_at"]
-
-    token = body["first_token"]
-    assert_match(/\Aglnr_\w{40}\z/, token["token"])
-    assert_equal [ "runner", "read_write", %w[api mcp], token["token"].last(4) ], token.values_at("name", "access", "channels", "last_characters")
-    assert_equal @user.id, token.dig("issuer", "id")
-    assert_equal Oauth.resource, token["mcp_url"]
-    assert_not token.key?("expires_at")
+    assert_not body.key?("first_token")
+    assert_empty agent.tokens
 
     get api_project_members_path(@project)
     fish = response.parsed_body.find { |member| member["name"] == "Fish" }
     assert_equal [ agent.user.id, true ], fish.values_at("id", "agent")
-
-    sign_out
-    get api_me_path, headers: bearer(token["token"])
-    assert_response :success
-    assert_equal agent.user.id, response.parsed_body["id"]
   end
 
-  test "wrong password: nothing is created and the attempt counts toward lockout" do
-    assert_nothing_created { create_agent_request(current_password: "wrong password") }
+  test "with settings: the agent has that model and those instructions" do
+    create_agent_request(name: "Heron", model: "sonnet", instructions: "Ask before adding gems.")
 
-    assert_response :unprocessable_content
-    assert field_errors["current_password"].present?
-    assert_equal 1, @user.reload.failed_login_attempts
+    assert_response :created
+    assert_equal [ "sonnet", "Ask before adding gems." ], response.parsed_body.values_at("model", "instructions")
+    heron = Agent.find_by!(user_id: response.parsed_body["id"])
+    assert_equal [ "sonnet", "Ask before adding gems." ], [ heron.model, heron.instructions ]
   end
 
-  test "a locked account is refused like a wrong password, even with the right one" do
-    @user.update_columns(failed_login_attempts: 10, locked_until: 30.minutes.from_now)
+  test "wrong password: the agent is created, and the attempt is not counted, since creating asks for no password" do
+    assert_difference -> { Agent.count }, 1 do
+      create_agent_request(name: "Owl", current_password: "wrong password")
+    end
 
-    assert_nothing_created { create_agent_request }
+    assert_response :created
+    assert_equal 0, @user.reload.failed_login_attempts
+  end
 
-    assert_response :unprocessable_content
-    assert field_errors["current_password"].present?
+  test "an invalid model or instructions create nothing, with a validation error on the field" do
+    { { model: "opus 4" } => "model", { instructions: "a" * 10_001 } => "instructions" }.each do |settings, field|
+      assert_nothing_created { create_agent_request(**settings) }
+
+      assert_response :unprocessable_content
+      assert field_errors[field].present?, "#{field}: #{field_errors.inspect}"
+    end
   end
 
   test "archived project: 404 and nothing is created" do
@@ -96,31 +98,13 @@ class Api::Projects::AgentsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "a first token that cannot be issued creates no agent, and its errors are named under token" do
-    {
-      { channels: %w[ftp] } => "token.channels",
-      { channels: [] } => "token.channels",
-      { access: "admin" } => "token.access",
-      { name: "" } => "token.name"
-    }.each do |token, field|
-      assert_nothing_created { create_agent_request(token: token) }
-
-      assert_response :unprocessable_content
-      assert field_errors[field].present?, "#{field}: #{field_errors.inspect}"
-    end
-  end
-
-  test "hourly limit: creating agents and issuing tokens share ten an hour" do
-    6.times { |i| create_agent_request(name: "Agent #{i}") }
+  test "creating agents counts toward no limit on agent tokens" do
+    11.times { |i| create_agent_request(name: "Agent #{i}") }
     assert_response :created
     agent = Agent.find_by!(user_id: response.parsed_body["id"])
-    4.times { post api_agent_tokens_path(agent.user_id), params: { name: "t", access: "read", channels: %w[api], current_password: PASSWORD }, as: :json }
+
+    post api_agent_tokens_path(agent.user_id), params: { name: "t", access: "read", channels: %w[api], current_password: PASSWORD }, as: :json
     assert_response :created
-
-    assert_nothing_created { create_agent_request(name: "Eleventh") }
-
-    assert_response :too_many_requests
-    assert_equal "rate_limited", response.parsed_body.dig("error", "code")
   end
 
   test "tokens cannot create agents" do
@@ -129,8 +113,7 @@ class Api::Projects::AgentsControllerTest < ActionDispatch::IntegrationTest
 
     [ "glnr_two_goal_read_write", issue_agent_token(fish, issuer: @user) ].each do |token|
       assert_no_difference -> { Agent.count } do
-        post api_project_agents_path(@project), params: { name: "Spawn", token: { name: "t", access: "read", channels: %w[api] }, current_password: PASSWORD },
-          headers: bearer(token), as: :json
+        post api_project_agents_path(@project), params: { name: "Spawn" }, headers: bearer(token), as: :json
       end
 
       assert_response :forbidden
@@ -209,5 +192,34 @@ class Api::Projects::AgentsControllerTest < ActionDispatch::IntegrationTest
     sign_out
     get api_project_agents_path(@project), headers: bearer("glnr_two_goal_read_write")
     assert_response :forbidden
+  end
+
+  # Leases in the agent list (spec agent-runners)
+
+  test "running agent: listed with its runner, the runner's owner and since when, and its run token not counted" do
+    fish = create_agent(@project, name: "Fish")
+    create_agent(@project, name: "Owl")
+    laptop = Runner.issue(user: users(:one), name: "laptop").tap(&:save!)
+    started = Time.utc(2026, 11, 27, 14, 5)
+    travel_to(started) { AgentLease.lease!(agent: fish, runner: laptop) }
+
+    travel_to(started + 1.minute) { get api_project_agents_path(@project) }
+
+    agents = response.parsed_body.index_by { |agent| agent["name"] }
+    lease = agents["Fish"]["lease"]
+    assert_equal [ "laptop", "User One", started.as_json ], [ lease.dig("runner", "name"), lease.dig("owner", "name"), lease["since"] ]
+    assert_equal 0, agents["Fish"]["token_count"]
+    assert_nil agents["Owl"]["lease"]
+  end
+
+  test "a lease that lapsed or ended is not listed" do
+    fish = create_agent(@project, name: "Fish")
+    laptop = Runner.issue(user: users(:one), name: "laptop").tap(&:save!)
+    AgentLease.lease!(agent: fish, runner: laptop)
+
+    travel 6.minutes do
+      get api_project_agents_path(@project)
+      assert_nil response.parsed_body.sole["lease"]
+    end
   end
 end

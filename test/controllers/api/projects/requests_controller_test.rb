@@ -39,7 +39,8 @@ class Api::Projects::RequestsControllerTest < ActionDispatch::IntegrationTest
     taken = claim(fish)
 
     assert_equal [ "explore", "taken", "Fish", "User One" ], [ taken["kind"], taken["state"], taken.dig("taken_by", "name"), taken.dig("requested_by", "name") ]
-    assert_equal({ "id" => login.id, "name" => "fix-login", "phase" => "exploring" }, taken["change"])
+    assert_equal({ "id" => login.id, "name" => "fix-login", "phase" => "exploring", "base_branch" => "main",
+      "session_id" => login.reload.agent_session_id, "workspace" => nil }, taken["change"])
     assert taken["taken_at"].present?
     assert_equal @fish.user, login.reload.agent
     assert_equal "waiting", newer.reload.state
@@ -312,5 +313,82 @@ class Api::Projects::RequestsControllerTest < ActionDispatch::IntegrationTest
 
     assert_equal "implement", claim(heron)["kind"]
     assert_equal [ @heron.user, false ], [ change.reload.agent, change.blocked? ]
+  end
+
+  # Runners: base branch, session and workspace; renewal (spec
+  # change-requests, "Take a request"; spec agent-runners, "Renewing and
+  # ending a lease")
+
+  def laptop = @laptop ||= Runner.issue(user: users(:one), name: "laptop").tap(&:save!)
+
+  test "base branch, session and workspace: Fish, leased to laptop, takes the reply request of a change with its workspace there" do
+    change = create_change("export-csv")
+    ask(change, "explore")
+    lease = AgentLease.lease!(agent: @fish, runner: laptop)
+    run_token = bearer(lease.run_token_value)
+    explore = claim(run_token)
+    post finish_api_project_request_path(@project, explore["id"]), params: { outcome: "done", comment: "Questions." }, headers: run_token, as: :json
+    workspace = Workspace.record!(change:, runner: laptop, path: "/home/bob/goalner/workspaces/GOAL/export-csv", branch: "export-csv")
+    workspace.checkpoint!(head_commit: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", uncommitted: true)
+    reply = change.requests.create!(kind: "reply", requested_by: users(:one))
+
+    taken = claim(run_token)
+
+    assert_equal reply.id, taken["id"]
+    assert_equal [ "export-csv", "main", explore.dig("change", "session_id") ], taken["change"].values_at("name", "base_branch", "session_id")
+    assert_match(/\A\h{8}-\h{4}-4\h{3}-[89ab]\h{3}-\h{12}\z/, taken.dig("change", "session_id"))
+    assert_equal({ "id" => workspace.id, "runner" => { "name" => "laptop" }, "path" => "/home/bob/goalner/workspaces/GOAL/export-csv",
+      "branch" => "export-csv", "base_branch" => "main", "state" => "active", "recorded_at" => workspace.created_at.as_json,
+      "checkpoint" => { "head_commit" => "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", "uncommitted" => true, "at" => workspace.reload.checkpoint_at.as_json } },
+      taken.dig("change", "workspace"))
+  end
+
+  test "every take with a run token renews its lease, so it does not lapse while the worker takes" do
+    lease = AgentLease.lease!(agent: @fish, runner: laptop)
+    run_token = bearer(lease.run_token_value)
+
+    travel(4.minutes) { assert_nil claim(run_token) }
+    travel(8.minutes) { assert_nil claim(run_token) }
+
+    assert lease.reload.live?
+    travel(14.minutes) do
+      post claim_api_project_requests_path(@project), headers: run_token, as: :json
+      assert_response :unauthorized
+    end
+  end
+
+  test "lapse: a run token whose last take was six minutes ago gets 401, and another runner can lease Fish" do
+    lease = AgentLease.lease!(agent: @fish, runner: laptop)
+    claim(bearer(lease.run_token_value))
+
+    travel 6.minutes do
+      post claim_api_project_requests_path(@project), headers: bearer(lease.run_token_value), as: :json
+      assert_response :unauthorized
+
+      desktop = Runner.issue(user: users(:one), name: "desktop").tap(&:save!)
+      assert AgentLease.lease!(agent: @fish, runner: desktop).live?
+    end
+  end
+
+  test "a token that is not a run token gets nothing from a change whose workspace is active" do
+    change = create_change("export-csv")
+    Workspace.create!(change:, runner: laptop, path: "/w/export-csv", branch: "export-csv", base_branch: "main")
+    explore = ask(change, "explore")
+
+    assert_nil claim(fish)
+    assert_equal "waiting", explore.reload.state
+  end
+
+  test "a run token reports a full context: the change is blocked, and the next take gives nothing" do
+    change = create_change("export-csv")
+    ask(change, "implement")
+    run_token = bearer(AgentLease.lease!(agent: @fish, runner: laptop).run_token_value)
+    claim(run_token)
+
+    post context_full_api_project_requests_path(@project), headers: run_token, as: :json
+
+    assert_equal({ "blocked" => true }, response.parsed_body)
+    assert change.reload.blocked?
+    assert_nil claim(run_token)
   end
 end

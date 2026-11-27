@@ -18,9 +18,13 @@ class Api::AgentsController < Api::BaseController
     }
   end
 
-  # Renames the agent.
+  # Its name, model and instructions, any of them (spec agents, "Agent
+  # settings"); null or empty clears a setting.
   def update
-    @agent.user.update!(name: params.require(:name))
+    Agent.transaction do
+      @agent.user.update!(name: params[:name]) if params.key?(:name)
+      @agent.update!(params.permit(:model, :instructions))
+    end
     render json: AgentSerializer.new(@agent)
   end
 

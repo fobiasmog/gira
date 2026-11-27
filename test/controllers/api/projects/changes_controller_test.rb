@@ -2,8 +2,9 @@ require "test_helper"
 
 # Spec changes: "Changes in a project", "Create a change", "Change lists and
 # statistics", "Open a change", "Archive a change", "Change task list", "Idea
-# of a change", "Phase of a change", "Change history" and "Waiting for
-# people"; spec openspec-changes, "Read a change".
+# of a change", "Phase of a change", "Change history", "Waiting for people"
+# and "Base branch of a change"; spec openspec-changes, "Read a change"; spec
+# agent-workspaces, "Workspace in change responses".
 class Api::Projects::ChangesControllerTest < ActionDispatch::IntegrationTest
   TEXT = "## 1. Model\n\n- [ ] 1.1 Add the table\n- [ ] 1.2 Add the model\n\n## 2. API\n\n- [ ] 2.1 Add the routes\n"
 
@@ -499,8 +500,9 @@ class Api::Projects::ChangesControllerTest < ActionDispatch::IntegrationTest
     assert_equal %w[proposal.md specs/export/spec.md tasks.md], response.parsed_body["history"].first["paths"]
   end
 
-  test "the changes list and the board take the same number of queries for one change and for five" do
+  test "the changes list and the board take the same number of queries for one change and for five, workspaces included" do
     fish = create_agent(@project).user
+    laptop = Runner.issue(user: users(:one), name: "laptop").tap(&:save!)
     count_queries = lambda do |path|
       queries = 0
       callback = ->(*, payload) { queries += 1 unless payload[:name] == "SCHEMA" || payload[:cached] }
@@ -515,6 +517,7 @@ class Api::Projects::ChangesControllerTest < ActionDispatch::IntegrationTest
       ChangeRequest.ask!(change:, kind: "explore", by: users(:one))
       change.update!(agent:)
       ChangeRequest.take!(project: @project, agent:)
+      Workspace.create!(change:, runner: laptop, path: "/w/#{name}", branch: name, base_branch: "main")
     end
 
     add_change.("change-0")
@@ -523,6 +526,60 @@ class Api::Projects::ChangesControllerTest < ActionDispatch::IntegrationTest
     five = [ count_queries.(api_project_changes_path(@project)), count_queries.(api_project_board_path(@project)) ]
 
     assert_equal one, five
-    assert_equal 5, response.parsed_body["changes"].count { |change| change["request"] && change["agent"] }
+    assert_equal 5, response.parsed_body["changes"].count { |change| change["request"] && change["agent"] && change["workspace"] }
+  end
+
+  # Base branch of a change, and its workspace
+
+  test "created by a member: the base branch main, in the answer, the list and the change" do
+    post api_project_changes_path(@project), params: { name: "export-csv" }, as: :json
+
+    assert_equal [ "main", nil ], response.parsed_body.values_at("base_branch", "workspace")
+    get api_project_changes_path(@project)
+    assert_equal [ "main" ], response.parsed_body.map { |change| change["base_branch"] }
+    get api_project_change_path(@project, "export-csv")
+    assert_equal [ "main", nil ], response.parsed_body.values_at("base_branch", "workspace")
+  end
+
+  test "another branch given: the change has the base branch main" do
+    post api_project_changes_path(@project), params: { name: "fix-login", base_branch: "release/2.0" }, as: :json
+    assert_response :created
+    assert_equal "main", @project.project_changes.find_by!(name: "fix-login").base_branch
+
+    patch api_project_change_path(@project, "fix-login"), params: { base_branch: "release/2.0" }, as: :json
+    assert_response :success
+    assert_equal "main", @project.project_changes.find_by!(name: "fix-login").base_branch
+  end
+
+  test "created by an import: the base branch main, whatever the import says" do
+    post api_project_openspec_changes_path(@project), params: { name: "add-tags", base_branch: "release/2.0", artifacts: { tasks: TEXT } }, as: :json
+
+    assert_response :success
+    assert_equal "main", @project.project_changes.find_by!(name: "add-tags").base_branch
+  end
+
+  test "open a change with a workspace: its runner, path, branch, base branch, state and latest checkpoint" do
+    change = create_change("export-csv")
+    laptop = Runner.issue(user: users(:two), name: "laptop").tap(&:save!)
+    workspace = Workspace.create!(change:, runner: laptop, path: "/home/bob/goalner/workspaces/GOAL/export-csv", branch: "export-csv", base_branch: "main")
+    workspace.checkpoint!(head_commit: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", uncommitted: true)
+
+    get api_project_change_path(@project, change)
+
+    shown = response.parsed_body["workspace"]
+    assert_equal [ "laptop", "/home/bob/goalner/workspaces/GOAL/export-csv", "export-csv", "main", "active" ],
+      [ shown.dig("runner", "name"), *shown.values_at("path", "branch", "base_branch", "state") ]
+    assert_equal [ "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", true ], shown["checkpoint"].values_at("head_commit", "uncommitted")
+    assert_equal workspace.reload.checkpoint_at.as_json, shown.dig("checkpoint", "at")
+    get api_project_changes_path(@project)
+    assert_equal "laptop", response.parsed_body.sole.dig("workspace", "runner", "name")
+  end
+
+  test "no workspace: a change in Idea shows null" do
+    create_change("add-tags")
+
+    get api_project_change_path(@project, "add-tags")
+
+    assert_nil response.parsed_body["workspace"]
   end
 end

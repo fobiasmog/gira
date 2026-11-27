@@ -26,7 +26,8 @@ module Goalner
     # Please, add to the `ignore` list any other `lib` subdirectories that do
     # not contain `.rb` files, or that should not be reloaded or eager loaded.
     # Common ones are `templates`, `generators`, or `middleware`, for example.
-    config.autoload_lib(ignore: %w[assets tasks])
+    # goalner_worker is bin/goalner-worker's, which runs without the app.
+    config.autoload_lib(ignore: %w[assets goalner_worker tasks])
 
     # Files are only served through FilesController, which checks project
     # membership (design.md, Decision 7). Active Storage's public routes are off.
@@ -49,12 +50,20 @@ module Goalner
     config.x.agents.email_domain = "agents.#{config.x.domain}"
 
     # How long an agent counts as online after its last check-in, its last
-    # take of a request (spec change-requests, "Check-ins"): three ticks of
-    # /loop 1m unless AGENT_ONLINE_SECONDS says otherwise, for workers that
-    # loop more slowly.
+    # take of a request (spec change-requests, "Check-ins"): three minutes
+    # unless AGENT_ONLINE_SECONDS says otherwise. bin/goalner-worker takes
+    # every 10 seconds while it waits, and every 30 during a run.
     online_seconds = Integer(ENV.fetch("AGENT_ONLINE_SECONDS", "180"), 10)
     raise ArgumentError, "AGENT_ONLINE_SECONDS must be a positive number of seconds" unless online_seconds.positive?
     config.x.agents.online_window = online_seconds.seconds
+
+    # How long a lease of an agent to a runner lives after its last renewal,
+    # its run token's last take of a request (spec agent-runners, "Renewing
+    # and ending a lease"; add-runners-and-workspaces design.md, decision 2):
+    # five minutes unless AGENT_LEASE_SECONDS says otherwise.
+    lease_seconds = Integer(ENV.fetch("AGENT_LEASE_SECONDS", "300"), 10)
+    raise ArgumentError, "AGENT_LEASE_SECONDS must be a positive number of seconds" unless lease_seconds.positive?
+    config.x.agents.lease_window = lease_seconds.seconds
 
     # How to connect MCP clients: the README's MCP section (McpGuidesController).
     config.x.mcp.guide_url = "https://github.com/fobiasmog/gira#mcp-server"

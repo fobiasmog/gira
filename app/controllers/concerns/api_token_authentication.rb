@@ -16,6 +16,10 @@
 #   key is the MCP server's own fault, not the token's, and is answered 401
 #   invalid_service_key, which the MCP server reports as "unavailable".
 #   Every other token ignores the key, which authenticates nothing by itself.
+# - A run token authenticates only while its lease lives (spec agent-runners,
+#   "Run tokens"); one whose lease lapsed ends it now, and is unknown.
+# - A runner secret is no API token, so it is unknown here too: runners
+#   authenticate on their own endpoints only (RunnerAuthentication).
 #
 # Including controllers answer refusals in render_token_error(status, code).
 module ApiTokenAuthentication
@@ -63,6 +67,7 @@ module ApiTokenAuthentication
 
     def authenticate_by_api_token
       api_token = authenticate_with_http_token { |value| ApiToken.find_active_by_value(value) }
+      api_token = nil if api_token&.run_token? && !api_token.agent_lease.live_or_end!
       return render_token_error(:unauthorized, :invalid_token) unless api_token
       if (refusal = channel_refusal(api_token))
         return render_token_error(:unauthorized, refusal)

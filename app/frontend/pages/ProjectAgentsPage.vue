@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from "vue"
-import AppDialog from "../components/ui/AppDialog.vue"
-import AppField from "../components/ui/AppField.vue"
+import { computed, ref, watch } from "vue"
 import AppIcon from "../components/ui/AppIcon.vue"
 import AppMenu from "../components/ui/AppMenu.vue"
 import ConfirmDialog from "../components/ui/ConfirmDialog.vue"
 import AgentAddDialog from "../components/agents/AgentAddDialog.vue"
 import AgentCreateDialog from "../components/agents/AgentCreateDialog.vue"
+import AgentEditDialog from "../components/agents/AgentEditDialog.vue"
+import AgentStartHint from "../components/agents/AgentStartHint.vue"
+import AppDialog from "../components/ui/AppDialog.vue"
 import AgentTokensDialog from "../components/agents/AgentTokensDialog.vue"
 import UserAvatar from "../components/UserAvatar.vue"
-import { ApiError } from "../api/client.ts"
 import { activeAgents, agentsApi, deletedAgents } from "../api/agents.ts"
-import type { FieldErrors, ProjectAgent } from "../api/types.ts"
+import type { Agent, ProjectAgent } from "../api/types.ts"
 import { useProjectsStore } from "../stores/projects.ts"
 import { useUiStore } from "../stores/ui.ts"
 import { language, t, tc } from "../i18n/index.ts"
@@ -19,9 +19,10 @@ import { formatDate, formatDateTime } from "../i18n/format.ts"
 import { agentState } from "../composables/changes.ts"
 
 // Spec web-client, "Agents screen": the project's agents, for every member,
-// each online or offline with its last check-in and the change it is on.
-// Agents are created here with their first token, added from other projects,
-// renamed, given tokens, removed, deleted and restored.
+// each online or offline with its last check-in and the change it is on, and
+// where it runs. Agents are created here without a token, added from other
+// projects, given a name, model and instructions, given tokens, removed,
+// deleted and restored.
 const props = defineProps<{ projectId: number }>()
 const ui = useUiStore()
 const projects = useProjectsStore()
@@ -49,44 +50,28 @@ watch(() => props.projectId, () => {
 const creating = ref(false)
 const adding = ref(false)
 
-// One agent at a time is renamed, shown its tokens, removed or deleted.
-type Action = "rename" | "tokens" | "remove" | "delete"
+// One agent at a time is shown its start command, edited, shown its
+// tokens, removed or deleted.
+type Action = "start" | "edit" | "tokens" | "remove" | "delete"
 const acting = ref<{ action: Action; agent: ProjectAgent } | null>(null)
 const subject = computed(() => acting.value?.agent ?? null)
 const dialog = (action: Action) => computed({
   get: () => acting.value?.action === action,
   set: (open) => { if (!open && acting.value?.action === action) acting.value = null },
 })
-const renameOpen = dialog("rename")
+const startOpen = dialog("start")
+const editOpen = dialog("edit")
 const tokensOpen = dialog("tokens")
 const removeOpen = dialog("remove")
 const deleteOpen = dialog("delete")
 
-const renameFormId = useId()
-const newName = ref("")
-const renameErrors = ref<FieldErrors>({})
-
 function start(action: Action, agent: ProjectAgent) {
-  if (action === "rename") {
-    newName.value = agent.name
-    renameErrors.value = {}
-  }
   acting.value = { action, agent }
 }
 
-async function rename() {
-  const agent = subject.value
-  if (!agent) return
-  renameErrors.value = {}
-  try {
-    const renamed = await agentsApi.rename(agent.id, newName.value.trim())
-    acting.value = null
-    ui.toast(t("agents.renamed", { name: renamed.name }))
-    await reload()
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 422) renameErrors.value = error.fields
-    else ui.fail(error)
-  }
+async function saved(agent: Agent) {
+  ui.toast(t("agents.saved", { name: agent.name }))
+  await reload()
 }
 
 async function remove() {
@@ -121,6 +106,13 @@ function stateText(agent: ProjectAgent): string {
   return agent.checked_in_at ? t("agents.stateOffline", { date: formatDateTime(language.value, agent.checked_in_at) }) : t("agents.stateNever")
 }
 
+// The runner it is leased to, its owner and since when, or that it runs nowhere.
+function runsText(agent: ProjectAgent): string {
+  const lease = agent.lease
+  if (!lease) return t("agents.notRunning")
+  return t("agents.runsOn", { runner: lease.runner.name, owner: lease.owner.name, date: formatDateTime(language.value, lease.since) })
+}
+
 async function restore(agent: ProjectAgent) {
   try {
     await agentsApi.restore(agent.id)
@@ -148,6 +140,8 @@ async function restore(agent: ProjectAgent) {
         <div class="grow">
           <p class="agent__name break-word">{{ agent.name }}</p>
           <p class="small break-word agent__state" :class="{ 'agent__state--online': agent.online }">{{ stateText(agent) }}</p>
+          <p class="small break-word agent__runs" :class="{ 'agent__runs--running': agent.lease }">{{ runsText(agent) }}</p>
+          <p v-if="agent.model" class="small muted break-word">{{ t("agents.modelLine", { model: agent.model }) }}</p>
           <p class="small muted break-word">{{ agent.email_address }}</p>
           <p class="small muted break-word">
             {{ t("agents.createdBy", { name: agent.created_by.name, date: formatDate(language, agent.created_at) }) }} ·
@@ -161,8 +155,9 @@ async function restore(agent: ProjectAgent) {
             </button>
           </template>
           <template #default="{ close }">
+            <button type="button" class="menu__item" @click="close(); start('start', agent)"><AppIcon name="robot" :size="20" />{{ t("agents.howToStart") }}</button>
             <button type="button" class="menu__item" @click="close(); start('tokens', agent)"><AppIcon name="code" :size="20" />{{ t("agents.tokens") }}</button>
-            <button type="button" class="menu__item" @click="close(); start('rename', agent)"><AppIcon name="edit" :size="20" />{{ t("agents.rename") }}</button>
+            <button type="button" class="menu__item" @click="close(); start('edit', agent)"><AppIcon name="edit" :size="20" />{{ t("agents.edit") }}</button>
             <!-- Not from its only project, where nobody could see it afterwards: it is deleted instead. -->
             <button v-if="agent.removable" type="button" class="menu__item" @click="close(); start('remove', agent)">
               <AppIcon name="logout" :size="20" />{{ t("agents.remove") }}
@@ -191,19 +186,15 @@ async function restore(agent: ProjectAgent) {
       </ul>
     </details>
 
-    <AgentCreateDialog v-model:open="creating" :project-id="projectId" @created="reload" />
+    <AgentCreateDialog v-model:open="creating" :project-id="projectId" :project-short-name="project.short_name" :agents="active" @created="reload" />
     <AgentAddDialog v-model:open="adding" :project-id="projectId" @added="reload" />
     <AgentTokensDialog v-model:open="tokensOpen" :agent="subject" @changed="reload" />
 
-    <AppDialog v-model:open="renameOpen" :title="t('agents.renameTitle', { name: subject?.name ?? '' })">
-      <form :id="renameFormId" novalidate @submit.prevent="rename">
-        <AppField :label="t('agents.name')" :errors="renameErrors.name">
-          <template #default="{ control }"><input v-model="newName" v-bind="control" class="input" maxlength="100" autocomplete="off"></template>
-        </AppField>
-      </form>
+    <AgentEditDialog v-model:open="editOpen" :agent="subject" @saved="saved" />
+    <AppDialog v-model:open="startOpen" :title="t('agents.startTitle', { name: subject?.name ?? '' })" wide>
+      <AgentStartHint v-if="subject" :agent="subject" :agents="active" :project="project.short_name" />
       <template #actions>
-        <button type="button" class="button button--text" @click="renameOpen = false">{{ t("common.cancel") }}</button>
-        <button type="submit" class="button" :form="renameFormId" :disabled="!newName.trim()">{{ t("common.save") }}</button>
+        <button type="button" class="button" @click="startOpen = false">{{ t("agents.done") }}</button>
       </template>
     </AppDialog>
 
@@ -242,6 +233,8 @@ async function restore(agent: ProjectAgent) {
 .agent__name { font-weight: 500; }
 .agent__state { color: var(--color-muted); }
 .agent__state--online { color: var(--color-text); font-weight: 500; }
+.agent__runs { color: var(--color-muted); }
+.agent__runs--running { color: var(--color-text); }
 .deleted { display: grid; gap: var(--space-3); }
 
 .deleted__summary {
