@@ -186,13 +186,13 @@ async function restore(agent: ProjectAgent) {
       </ul>
     </details>
 
-    <AgentCreateDialog v-model:open="creating" :project-id="projectId" :agents="active" @created="reload" />
+    <AgentCreateDialog v-model:open="creating" :project-id="projectId" :project-short-name="project.short_name" :agents="active" @created="reload" />
     <AgentAddDialog v-model:open="adding" :project-id="projectId" @added="reload" />
     <AgentTokensDialog v-model:open="tokensOpen" :agent="subject" @changed="reload" />
 
     <AgentEditDialog v-model:open="editOpen" :agent="subject" @saved="saved" />
     <AppDialog v-model:open="startOpen" :title="t('agents.startTitle', { name: subject?.name ?? '' })" wide>
-      <AgentStartHint v-if="subject" :agent="subject" :agents="active" />
+      <AgentStartHint v-if="subject" :agent="subject" :agents="active" :project="project.short_name" />
       <template #actions>
         <button type="button" class="button" @click="startOpen = false">{{ t("agents.done") }}</button>
       </template>

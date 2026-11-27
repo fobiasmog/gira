@@ -5,7 +5,7 @@ require_relative "worker"
 module GoalnerWorker
   # bin/goalner-worker's command line (spec agent-worker):
   #
-  #   bin/goalner-worker register --url <Goalner> [--token <runner secret>]
+  #   bin/goalner-worker register [--url <Goalner>] [--token <runner secret>]
   #     [--workspaces <directory>] [--clone <PROJECT>=<path>]...
   #   bin/goalner-worker [<agent name or id>] [--url <Goalner>]
   class Cli
@@ -13,9 +13,14 @@ module GoalnerWorker
     USAGE = <<~TEXT.freeze
       Usage:
         bin/goalner-worker [<agent name or id>] [--url <Goalner address>]
-        bin/goalner-worker register --url <Goalner address> [--token <runner secret>]
+        bin/goalner-worker register [--url <Goalner address>] [--token <runner secret>]
           [--workspaces <directory>] [--clone <PROJECT>=<path>]...
+
+      --url can be left out while one runner is registered on this machine.
+      Add a project's clone with: bin/goalner-worker register --clone <PROJECT>=<path>
     TEXT
+    # Options that only register takes.
+    REGISTER_OPTIONS = %w[--token --workspaces --clone].freeze
 
     def initialize(argv, env: ENV, out: $stdout, err: $stderr)
       @argv = argv.dup
@@ -25,8 +30,22 @@ module GoalnerWorker
     end
 
     def run
-      @argv.first == "register" ? register(@argv.drop(1)) : start(@argv)
+      command = @argv.first.to_s
+      if command.start_with?("register") && command != "register"
+        meant = [ "bin/goalner-worker", "register", command.delete_prefix("register"), *@argv.drop(1) ].reject(&:empty?)
+        raise Error, "Unknown command #{command.inspect}. Did you mean:\n\n  #{meant.map { |word| GoalnerWorker.shell_word(word) }.join(' ')}\n\n#{USAGE}"
+      end
+
+      command == "register" ? register(@argv.drop(1)) : start(@argv)
       0
+    rescue OptionParser::InvalidOption => error
+      option = error.args.first.to_s.split("=").first
+      if REGISTER_OPTIONS.include?(option)
+        @err.puts "#{option} is an option of bin/goalner-worker register, such as: bin/goalner-worker register --clone <PROJECT>=<path>\n\n#{USAGE}"
+      else
+        @err.puts "#{error.message}\n\n#{USAGE}"
+      end
+      1
     rescue Error, OptionParser::ParseError => error
       @err.puts error.message
       1
@@ -39,13 +58,20 @@ module GoalnerWorker
       def start(argv)
         url = nil
         OptionParser.new { |parser| parser.on("--url URL") { |value| url = value } }.parse!(argv)
-        runner = Config.load(Config.default_path(@env)).choose(url)
+        config = Config.load(Config.default_path(@env))
+        runner = config.choose(url)
         argument = argv.first
         return list(runner) if argument.nil? || argument.strip.empty?
 
         agents = Agents.fetch(runner)
         agent_id = agents.find(argument)
-        Worker.new(agent_id:, name: agents.name_of(agent_id), runner:, env: @env, console: Console.new(@out)).run
+        # In commands the worker shows: needed only while several runners are registered.
+        url_option = config.runners.size > 1 ? runner.url : nil
+        if (projects = agents.uncloned_projects(agent_id))
+          raise Error, Agents.no_clone_help(agents.name_of(agent_id), projects, url: url_option)
+        end
+
+        Worker.new(agent_id:, name: agents.name_of(agent_id), runner:, url_option:, env: @env, console: Console.new(@out)).run
       end
 
       def list(runner)
@@ -69,9 +95,8 @@ module GoalnerWorker
           parser.on("--workspaces DIRECTORY") { |value| options[:workspaces] = File.expand_path(value) }
           parser.on("--clone PROJECT=PATH") { |value| add_clone(options[:clones], value) }
         end.parse!(argv)
-        raise Error, "Give the Goalner address with --url.\n\n#{USAGE}" unless options[:url]
-
         config = Config.load(Config.default_path(@env))
+        options[:url] ||= saved_url(config)
         saved = config.find(options[:url])
         secret = options[:token] || saved&.secret
         raise Error, "The runner's secret is needed for a new address: pass it with --token. Goalner shows it once, when the runner is created or its secret rotated." unless secret
@@ -94,6 +119,15 @@ module GoalnerWorker
           next if File.directory?(File.join(path, "openspec"))
 
           @out.puts "Reminder: #{path} has no openspec/ folder. Run `openspec init` there and commit it before asking for steps."
+        end
+      end
+
+      # The address of the one runner saved, for a register without --url.
+      def saved_url(config)
+        case config.runners.size
+        when 1 then config.runners.first.url
+        when 0 then raise Error, "Give the Goalner address with --url: no runner is registered on this machine yet.\n\n#{USAGE}"
+        else raise Error, "Several runners are registered: #{config.runners.map(&:url).join(', ')}. Choose one with --url.\n\n#{USAGE}"
         end
       end
 

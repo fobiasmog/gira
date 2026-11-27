@@ -64,6 +64,35 @@ class GoalnerWorkerRegisterTest < ActiveSupport::TestCase
     assert_equal 2, @api.calls("GET", %r{\A/api/runner\z}).count { |request| request[:token] == StandInGoalner::SECRET }
   end
 
+  test "a project added without the address: the one saved runner gets the clone, with its secret checked and kept" do
+    test_clone = create_clone
+    register("--clone", "TEST=#{test_clone}")
+    schedule = create_clone("schedule-app")
+
+    status, output = run_worker("register", "--clone", "SCH=#{schedule}")
+
+    assert_equal 0, status, output
+    assert_equal [ @api.url, StandInGoalner::SECRET, { "TEST" => test_clone, "SCH" => schedule } ], saved.sole.values_at("url", "secret", "clones")
+  end
+
+  test "without the address, and no runner or several saved: exit status 1 saying so, and nothing is written" do
+    status, output = run_worker("register", "--clone", "TEST=#{create_clone}")
+    assert_equal 1, status
+    assert_match(/no runner is registered on this machine yet/, output)
+    assert_not File.exist?(config_path)
+
+    register("--clone", "TEST=#{create_clone('second')}")
+    other = StandInGoalner.new
+    register(url: other.url)
+    before = File.read(config_path)
+    status, output = run_worker("register", "--clone", "MNT=#{create_clone('mnt')}")
+    assert_equal 1, status
+    assert_match(/Several runners are registered: .*Choose one with --url/, output)
+    assert_equal before, File.read(config_path)
+  ensure
+    other&.stop
+  end
+
   test "registering again replaces a project's clone, the secret and the workspaces root when given" do
     register("--clone", "TEST=#{create_clone}")
     moved = create_clone("moved")

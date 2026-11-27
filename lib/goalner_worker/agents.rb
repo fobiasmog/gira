@@ -1,9 +1,16 @@
-require "shellwords"
 require "time"
 require_relative "api"
 require_relative "config"
 
 module GoalnerWorker
+  # A word as a shell reads it: as it is when it holds nothing the shell
+  # treats specially, otherwise in single quotes. The Agents screen quotes
+  # the same way.
+  def self.shell_word(word)
+    word = word.to_s
+    word.match?(%r{\A[A-Za-z0-9_./:@%+=,-]+\z}) ? word : "'#{word.gsub("'") { %q('\'') }}'"
+  end
+
   # The agents a runner can run (spec agent-runners, "Agents a runner can
   # run"), as Goalner lists them, and finding one by what a person types
   # (spec agent-worker, "Start an agent"): its id, its name in any letter
@@ -33,6 +40,29 @@ module GoalnerWorker
 
     # The name of the agent with id, or nil when the runner cannot run it.
     def name_of(id) = @list.find { |agent| agent["id"] == id }&.fetch("name")
+
+    # The projects of the agent with id when none of them has a clone on
+    # this machine, or nil: when it has one, or the runner cannot tell.
+    def uncloned_projects(id)
+      agent = @list.find { |each| each["id"] == id }
+      agent["projects"] if agent && !cloned?(agent)
+    end
+
+    # What to do when no project of agent name has a clone here: register a
+    # clone of one of them, then start the agent again. url: the address to
+    # name in the commands, when several runners are registered.
+    def self.no_clone_help(name, projects, url: nil)
+      address = url ? " --url #{GoalnerWorker.shell_word(url)}" : ""
+      registered = projects.empty? ? "it belongs to no project that this runner's owner shares" : "it works in #{projects.join(', ')}, and none of them has a clone registered on this machine"
+      lines = [ "#{name || 'This agent'} cannot run here: #{registered}." ]
+      if projects.any?
+        lines << "Clone the project's repository, register the clone, then start #{name || 'the agent'} again:"
+        lines << ""
+        projects.each { |project| lines << "  bin/goalner-worker register#{address} --clone #{project}=<path to the clone>" }
+        lines << "  bin/goalner-worker#{address} #{GoalnerWorker.shell_word(name)}" if name
+      end
+      lines.join("\n")
+    end
 
     # The id of the agent argument names, or an Error that says why there
     # is none, listing what to type instead.
@@ -68,7 +98,7 @@ module GoalnerWorker
     def command(agent)
       argument = [ agent["name"], *agent["projects"].map { |project| "#{project}/#{agent['name']}" } ]
         .find { |candidate| matching(candidate).map { |each| each["id"] } == [ agent["id"] ] } || agent["id"].to_s
-      "bin/goalner-worker #{Shellwords.escape(argument)}"
+      "bin/goalner-worker #{GoalnerWorker.shell_word(argument)}"
     end
 
     private

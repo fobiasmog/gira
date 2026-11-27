@@ -100,3 +100,10 @@
 - [x] 9.3 Show each agent's start command on the Agents screen, after creating it and from its menu, by name or by id when the name is shared in the project, quoted for the shell; verify with unit tests for the command and system tests for "Create" and "Start command" of the "Agents screen".
 - [x] 9.4 Update the README's "Running agents" and the worker's messages to start agents by name; verify that `bin/goalner-worker <agent id>` appears nowhere as the way to start an agent.
 
+## 10. Registering a project's clone
+
+- [x] 10.1 Let `register` leave out `--url` when one runner is saved; verify with a worker test for "A project added without the address" and that no runner, or several, without `--url` end with exit status 1.
+- [x] 10.2 Refuse to start an agent with no cloned project before leasing it, showing `register --clone <PROJECT>=<path>` for each of its projects and its start command, and answer a mistyped command or another command's option with the likely command and the usage; verify with worker tests for "No clone" and "Mistyped command".
+- [x] 10.3 Show the command that registers a clone of the project next to each agent's start command on the Agents screen; verify with a system test for "Create" of the "Agents screen".
+- [x] 10.4 Say in the README's "Running agents" how to add a project to a registered machine; verify by reading it.
+

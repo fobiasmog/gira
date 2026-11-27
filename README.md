@@ -431,9 +431,15 @@ that only it sees, which ends with the lease.
    The runner is saved in `~/.config/goalner/runners.yml` (or under
    `$XDG_CONFIG_HOME`), readable by you alone; the worker refuses a file that
    others can read. One file holds a runner for each Goalner address.
-   Registering again for an address keeps what it saved: add a project later
-   with `--clone MNT=~/dev/mynewthing` and no `--token`. `--workspaces <dir>`
-   moves the workspaces, by default `~/goalner/workspaces`.
+   Registering again keeps what it saved. While one runner is registered,
+   `--url` and `--token` can be left out, so adding a project later is:
+
+   ```sh
+   bin/goalner-worker register --clone MNT=~/dev/mynewthing
+   ```
+
+   `--workspaces <dir>` moves the workspaces, by default
+   `~/goalner/workspaces`.
 
 ### Start agents
 
@@ -449,7 +455,10 @@ Without an argument, the worker lists the agents the runner can run, with
 their projects, where each runs now and the command that starts it. When two
 agents share a name, name the project too (`bin/goalner-worker TEST/Fish`) or
 use the agent's id; an agent of a project with a clone here wins over one
-without. The Agents screen shows each agent's command under **How to start**.
+without. The Agents screen shows each agent's command under **How to start**,
+with the command that registers a clone of the project. An agent none of
+whose projects has a clone here is refused before it is leased, with the
+commands to register one and start it again.
 
 Run it from a checkout of `main`: the worker's instructions and settings come
 from its own checkout, so switching that checkout's branch changes the next

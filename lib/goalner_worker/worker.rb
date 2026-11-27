@@ -1,6 +1,7 @@
 require "json"
 require "open3"
 require "fileutils"
+require_relative "agents"
 require_relative "api"
 require_relative "child"
 require_relative "config"
@@ -50,9 +51,12 @@ module GoalnerWorker
     class Stopping < StandardError; end
 
     # name: the agent's, when it is known before leasing, for messages.
-    def initialize(agent_id:, runner:, name: nil, env: ENV, console: Console.new, home: HOME)
+    # url_option: the address to name in commands the worker shows, when
+    # several runners are registered.
+    def initialize(agent_id:, runner:, name: nil, url_option: nil, env: ENV, console: Console.new, home: HOME)
       @agent_id = agent_id
       @label = name || "Agent #{agent_id}"
+      @url_option = url_option
       @runner = runner
       @env = env
       @console = console
@@ -116,8 +120,7 @@ module GoalnerWorker
         if @projects.empty?
           names = @lease.fetch("projects").map { |project| project["short_name"] }
           release
-          raise Error, "None of #{@agent['name']}'s projects has a clone on this machine: #{names.join(', ').then { |list| list.empty? ? 'it reaches none' : list }}. " \
-            "Register a clone with: bin/goalner-worker register --url #{@runner.url} --clone <PROJECT>=<path>"
+          raise Error, Agents.no_clone_help(@agent["name"], names, url: @url_option)
         end
         @console.event("Leased #{@agent['name']} (agent #{@agent_id}) to runner #{@runner.name.inspect}; projects #{@projects.map { |project| project['short_name'] }.join(', ')}")
         @lease

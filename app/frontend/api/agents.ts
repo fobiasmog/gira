@@ -69,6 +69,12 @@ export function shellWord(word: string): string {
   return /^[A-Za-z0-9_.\/:@%+=-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`
 }
 
+// How to register a clone of a project's repository on a machine that runs
+// agents: once per machine, with the path to fill in.
+export function registerCloneCommand(projectShortName: string): string {
+  return `bin/goalner-worker register --clone ${projectShortName}=<path to the clone>`
+}
+
 // How to run an agent on a machine registered as a runner: by its name, or
 // by its id when another of the project's agents has the same name.
 export function startCommand(agent: Pick<Agent, "id" | "name">, agents: Pick<Agent, "id" | "name">[]): string {

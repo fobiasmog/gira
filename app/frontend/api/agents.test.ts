@@ -1,7 +1,7 @@
 import { test, beforeEach } from "node:test"
 import assert from "node:assert/strict"
 import {
-  activeAgents, addableAgents, agentsApi, channelsOf, choiceOf, deletedAgents, mcpCommand, mcpConfig, settingValue, startCommand, withAgent, worksOn,
+  activeAgents, addableAgents, agentsApi, channelsOf, choiceOf, deletedAgents, mcpCommand, mcpConfig, registerCloneCommand, settingValue, startCommand, withAgent, worksOn,
 } from "./agents.ts"
 import type { ProjectAgent, UserCard, VisibleAgent } from "./types.ts"
 
@@ -73,6 +73,7 @@ test("the start command names the agent, quoted for the shell, or gives its id w
   assert.equal(startCommand(agent(10, "Bob's bot"), []), `bin/goalner-worker 'Bob'\\''s bot'`)
   assert.equal(startCommand(fish, [fish, agent(11, "fish")]), "bin/goalner-worker 7")
   assert.equal(startCommand(agent(12, "42"), []), "bin/goalner-worker 12")
+  assert.equal(registerCloneCommand("SCH"), "bin/goalner-worker register --clone SCH=<path to the clone>")
 })
 
 test("issues and revokes a token", async () => {

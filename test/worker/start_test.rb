@@ -16,7 +16,8 @@ class GoalnerWorkerStartTest < ActiveSupport::TestCase
     configure
     @api.agent_list = [ listed(agent_id, "Fish", %w[TEST]),
       listed(agent_id + 1, "Heron", %w[TEST], lease: { "runner" => { "name" => "laptop" }, "this_runner" => true, "since" => "2026-11-27T14:05:00Z" }),
-      listed(agent_id + 2, "Code Reviewer", %w[OPS], lease: { "runner" => { "name" => "desktop" }, "this_runner" => false, "since" => "2026-11-27T14:05:00Z" }) ]
+      listed(agent_id + 2, "Code Reviewer", %w[OPS], lease: { "runner" => { "name" => "desktop" }, "this_runner" => false, "since" => "2026-11-27T14:05:00Z" }),
+      listed(agent_id + 3, "Bob's bot", %w[TEST]) ]
 
     status, output = run_worker
 
@@ -24,7 +25,8 @@ class GoalnerWorkerStartTest < ActiveSupport::TestCase
     assert_match(/Agents that runner "laptop" can run \(#{Regexp.escape(@api.url)}\):/, output)
     assert_match(/^  Fish +TEST +not running +bin\/goalner-worker Fish$/, output)
     assert_match(/^  Heron +TEST +runs here since 2026-11-27 \d\d:\d\d +bin\/goalner-worker Heron$/, output)
-    assert_match(/^  Code Reviewer +OPS \(no clone here\) +runs on desktop since .+ +bin\/goalner-worker Code\\ Reviewer$/, output)
+    assert_match(/^  Code Reviewer +OPS \(no clone here\) +runs on desktop since .+ +bin\/goalner-worker 'Code Reviewer'$/, output)
+    assert_includes output, %(bin/goalner-worker 'Bob'\\''s bot')
     assert_empty @api.calls("POST", /lease/)
   end
 
@@ -137,17 +139,66 @@ class GoalnerWorkerStartTest < ActiveSupport::TestCase
     assert_match(/rejected the secret of runner "laptop".*register --url/m, output)
   end
 
-  test "no clone: exit status 1 naming OPS, and the lease released" do
+  test "no clone: exit status 1, showing how to register a clone of OPS and start Fish again, and nothing leased" do
     configure
     @api.projects = [ { "id" => 3, "short_name" => "OPS" } ]
+
+    status, output = run_worker("fish")
+
+    assert_equal 1, status
+    assert_match(/Fish cannot run here: it works in OPS, and none of them has a clone registered on this machine/, output)
+    assert_includes output, "  bin/goalner-worker register --clone OPS=<path to the clone>"
+    assert_includes output, "  bin/goalner-worker Fish"
+    assert_empty @api.calls("POST", /lease/)
+  end
+
+  test "no clone found only once leased: the lease is released, with the same help" do
+    configure
+    @api.projects = [ { "id" => 3, "short_name" => "OPS" } ]
+    @api.agent_list = []
 
     status, output = run_worker(agent_id.to_s)
 
     assert_equal 1, status
-    assert_match(/OPS/, output)
-    assert_match(/--clone <PROJECT>=<path>/, output)
+    assert_includes output, "bin/goalner-worker register --clone OPS=<path to the clone>"
     assert_equal 1, @api.calls("DELETE", %r{/api/runner/leases/1}).size
     assert_nil @api.live_lease
+  end
+
+  test "with several runners, the commands shown name the runner's address" do
+    clone = create_clone
+    runner = { "secret" => StandInGoalner::SECRET, "name" => "laptop", "workspaces" => workspaces_root, "clones" => { "TEST" => clone } }
+    configure(runners: [ runner.merge("url" => "https://goalner.com"), runner.merge("url" => @api.url) ])
+    @api.projects = [ { "id" => 3, "short_name" => "OPS" } ]
+
+    status, output = run_worker("Fish", "--url", @api.url)
+
+    assert_equal 1, status
+    assert_includes output, "bin/goalner-worker register --url #{@api.url} --clone OPS=<path to the clone>"
+    assert_includes output, "bin/goalner-worker --url #{@api.url} Fish"
+  end
+
+  test "mistyped command: the likely command and the usage, and nothing leased" do
+    configure
+
+    status, output = run_worker("register--url", @api.url, "--clone", "SCH=/Users/bob/dev/schedule-app")
+
+    assert_equal 1, status
+    assert_includes output, %(Unknown command "register--url". Did you mean:)
+    assert_includes output, "bin/goalner-worker register --url #{@api.url} --clone SCH=/Users/bob/dev/schedule-app"
+    assert_match(/Usage:/, output)
+    assert_empty @api.requests
+  end
+
+  test "an option of register given to start: it says which command takes it" do
+    configure
+
+    status, output = run_worker("Fish", "--clone", "SCH=/Users/bob/dev/schedule-app")
+
+    assert_equal 1, status
+    assert_match(/--clone is an option of bin\/goalner-worker register/, output)
+    assert_match(/Usage:/, output)
+    assert_empty @api.calls("POST", /lease/)
   end
 
   test "started twice on one machine: the second ends with exit status 1, saying Fish already runs here, and the first keeps its lease" do

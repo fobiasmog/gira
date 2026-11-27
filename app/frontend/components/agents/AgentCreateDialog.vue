@@ -13,9 +13,9 @@ import { t } from "../../i18n/index.ts"
 // Creates an agent in the project from a name and, optionally, its model and
 // instructions, with no token and no password (spec web-client, "Agents
 // screen"). Once created, the dialog shows how to start it on a runner.
-// agents: the project's agents, whose names its start command must not
-// confuse it with.
-const props = defineProps<{ projectId: number; agents: Pick<Agent, "id" | "name">[] }>()
+// projectShortName: whose clone a machine registers; agents: the project's
+// agents, whose names its start command must not confuse it with.
+const props = defineProps<{ projectId: number; projectShortName: string; agents: Pick<Agent, "id" | "name">[] }>()
 const open = defineModel<boolean>("open", { required: true })
 const emit = defineEmits<{ created: [agent: ProjectAgent] }>()
 const ui = useUiStore()
@@ -58,7 +58,7 @@ function reset() {
   <AppDialog v-model:open="open" :title="t('agents.new')" wide @closed="reset">
     <div v-if="created" class="stack" role="status">
       <p>{{ t("agents.created", { name: created.name }) }} <span class="muted break-word">{{ created.email_address }}</span></p>
-      <AgentStartHint :agent="created" :agents="[...agents, created]" />
+      <AgentStartHint :agent="created" :agents="[...agents, created]" :project="projectShortName" />
     </div>
     <form v-else :id="formId" class="stack" novalidate @submit.prevent="create">
       <p v-if="errors.base" class="field__error">{{ errors.base.join(" ") }}</p>

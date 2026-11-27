@@ -56,11 +56,12 @@ class AgentsTest < ApplicationSystemTestCase
     assert_selector "dialog[open]", text: "Agent “Fish” created"
     agent = Agent.joins(:user).find_by!(users: { name: "Fish" })
     within("dialog[open]") do
+      assert_field "Register a clone of GOAL", with: "bin/goalner-worker register --clone GOAL=<path to the clone>"
       assert_field "Start command", with: "bin/goalner-worker Fish"
       assert_link "Settings, Runners"
       assert_no_field "Token", exact: true
       execute_script("navigator.clipboard.writeText = async (text) => { window.__copied = text }")
-      click_button "Copy command"
+      within(find_field("Start command").ancestor(".copy-field")) { click_button "Copy command" }
       assert_equal "bin/goalner-worker Fish", evaluate_script("window.__copied")
       click_button "Done"
     end
@@ -149,6 +150,7 @@ class AgentsTest < ApplicationSystemTestCase
     click_button "How to start"
     within("dialog[open]") do
       assert_selector "h2", text: "Start Code Reviewer"
+      assert_field "Register a clone of GOAL", with: "bin/goalner-worker register --clone GOAL=<path to the clone>"
       assert_field "Start command", with: "bin/goalner-worker 'Code Reviewer'"
       click_button "Done"
     end

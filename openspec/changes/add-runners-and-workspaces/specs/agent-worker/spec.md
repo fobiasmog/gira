@@ -5,7 +5,7 @@ Defines `bin/goalner-worker`, the program that runs any agent by its name or id 
 ## ADDED Requirements
 
 ### Requirement: Register a runner
-`bin/goalner-worker register --url <Goalner address> [--token <runner secret>]` SHALL check the runner's secret with Goalner (spec `agent-runners`, "Runner authentication"), then save the runner in the configuration file and print the runner's name and the projects it has clones for. `--token` SHALL be required for an address that has no runner in the configuration. For an address that has one, `--token` SHALL be optional: without it, the saved secret SHALL be checked and kept, so that a project can be added later without the secret, which Goalner showed only once. Options SHALL set the runner's workspaces root (`--workspaces <directory>`, by default `~/goalner/workspaces`) and the local clone of a project's repository (`--clone <project short name>=<path>`, repeatable). Registering again for an address SHALL keep the clones already saved, add the clones given, and replace the clone of a project given again. A new `--token` SHALL replace the saved secret, and a new `--workspaces` SHALL replace the saved root. The configuration file SHALL be `goalner/runners.yml` in `$XDG_CONFIG_HOME`, or in `~/.config` when that is not set. It SHALL hold a list of runners, one per Goalner address, and registering SHALL leave the other addresses' runners as they are. The worker SHALL create the file with permissions 600 and its directory with permissions 700. For every clone given whose working copy has no `openspec/` folder, the command SHALL print a reminder to run `openspec init` there and commit it before asking for steps, and SHALL save the clone all the same. The command SHALL end with exit status 1 and an explanation, writing nothing, when Goalner rejects the secret, when `--token` is missing for an address with no saved runner, or when a clone path is not a git working copy.
+`bin/goalner-worker register [--url <Goalner address>] [--token <runner secret>]` SHALL check the runner's secret with Goalner (spec `agent-runners`, "Runner authentication"), then save the runner in the configuration file and print the runner's name and the projects it has clones for. `--token` SHALL be required for an address that has no runner in the configuration. For an address that has one, `--token` SHALL be optional: without it, the saved secret SHALL be checked and kept, so that a project can be added later without the secret, which Goalner showed only once. `--url` SHALL be optional when the configuration holds exactly one runner, which the command then updates; with no runner saved, or several, a command without `--url` SHALL end with exit status 1, saying which addresses are saved. Options SHALL set the runner's workspaces root (`--workspaces <directory>`, by default `~/goalner/workspaces`) and the local clone of a project's repository (`--clone <project short name>=<path>`, repeatable). Registering again for an address SHALL keep the clones already saved, add the clones given, and replace the clone of a project given again. A new `--token` SHALL replace the saved secret, and a new `--workspaces` SHALL replace the saved root. The configuration file SHALL be `goalner/runners.yml` in `$XDG_CONFIG_HOME`, or in `~/.config` when that is not set. It SHALL hold a list of runners, one per Goalner address, and registering SHALL leave the other addresses' runners as they are. The worker SHALL create the file with permissions 600 and its directory with permissions 700. For every clone given whose working copy has no `openspec/` folder, the command SHALL print a reminder to run `openspec init` there and commit it before asking for steps, and SHALL save the clone all the same. The command SHALL end with exit status 1 and an explanation, writing nothing, when Goalner rejects the secret, when `--token` is missing for an address with no saved runner, or when a clone path is not a git working copy.
 
 #### Scenario: Register
 - **WHEN** a user runs `bin/goalner-worker register --url http://localhost:3000 --token glnr_runner_… --clone TEST=~/dev/goalner`
@@ -22,6 +22,10 @@ Defines `bin/goalner-worker`, the program that runs any agent by its name or id 
 #### Scenario: A project added later
 - **WHEN** the runner for `http://localhost:3000` is saved with a clone of TEST, and the user runs `bin/goalner-worker register --url http://localhost:3000 --clone MNT=~/dev/mynewthing` without `--token`
 - **THEN** the saved secret is checked with Goalner and kept, and the runner has clones of both TEST and MNT
+
+#### Scenario: A project added without the address
+- **WHEN** the configuration holds only the runner for `http://localhost:3000`, and the user runs `bin/goalner-worker register --clone SCH=~/dev/schedule-app`
+- **THEN** the saved secret is checked with Goalner and kept, and that runner has a clone of SCH too
 
 #### Scenario: Unknown address without a secret
 - **WHEN** the user registers `https://goalner.com`, which has no saved runner, without `--token`
@@ -44,14 +48,14 @@ The worker SHALL refuse to run when its configuration file can be read or writte
 - its name, in any letter case;
 - `<project short name>/<name>`, for an agent of that project.
 
-When a name fits several of those agents and exactly one of them belongs to a project with a clone in the configuration, the worker SHALL run that one. Otherwise, a name that fits several agents SHALL end the worker with exit status 1, listing each with the argument that names it alone, and a name that fits none SHALL end it with exit status 1, naming it and listing the agents the runner can run. Without an argument, the worker SHALL list the agents the runner can run, each with the short names of its projects, where it runs now and the command that starts it, and end with exit status 0. When the runner can run no agent, it SHALL say instead that agents are created in Goalner first, on a project's Agents screen, and end with exit status 1. Neither listing nor finding an agent by name SHALL lease it.
+When a name fits several of those agents and exactly one of them belongs to a project with a clone in the configuration, the worker SHALL run that one. Otherwise, a name that fits several agents SHALL end the worker with exit status 1, listing each with the argument that names it alone, and a name that fits none SHALL end it with exit status 1, naming it and listing the agents the runner can run. Without an argument, the worker SHALL list the agents the runner can run, each with the short names of its projects, where it runs now and the command that starts it, and end with exit status 0. When the runner can run no agent, it SHALL say instead that agents are created in Goalner first, on a project's Agents screen, and end with exit status 1. Neither listing nor finding an agent by name SHALL lease it. An unknown command, or an option of the other command, SHALL end the worker with exit status 1, naming the command that takes the option or the command that was likely meant, and showing the usage.
 
 The worker SHALL lease the agent (spec `agent-runners`, "Lease an agent") before doing anything else with it. It SHALL end with exit status 1 and a message, without leasing, when no runner is configured, or when several runners are configured and `--url` names none of them. It SHALL end with exit status 1 and a message when the lease is refused:
 - for an agent that does not exist or that the runner's owner cannot see;
 - for an agent leased to another runner, naming that runner and since when;
 - for an agent whose change has its workspace on another runner, naming that runner.
 
-It SHALL also end with exit status 1 when none of the projects the lease names has a clone in the configuration, naming those projects. It SHALL refuse to start, with exit status 1 and before leasing, while another worker on the same machine runs the same agent through the same runner.
+It SHALL also end with exit status 1 when none of the agent's projects has a clone in the configuration, naming those projects, and showing the command that registers a clone of each, with its short name filled in, and the command that starts the agent again. When the runner's list of agents shows this, the worker SHALL not lease the agent; otherwise it SHALL release the lease it took. It SHALL refuse to start, with exit status 1 and before leasing, while another worker on the same machine runs the same agent through the same runner.
 
 #### Scenario: No argument
 - **WHEN** the runner "laptop" can run Fish, which is not running, and Heron, which runs on "laptop", and a user runs `bin/goalner-worker`
@@ -79,7 +83,11 @@ It SHALL also end with exit status 1 when none of the projects the lease names h
 
 #### Scenario: No clone
 - **WHEN** Fish belongs only to OPS, and the configuration has no clone for OPS
-- **THEN** the worker ends with exit status 1, names OPS, and releases the lease
+- **THEN** the worker ends with exit status 1, shows `bin/goalner-worker register --clone OPS=<path>` and `bin/goalner-worker Fish`, and leases nothing
+
+#### Scenario: Mistyped command
+- **WHEN** the user runs `bin/goalner-worker register--url http://localhost:3000 --clone SCH=~/dev/schedule-app`
+- **THEN** the worker ends with exit status 1, asks whether `bin/goalner-worker register --url http://localhost:3000 --clone SCH=~/dev/schedule-app` was meant, and leases nothing
 
 #### Scenario: Started twice on one machine
 - **WHEN** `bin/goalner-worker Fish` is running, and the user starts `bin/goalner-worker Fish` again on the same machine
