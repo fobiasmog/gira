@@ -240,12 +240,13 @@ class GoalnerWorkerRunTest < ActiveSupport::TestCase
 
   # Full context during a run
 
-  test "context fills during a step: the change is blocked, the compaction does not run, the worker stops the run, and the request stays taken" do
-    pid = run_one("context_full")
+  test "context fills during a step: the change is blocked, the compaction does not run, the worker stops the run at once, and the request stays taken" do
+    # A heartbeat far away: only the take after the reported compaction can stop the run in time.
+    pid = run_one("context_full", env: { "GOALNER_WORKER_HEARTBEAT_SECONDS" => "60" })
     wait_until("the hook to run") { File.exist?(File.join(@tmp, "fake", "hook.json")) }
     hook = JSON.parse(File.read(File.join(@tmp, "fake", "hook.json")))
 
-    wait_until("the run to be stopped") { !alive?(fake_calls.sole["pid"]) }
+    wait_until("the run to be stopped", timeout: 8) { !alive?(fake_calls.sole["pid"]) }
     assert_equal 0, stop_worker(pid)
 
     assert_equal [ "auto", 2 ], hook.values_at("matcher", "exit"), hook["output"]

@@ -70,12 +70,25 @@
 
 ## 8. End to end
 
-- [ ] 8.1 Follow design.md's "Migration Plan" on this machine with Fish and Heron on TEST, then run a test change through every step. Verify:
+- [x] 8.1 Follow design.md's "Migration Plan" on this machine with Fish and Heron on TEST, then run a test change through every step. Verify:
   - "Start exploring" creates the workspace and its session;
   - Ctrl-C during a step, then `bin/goalner-worker <id>`, resumes the same session;
   - releasing Fish gives Heron the same workspace with a new session;
   - archiving removes the workspace.
 
   Record what happened in this task.
-- [ ] 8.2 Fill a run's context on purpose during an implement step; verify that the change is blocked, the compaction doesn't run and the worker stops the run, or that the fallback chosen in task 1.1 does the same.
+
+  Done on 2026-11-27 with Claude Code 2.1.332. Migration: the `/loop` sessions were no longer running and their worktrees were clean. Agents Fish (6) and Heron (7) were deleted, with their worktrees, branches (`changes-empty-hint`, `agent-count-badge`) and test databases, and created again as Fish (8, no model) and Heron (9, `sonnet`). Runner "laptop" was created for TEST's owner and registered with `--clone TEST=~/dev/goalner`. The workers ran from this branch's checkout, in a clean environment (`env -i`), against `bin/dev`. Test change `e2e-hello` (change 12):
+  - "Start exploring": Fish's worker created `~/goalner/workspaces/TEST/e2e-hello` on the new branch `e2e-hello` from `main`, and Goalner recorded it on "laptop". It started session `177bb15b…` with `--session-id`, whose transcript was written under `~/.claude/projects/-Users-evgenii-goalner-workspaces-TEST-e2e-hello/`. Nothing was unclear, so the run went on to propose: OpenSpec files, an import (card TEST-95), commit `9bf682e`, finished as done in 46 seconds. The checkpoint `9bf682e` was reported, with nothing uncommitted.
+  - Ctrl-C: after "Implement", SIGINT to the worker 4 seconds into the run stopped the run, released the lease, and exited 0. Request 11 stayed taken by Fish. `bin/goalner-worker 8` leased again and continued the same session with `--resume` and the "interrupted" note. Only the session's first prompt held the instructions. Fish added `docs/e2e-hello.md` (commit `ae7752c`) and finished; the change reported Done.
+  - Handover: releasing Fish cleared the session. With Heron picked, "Archive" went to Heron's worker, which used the same workspace path and started a new session (`0886ef80…`) with `--model sonnet`. It archived the OpenSpec change (commit `fab78ac`) and finished as done.
+  - Archiving: right after that run, Heron's worker removed the worktree. The workspace became removed in Goalner, and the branch stayed. Runs used auto mode, and the `goalner` MCP server was connected.
+- [x] 8.2 Fill a run's context on purpose during an implement step; verify that the change is blocked, the compaction doesn't run and the worker stops the run, or that the fallback chosen in task 1.1 does the same.
+
+  Done on 2026-11-27, with the worker started with `CLAUDE_CODE_AUTO_COMPACT_WINDOW=100000 CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=40`, so Claude Code tried to compact on its first turns.
+  - First try (change 13): the hook ran 6 seconds into the run, Goalner blocked the change, and no compaction ran. But the run went on, and the model wasn't told, so it finished its request 17 seconds later, before the 30-second heartbeat.
+  - Fix: the worker now takes a request as soon as the run's stream reports a compaction (a `status` line). A worker test with a 60-second heartbeat covers it, and it fails on the old worker.
+  - Second try (change 14): the change was blocked 6 seconds in, the run was stopped within a second, no `compact_boundary` appeared, and request 14 stayed taken by Fish. Releasing Fish and archiving the change, then starting a worker, removed its workspace.
 - [ ] 8.3 Run the whole test suite, `bin/rubocop`, `bin/brakeman` and `bin/openapi-verify`; verify that all pass.
+
+  On 2026-11-27, after the 8.2 fix: the suite (1,272 tests, worker tests included) passes, the system tests passed (206, `TZ=UTC`, after `npx vite build --mode test`), and `bin/rubocop` and `bin/openapi-verify` pass. `bin/brakeman` has one warning, which predates this change: Ruby 4.0.7 in `.ruby-version` (CVE-2026-132825, fixed in 4.0.10). Left open until Ruby is upgraded or the warning is accepted.

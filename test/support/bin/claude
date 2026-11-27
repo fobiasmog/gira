@@ -9,8 +9,9 @@
 # - unfinished: ends with an error result, as after a dropped connection;
 # - hang: runs until interrupted, then ends;
 # - ignore_int: ignores interrupts; ignore_int_term: ignores terminations too;
-# - context_full: runs the PreCompact hook of its --settings, records its
-#   exit status in $FAKE_CLAUDE_DIR/hook.json, then hangs.
+# - context_full: reports a compaction while it runs the PreCompact hook of
+#   its --settings, records the hook's exit status in
+#   $FAKE_CLAUDE_DIR/hook.json, then hangs.
 #
 # Like Claude Code, it keeps a transcript under $CLAUDE_CONFIG_DIR/projects,
 # refuses --session-id for a session that has one, and writes stream-json.
@@ -81,7 +82,10 @@ when "ignore_int_term"
 when "context_full"
   settings = JSON.parse(File.read(option.("--settings")))
   command = settings.dig("hooks", "PreCompact", 0, "hooks", 0, "command")
+  # As Claude Code reports a compaction that its PreCompact hook blocks.
+  emit.(type: "system", subtype: "status", status: "compacting")
   output, status = Open3.capture2e("sh", "-c", command, stdin_data: JSON.generate(hook_event_name: "PreCompact", trigger: "auto"))
+  emit.(type: "system", subtype: "status", status: nil)
   File.write(File.join(dir, "hook.json"), JSON.generate(matcher: settings.dig("hooks", "PreCompact", 0, "matcher"), exit: status.exitstatus, output:))
   hang.call
 end

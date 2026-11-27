@@ -446,16 +446,21 @@ module GoalnerWorker
       end
 
       # Pumps the run's output every second, and takes a request every
-      # heartbeat interval while it runs.
+      # heartbeat interval while it runs, and at once after the run reports
+      # a compaction: a blocked compaction does not stop the run, so the take
+      # that finds its change blocked has to come before the run goes on to
+      # finish its request.
       def watch_run(child, request, project)
         next_beat = monotonic + @timings.heartbeat
+        @take_now = false
         while child.pump([ 1, @timings.heartbeat ].min)
           if stopping?
             stop_child(child)
             raise Stopping
           end
-          next if monotonic < next_beat
+          next if monotonic < next_beat && !@take_now
 
+          @take_now = false
           next_beat = monotonic + @timings.heartbeat
           outcome = take(project)
           case outcome.first
@@ -487,11 +492,13 @@ module GoalnerWorker
         true
       end
 
-      # Shows a line of the run's output, and keeps what its result says.
+      # Shows a line of the run's output, and keeps what its result says. A
+      # status line (compacting, and done compacting) asks for a take at once.
       def watch(line)
         @console.run_line(line)
         message = JSON.parse(line)
         @last_report = [ message["subtype"], message["result"] ].compact.join(": ") if message["type"] == "result"
+        @take_now = true if message["type"] == "system" && message["subtype"] == "status"
       rescue JSON::ParserError
         nil
       end
