@@ -4,6 +4,9 @@
 #
 # - claim: an agent takes the next request for it, or none; always 200, with
 #   {request: null} for none, so that no client mistakes it for a taken one.
+#   A taken request names its change's base branch, session and workspace.
+#   With a run token, the take keeps to its lease's runner and renews the
+#   lease (add-runners-and-workspaces design.md, decisions 2 and 3).
 # - finish: the agent that took a request finishes it as done or failed.
 # - cancellation: members cancel an open request.
 # - context_full: an agent whose context is full blocks its change.
@@ -16,8 +19,10 @@ class Api::Projects::RequestsController < Api::BaseController
   before_action :set_change_request, only: %i[ finish cancellation ]
 
   def claim
-    taken = ChangeRequest.take!(project: @project, agent: Current.user)
-    render json: { request: (serialize(taken) if taken) }
+    lease = Current.api_token&.agent_lease
+    taken = ChangeRequest.take!(project: @project, agent: Current.user, runner: lease&.runner)
+    lease&.renew!
+    render json: { request: (serialize(taken).taken if taken) }
   end
 
   def finish

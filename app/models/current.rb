@@ -1,7 +1,9 @@
 # The credential of the current request: a session (from the cookie) or an API
 # token (from the Authorization header), never both (design.md, decision 3).
+# On the runner endpoints it is a runner instead, which is no user (spec
+# agent-runners, "Runner authentication").
 class Current < ActiveSupport::CurrentAttributes
-  attribute :session, :api_token
+  attribute :session, :api_token, :runner
 
   def user
     session&.user || api_token&.user

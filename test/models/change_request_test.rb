@@ -639,4 +639,113 @@ class ChangeRequestTest < ActiveSupport::TestCase
     assert_equal [ @heron, false ], [ change.reload.agent, change.blocked? ]
     assert_not change.waiting_for_people?
   end
+
+  # Session of a stint (spec agent-workspaces; add-runners-and-workspaces
+  # design.md, decision 3)
+
+  UUID_V4 = /\A\h{8}-\h{4}-4\h{3}-[89ab]\h{3}-\h{12}\z/
+
+  test "first take: the agent's stint gets a session" do
+    change = create_change("export-csv")
+    ask(change, "explore")
+
+    take(@fish)
+
+    assert_match UUID_V4, change.reload.agent_session_id
+  end
+
+  test "later request of the stint: the same session" do
+    change = create_change("export-csv")
+    ask(change, "explore")
+    take(@fish).finish!(by: @fish, outcome: "done", comment: "Questions.")
+    session = change.reload.agent_session_id
+
+    ask(change, "propose")
+    take(@fish)
+    assert_equal session, change.reload.agent_session_id
+    assert_equal session, take(@fish).change.agent_session_id
+  end
+
+  test "new stint: released, then Heron takes the next request with another session" do
+    change = create_change("export-csv")
+    ask(change, "explore")
+    take(@fish).finish!(by: @fish, outcome: "done", comment: "Questions.")
+    fish_session = change.reload.agent_session_id
+
+    change.release_agent!(by: @member)
+    assert_nil change.reload.agent_session_id
+    ask(change, "propose")
+    take(@heron)
+
+    assert_match UUID_V4, change.reload.agent_session_id
+    assert_not_equal fish_session, change.agent_session_id
+  end
+
+  test "archived: the stint's session ends" do
+    change = create_change("export-csv")
+    ask(change, "explore")
+    take(@fish)
+
+    change.archive!(by: @member)
+
+    assert_nil change.reload.agent_session_id
+    assert_equal @fish, change.agent
+  end
+
+  test "an agent on a change without a session gets one on its next take, for a taken or a waiting request" do
+    taken = put_on(create_change("export-csv"), @fish)
+    taken.requests.create!(kind: "implement", requested_by: @member, state: "taken", taken_by: @fish, taken_at: Time.current)
+    take(@fish)
+    assert_match UUID_V4, taken.reload.agent_session_id
+
+    waiting = put_on(create_change("add-tags"), @heron)
+    ask(waiting, "propose")
+    take(@heron)
+    assert_match UUID_V4, waiting.reload.agent_session_id
+  end
+
+  # Take a request: workspaces (add-runners-and-workspaces design.md,
+  # decision 3)
+
+  def runner(name) = Runner.issue(user: @member, name:).tap(&:save!)
+
+  def workspace(change, runner)
+    Workspace.create!(change:, runner:, path: "/home/bob/goalner/workspaces/GOAL/#{change.name}", branch: change.name, base_branch: "main")
+  end
+
+  test "workspace on another runner: a run token of another runner gets no request, and it stays waiting" do
+    laptop = runner("laptop")
+    change = create_change("export-csv")
+    workspace(change, laptop)
+    implement = ask(change, "implement")
+
+    assert_nil ChangeRequest.take!(project: @project, agent: @heron, runner: runner("desktop"))
+    assert_equal "waiting", implement.reload.state
+    assert_equal implement, ChangeRequest.take!(project: @project, agent: @heron, runner: laptop)
+  end
+
+  test "token that is not a run token: no request of a change with an active workspace, in any step" do
+    laptop = runner("laptop")
+    change = create_change("export-csv")
+    ask(change, "explore")
+    take(@fish).finish!(by: @fish, outcome: "done", comment: "Questions.")
+    workspace(change, laptop)
+    reply = change.requests.create!(kind: "reply", requested_by: @member)
+
+    assert_nil take(@fish)
+    assert_equal "waiting", reply.reload.state
+
+    assert_equal reply, ChangeRequest.take!(project: @project, agent: @fish, runner: laptop)
+    assert_nil take(@fish)
+    assert_equal reply, ChangeRequest.take!(project: @project, agent: @fish, runner: laptop)
+  end
+
+  test "a workspace that is no longer active keeps no change away" do
+    laptop = runner("laptop")
+    change = create_change("export-csv")
+    workspace(change, laptop).update_column(:state, "kept")
+    explore = ask(change, "explore")
+
+    assert_equal explore, take(@fish)
+  end
 end

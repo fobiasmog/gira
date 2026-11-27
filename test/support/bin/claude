@@ -1,0 +1,87 @@
+#!/usr/bin/env ruby
+# A stand-in for Claude Code's headless mode, for tests of
+# bin/goalner-worker (CLAUDE_BIN). Each call is recorded in
+# $FAKE_CLAUDE_DIR/calls.jsonl with its arguments, working directory,
+# GOALNER_* environment and whether any environment value holds a runner
+# secret. The nth call behaves as line n of $FAKE_CLAUDE_DIR/modes says:
+#
+# - finish: finishes its request as done with GOALNER_TOKEN, and ends;
+# - unfinished: ends with an error result, as after a dropped connection;
+# - hang: runs until interrupted, then ends;
+# - ignore_int: ignores interrupts; ignore_int_term: ignores terminations too;
+# - context_full: runs the PreCompact hook of its --settings, records its
+#   exit status in $FAKE_CLAUDE_DIR/hook.json, then hangs.
+#
+# Like Claude Code, it keeps a transcript under $CLAUDE_CONFIG_DIR/projects,
+# refuses --session-id for a session that has one, and writes stream-json.
+require "fileutils"
+require "json"
+require "net/http"
+require "open3"
+
+dir = ENV.fetch("FAKE_CLAUDE_DIR")
+FileUtils.mkdir_p(dir)
+calls = File.join(dir, "calls.jsonl")
+index = File.exist?(calls) ? File.readlines(calls).size : 0
+modes = File.exist?(File.join(dir, "modes")) ? File.readlines(File.join(dir, "modes"), chomp: true) : []
+mode = modes[index] || "finish"
+
+option = ->(name) { (position = ARGV.index(name)) && ARGV[position + 1] }
+prompt = option.("-p")
+session = option.("--session-id") || option.("--resume")
+File.open(calls, "a") do |file|
+  file.puts JSON.generate(args: ARGV, cwd: Dir.pwd, mode:, pid: Process.pid, pgid: Process.getpgrp,
+    env: ENV.select { |name, _| name.start_with?("GOALNER_") }, secret_seen: ENV.values.any? { |value| value.include?("glnr_runner_") })
+end
+
+projects = File.join(ENV.fetch("CLAUDE_CONFIG_DIR"), "projects")
+existing = Dir.glob(File.join(projects, "*", "#{session}.jsonl")).first
+if option.("--session-id") && existing
+  warn "Error: Session ID #{session} is already in use."
+  exit 1
+end
+if option.("--resume") && !existing
+  warn "No conversation found with session ID: #{session}"
+  exit 1
+end
+transcript = existing || File.join(projects, Dir.pwd.gsub(/[^A-Za-z0-9]/, "-"), "#{session}.jsonl")
+FileUtils.mkdir_p(File.dirname(transcript))
+File.open(transcript, "a") { |file| file.puts JSON.generate(prompt:) }
+
+request = JSON.parse(prompt[/```json\n(.*?)\n```/m, 1])
+emit = ->(message) { $stdout.puts JSON.generate(message); $stdout.flush }
+result = ->(error, text) { emit.(type: "result", subtype: error ? "error_during_execution" : "success", is_error: error, result: text, duration_ms: 61_000, total_cost_usd: 0.25) }
+emit.(type: "system", subtype: "init", session_id: session, mcp_servers: [ { name: "goalner", status: "connected" } ])
+emit.(type: "assistant", message: { content: [ { type: "text", text: "Working on request #{request['id']}." }, { type: "tool_use", name: "Bash", input: { command: "git status" } } ] })
+
+hang = lambda do
+  Signal.trap("INT") { result.(true, "Interrupted."); exit 130 }
+  sleep
+end
+
+case mode
+when "finish"
+  uri = URI("#{ENV.fetch('GOALNER_URL')}/api/projects/#{request.dig('project', 'id')}/requests/#{request['id']}/finish")
+  post = Net::HTTP::Post.new(uri, "Authorization" => "Bearer #{ENV.fetch('GOALNER_TOKEN')}", "Content-Type" => "application/json")
+  post.body = JSON.generate(outcome: "done", comment: "Did the #{request['kind']} step.")
+  Net::HTTP.start(uri.host, uri.port) { |http| http.request(post) }
+  result.(false, "Finished request #{request['id']}.")
+when "unfinished"
+  result.(true, "API Error: Connection error.")
+  exit 1
+when "hang"
+  hang.call
+when "ignore_int"
+  Signal.trap("INT") { }
+  sleep
+when "ignore_int_term"
+  Signal.trap("INT") { }
+  Signal.trap("TERM") { }
+  sleep
+when "context_full"
+  settings = JSON.parse(File.read(option.("--settings")))
+  command = settings.dig("hooks", "PreCompact", 0, "hooks", 0, "command")
+  output, status = Open3.capture2e("sh", "-c", command, stdin_data: JSON.generate(hook_event_name: "PreCompact", trigger: "auto"))
+  File.write(File.join(dir, "hook.json"), JSON.generate(matcher: settings.dig("hooks", "PreCompact", 0, "matcher"), exit: status.exitstatus, output:))
+  hang.call
+end

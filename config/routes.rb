@@ -48,6 +48,21 @@ Rails.application.routes.draw do
       resource :avatar, only: :update, module: :me
       resources :api_tokens, only: %i[index create destroy], module: :me
       resources :connections, only: %i[index destroy], module: :me
+      # Runners, for their owner (spec agent-runners). Session only.
+      resources :runners, only: %i[index create destroy], module: :me do
+        resource :secret_rotation, only: :create, module: :runners
+      end
+    end
+
+    # The runner endpoints, for runners' secrets only (spec agent-runners,
+    # "Runner authentication"). Not in the API document.
+    scope "runner", module: :runners, as: :runner do
+      get "/", to: "profiles#show", as: :profile
+      post "agents/:agent_id/lease", to: "leases#create", as: :agent_lease
+      delete "leases/:id", to: "leases#destroy", as: :lease
+      put "changes/:change_id/workspace", to: "workspaces#record", as: :change_workspace
+      get "workspaces", to: "workspaces#index", as: :workspaces
+      patch "workspaces/:id", to: "workspaces#update", as: :workspace
     end
 
     resources :teammates, only: :index

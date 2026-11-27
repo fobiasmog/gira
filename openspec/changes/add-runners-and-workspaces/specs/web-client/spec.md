@@ -80,7 +80,7 @@ A new token's value SHALL be shown once, with a copy control and a warning that 
 ## ADDED Requirements
 
 ### Requirement: Runners screen
-The settings SHALL include a Runners screen that lists the user's runners (spec `agent-runners`, "List and revoke runners"), each with its name, the last four characters of its secret, when it was created, its last contact and the agents it runs now. It SHALL create a runner from a name and the current password. A new runner's secret SHALL be shown once, with a copy control, a warning that it will not be shown again, and the ready-to-copy command `bin/goalner-worker register --url <this Goalner> --token <secret>`. Revoking a runner SHALL ask for confirmation, saying which agents it stops. The password change form SHALL state that changing the password ends all of the user's runners.
+The settings SHALL include a Runners screen that lists the user's runners (spec `agent-runners`, "List, rotate and revoke runners"), each with its name, the last four characters of its secret, when it was created, its last contact and the agents it runs now. It SHALL create a runner from a name and the current password. A new runner's secret SHALL be shown once, with a copy control, a warning that it will not be shown again, and the ready-to-copy command `bin/goalner-worker register --url <this Goalner> --token <secret>`. Rotating a runner's secret SHALL ask for the current password, saying which agents it stops, and SHALL then show the new secret as for a new runner. Revoking a runner SHALL ask for confirmation, saying which agents it stops.
 
 #### Scenario: Create and copy
 - **WHEN** a user creates the runner "laptop" with their correct password
@@ -89,6 +89,10 @@ The settings SHALL include a Runners screen that lists the user's runners (spec 
 #### Scenario: Wrong password
 - **WHEN** a user submits the runner form with a wrong current password
 - **THEN** the error is shown under the password field and the name keeps its value
+
+#### Scenario: Rotate a running runner's secret
+- **WHEN** a user chooses to rotate the secret of "laptop", which runs Fish, and enters their correct password
+- **THEN** the dialog said that Fish will stop, and the new secret is shown once with a copy control, a warning and the register command containing it
 
 #### Scenario: Revoke a running runner
 - **WHEN** a user chooses to revoke "laptop", which runs Fish

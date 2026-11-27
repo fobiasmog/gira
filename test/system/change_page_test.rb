@@ -443,4 +443,51 @@ class ChangePageTest < ApplicationSystemTestCase
     assert_text "User One: запрошено — написание предложения"
     assert_text "возьмётся за работу"
   end
+
+  # Workspace on the change page (add-runners-and-workspaces)
+
+  def workspace_area = find("section[aria-labelledby='change-workspace']")
+
+  test "workspace shown: the runner, the path with a copy control, the branch, the base branch, the commit and uncommitted changes" do
+    change = @project.project_changes.create!(name: "export-csv", phase: "exploring")
+    laptop = Runner.issue(user: @user, name: "laptop").tap(&:save!)
+    workspace = Workspace.create!(change:, runner: laptop, path: "/home/bob/goalner/workspaces/GOAL/export-csv", branch: "export-csv", base_branch: "main")
+    workspace.checkpoint!(head_commit: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", uncommitted: true)
+
+    visit_change "export-csv"
+
+    assert_text "Base branch main"
+    within(workspace_area) do
+      assert_selector "h2", text: "Workspace on laptop"
+      assert_field "Path", with: "/home/bob/goalner/workspaces/GOAL/export-csv"
+      assert_text "Branch export-csv"
+      assert_text "Active"
+      assert_text(/At a1b2c3d, with uncommitted changes, .+/)
+      assert_no_text "a1b2c3d4"
+      execute_script("navigator.clipboard.writeText = async (text) => { window.__copied = text }")
+      click_button "Copy path"
+    end
+    assert_equal "/home/bob/goalner/workspaces/GOAL/export-csv", evaluate_script("window.__copied")
+  end
+
+  test "base branch before work starts: main without an edit action, and no workspace" do
+    @project.project_changes.create!(name: "add-tags")
+
+    visit_change "add-tags"
+
+    assert_text "Base branch main"
+    assert_no_selector "button", text: /base branch/i
+    assert_no_selector "section[aria-labelledby='change-workspace']"
+  end
+
+  test "a kept workspace is marked as kept because of uncommitted changes" do
+    change = @project.project_changes.create!(name: "fix-login")
+    laptop = Runner.issue(user: @user, name: "laptop").tap(&:save!)
+    Workspace.create!(change:, runner: laptop, path: "/w/fix-login", branch: "fix-login", base_branch: "main", state: "kept")
+    change.archive!
+
+    visit_change change.id
+
+    within(workspace_area) { assert_text "Kept: it holds uncommitted changes" }
+  end
 end

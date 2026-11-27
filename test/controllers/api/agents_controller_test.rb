@@ -1,7 +1,7 @@
 require "test_helper"
 
-# Spec agents, "Who can see and handle an agent", "Delete an agent" and
-# "Agents in API responses". goal: one (owner) and two. side: two (owner) and
+# Spec agents, "Who can see and handle an agent", "Agent settings", "Delete
+# an agent" and "Agents in API responses". goal: one (owner) and two. side: two (owner) and
 # stranger.
 class Api::AgentsControllerTest < ActionDispatch::IntegrationTest
   setup do
@@ -46,6 +46,38 @@ class Api::AgentsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unprocessable_content
     assert response.parsed_body.dig("error", "fields", "name").present?
     assert_equal "Fish", @fish.user.reload.name
+  end
+
+  # Agent settings
+
+  test "set settings: the model and the instructions, and the name stays" do
+    patch api_agent_path(@fish.user_id), params: { model: "opus", instructions: "Keep commits small." }, as: :json
+
+    assert_response :success
+    assert_equal [ "Fish", "opus", "Keep commits small." ], response.parsed_body.values_at("name", "model", "instructions")
+    assert_equal [ "opus", "Keep commits small." ], [ @fish.reload.model, @fish.instructions ]
+
+    get api_agents_path
+    assert_equal [ "opus", "Keep commits small." ], response.parsed_body.sole.values_at("model", "instructions")
+  end
+
+  test "clear the model: null" do
+    @fish.update!(model: "opus", instructions: "Keep commits small.")
+
+    patch api_agent_path(@fish.user_id), params: { model: nil }, as: :json
+
+    assert_response :success
+    assert_equal [ nil, "Keep commits small." ], [ @fish.reload.model, @fish.instructions ]
+  end
+
+  test "invalid model: a validation error on the model, and nothing changes" do
+    @fish.update!(model: "opus")
+
+    patch api_agent_path(@fish.user_id), params: { name: "Scout", model: "opus 4" }, as: :json
+
+    assert_response :unprocessable_content
+    assert response.parsed_body.dig("error", "fields", "model").present?
+    assert_equal [ "opus", "Fish" ], [ @fish.reload.model, @fish.user.reload.name ]
   end
 
   test "no shared project: every request about the agent is a 404, as for an unknown agent" do

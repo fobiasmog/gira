@@ -1,7 +1,7 @@
 import { test, beforeEach } from "node:test"
 import assert from "node:assert/strict"
 import {
-  activeAgents, addableAgents, agentsApi, channelsOf, choiceOf, deletedAgents, mcpCommand, mcpConfig, withAgent, worksOn,
+  activeAgents, addableAgents, agentsApi, channelsOf, choiceOf, deletedAgents, mcpCommand, mcpConfig, settingValue, startCommand, withAgent, worksOn,
 } from "./agents.ts"
 import type { ProjectAgent, UserCard, VisibleAgent } from "./types.ts"
 
@@ -18,7 +18,8 @@ function respond(status: number, body?: unknown) {
 const bob: UserCard = { id: 2, name: "Bob", email_address: "bob@example.com", avatar_url: null, agent: false, deleted: false }
 const agent = (id: number, name: string, extra: Partial<ProjectAgent> = {}): ProjectAgent => ({
   id, name, email_address: `calm-owl-000${id}@agents.goalner.com`, avatar_url: null, agent: true, deleted: false,
-  created_by: bob, created_at: "2026-11-01T10:00:00Z", deleted_at: null, token_count: 1, removable: false, ...extra,
+  created_by: bob, created_at: "2026-11-01T10:00:00Z", deleted_at: null, model: null, instructions: null, token_count: 1, removable: false,
+  checked_in_at: null, online: false, working_on: null, lease: null, ...extra,
 })
 const fish = agent(7, "Fish")
 const owl = agent(8, "Owl", { deleted: true, deleted_at: "2026-11-10T10:00:00Z", token_count: 0 })
@@ -43,17 +44,27 @@ test("lists a project's agents and the agents the user can see", async () => {
   assert.equal(calls[1]!.url, "/api/agents")
 })
 
-test("creates an agent with its first token and the current password", async () => {
-  respond(201, { ...fish, first_token: { token: "glnr_x" } })
+test("creates an agent with its settings, and no token or password", async () => {
+  respond(201, fish)
 
-  await agentsApi.create(1, "Fish", { name: "runner", access: "read_write", channels: ["api", "mcp"] }, "secret")
+  await agentsApi.create(1, { name: "Fish", model: "opus", instructions: null })
 
   assert.equal(calls[0]!.url, "/api/projects/1/agents")
   assert.equal(calls[0]!.init.method, "POST")
   assert.equal((calls[0]!.init.headers as Record<string, string>)["X-CSRF-Token"], "csrf-123")
-  assert.deepEqual(body(calls[0]!), {
-    name: "Fish", token: { name: "runner", access: "read_write", channels: ["api", "mcp"] }, current_password: "secret",
-  })
+  assert.deepEqual(body(calls[0]!), { name: "Fish", model: "opus", instructions: null })
+})
+
+test("edits an agent's settings, and an empty setting is sent as null", async () => {
+  respond(200, fish)
+
+  await agentsApi.update(7, { name: "Fish", model: settingValue(""), instructions: settingValue("Keep commits small.") })
+
+  assert.equal(calls[0]!.url, "/api/agents/7")
+  assert.equal(calls[0]!.init.method, "PATCH")
+  assert.deepEqual(body(calls[0]!), { name: "Fish", model: null, instructions: "Keep commits small." })
+  assert.equal(settingValue("  "), null)
+  assert.equal(startCommand(7), "bin/goalner-worker 7")
 })
 
 test("issues and revokes a token", async () => {
@@ -70,7 +81,7 @@ test("issues and revokes a token", async () => {
 
 test("handles an agent by its account's id", async () => {
   respond(200, fish)
-  await agentsApi.rename(7, "Scout")
+  await agentsApi.update(7, { name: "Scout" })
   await agentsApi.restore(7)
   await agentsApi.addToProject(2, 7)
   respond(204)

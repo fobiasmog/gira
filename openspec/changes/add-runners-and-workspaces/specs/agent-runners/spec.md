@@ -19,8 +19,8 @@ A signed-in person SHALL be able to create a runner with a name of 1 to 100 char
 - **WHEN** Bob, who has 10 runners, creates another
 - **THEN** the request is rejected with a validation error, and no runner is created
 
-### Requirement: List and revoke runners
-The owner of a runner SHALL be able to list their runners, each with its name, the last four characters of its secret, when it was created, when it last contacted Goalner to within one minute, and the agents it holds a live lease of (requirement "Lease an agent"). The owner SHALL be able to revoke a runner without re-entering a password. Revoking SHALL end every lease of the runner at once, and its secret SHALL stop authenticating immediately. A runner SHALL also end when its owner's password is changed or reset. An ended runner SHALL NOT work again. Every request about a runner from anyone but its owner SHALL receive HTTP 404. Runners SHALL be handled only from a signed-in session: a request made with any token or runner secret SHALL receive HTTP 403 and have no effect.
+### Requirement: List, rotate and revoke runners
+The owner of a runner SHALL be able to list their runners, each with its name, the last four characters of its secret, when it was created, when it last contacted Goalner to within one minute, and the agents it holds a live lease of (requirement "Lease an agent"). The owner SHALL be able to rotate a runner's secret, re-entering their current password as for creating a runner (requirement "Runners"), within the same hourly limit. Rotating SHALL return a new secret, shown once and kept as on creation. The old secret SHALL stop authenticating immediately, and every lease of the runner SHALL end at once. The runner SHALL keep its name and its workspaces (spec `agent-workspaces`). The owner SHALL be able to revoke a runner without re-entering a password. Revoking SHALL end every lease of the runner at once, and its secret SHALL stop authenticating immediately. A revoked runner SHALL NOT work again. Changing or resetting the owner's password SHALL NOT affect their runners. Every request about a runner from anyone but its owner SHALL receive HTTP 404. Runners SHALL be handled only from a signed-in session: a request made with any token or runner secret SHALL receive HTTP 403 and have no effect.
 
 #### Scenario: List
 - **WHEN** Bob's runner "laptop" holds a lease of agent Fish, and Bob lists his runners
@@ -34,9 +34,17 @@ The owner of a runner SHALL be able to list their runners, each with its name, t
 - **WHEN** Bob revokes "laptop", which holds a lease of Fish
 - **THEN** the next request with the runner's secret receives HTTP 401, and the next request with Fish's run token receives HTTP 401
 
+#### Scenario: Rotate
+- **WHEN** Bob rotates the secret of "laptop", which holds a lease of Fish and the workspace of `export-csv`, entering his correct password
+- **THEN** the response contains a new secret starting with `glnr_runner_`, the old secret and Fish's run token receive HTTP 401, the new secret works, and the workspace of `export-csv` stays on "laptop"
+
+#### Scenario: Rotate with a wrong password
+- **WHEN** Bob rotates the secret of "laptop" with a wrong current password
+- **THEN** the old secret keeps working, and Bob's failed-attempt count increases by one
+
 #### Scenario: Password change
 - **WHEN** Bob changes his password
-- **THEN** every runner of Bob's stops authenticating, and their leases end
+- **THEN** the secrets of Bob's runners keep working, and their leases go on
 
 ### Requirement: Runner authentication
 The runner endpoints SHALL be those of this spec and of spec `agent-workspaces` that a runner calls. They SHALL be authenticated only by a runner secret, sent in the header `Authorization: Bearer <secret>`. A runner endpoint SHALL answer a request without a valid runner secret, including one with a session or an API token, with HTTP 401 and the JSON error envelope. Every other endpoint SHALL treat a runner secret as an unknown token. A runner SHALL be able to read its own name and its owner's name. Each runner secret SHALL be able to make at most 300 requests per minute, and a runner SHALL be able to lease agents at most 60 times per hour; requests over a limit SHALL receive HTTP 429 and SHALL NOT be processed. Runner endpoints SHALL NOT be part of the API document (spec `api-documentation`), and so SHALL NOT be tools of the MCP server.
@@ -112,7 +120,7 @@ A run token SHALL be an agent token (spec `agents`) of the leased agent, issued 
 Every take (spec `change-requests`, "Take a request") made with a run token SHALL renew its lease. A lease SHALL end, and stay ended, when:
 - its runner releases it;
 - it has not been renewed for the lease window, which SHALL be 5 minutes unless the server's configuration sets another number of seconds;
-- its runner is revoked or ends;
+- its runner is revoked, or the runner's secret is rotated;
 - its agent is deleted;
 - the same runner leases the agent again.
 

@@ -131,19 +131,21 @@ git `pre-push` hook.
 An agent is an account of its own that works on tasks the way a person does:
 it is assigned tasks, moves them, comments, creates tasks and assigns them to
 others, including other agents. What it does is recorded as its own doing,
-not as that of the person who set it up. How an agent decides what to do (its
-runtime, model and budget) is outside Goalner: an agent is whatever program
-holds one of its tokens.
+not as that of the person who set it up. An agent runs on a machine
+registered as a runner (see "Running agents"), or as any program that holds
+one of its tokens.
 
-Any member creates an agent on a project's **Agents** screen, with a name and
-its first token. The agent:
+Any member creates an agent on a project's **Agents** screen, with a name and,
+optionally, the model and instructions its runs get. Creating it issues no
+token. The agent:
 
 - joins that project at once, without an invitation, and can be added to
   other projects by anyone who shares a project with it;
 - gets a generated address such as `silver-fish-4821@agents.goalner.com`. It
   never signs in and never receives email;
-- is handled by every member of its projects: they rename it, issue and
-  revoke its tokens, remove it from a project, delete it and restore it.
+- is handled by every member of its projects: they edit its name, model and
+  instructions, issue and revoke its tokens, remove it from a project, delete
+  it and restore it. The Agents screen shows where each agent runs.
   Whoever created it has no more rights than any other member;
 - is marked as an agent wherever a person would be shown.
 
@@ -179,6 +181,8 @@ The agent domain must accept no mail. Publish a null MX record for it:
 ```
 agents.goalner.com.  MX  0 .
 ```
+
+Goalner never sends to these addresses in any case: every mailer drops them.
 
 ## Changes
 
@@ -243,12 +247,12 @@ request as its comment.
   moves it to Implementing. Finishing posts the agent's comment in the
   thread; finishing an archive request archives the change.
 - Every take is the agent's **check-in**. An agent without one for 3 minutes
-  is offline; set `AGENT_ONLINE_SECONDS` on the server to wait longer, for
-  workers that loop more slowly than once a minute. The New change dialog,
+  is offline; set `AGENT_ONLINE_SECONDS` on the server to wait longer. The New change dialog,
   the Agents screen and the change page show which agents are free, which
   change each is on, and which are offline.
-- **Release** an agent when its terminal is gone: its taken request is
-  cancelled, and the change goes back to any free agent.
+- **Release** an agent when its worker is gone for good: its taken request is
+  cancelled, and the change goes back to any free agent. The change keeps its
+  workspace, and the next agent continues there.
 - When an agent's context fills up, its change is **blocked**: the change
   waits for people and its page says why. Release the agent and ask for the
   step again; the next agent continues from the change's files, cards,
@@ -396,70 +400,131 @@ Goalner board, and agents work their cards through MCP.
 
 ## Running agents
 
-Each agent of a project's pool is one Claude Code instance on a working copy
-of its own, with its own token, running the `goalner-worker` skill
-(`.claude/skills/goalner-worker/SKILL.md`) in a loop. On one machine, for
-each agent:
+Agents run on machines registered as **runners**. A runner is the machine's
+credential, like a GitLab runner's: it can lease the agents its owner can see,
+and nothing else. `bin/goalner-worker <agent id>` runs one agent through it.
+Nobody copies an agent's token: the worker leases the agent and gets a token
+that only it sees, which ends with the lease.
 
-1. On the project's **Agents** screen, create the agent with a read-write
-   token for **API and MCP**: the skill works through MCP, and its
-   compaction hook calls the API.
-2. Give it a git worktree of its own:
+### Set up a machine
+
+1. In Goalner, open **Settings**, **Runners**, and create a runner named after
+   the machine, such as "laptop". Copy the command it shows: the secret is
+   shown once. Register each machine as its own runner. Two machines with one
+   secret take each other's leases, and their workers stop.
+2. Prepare each project the machine works on. A Goalner project is one git
+   repository:
+   - clone the repository on the machine. Agents never push, so a clone of
+     your own is enough;
+   - run `openspec init` in it and commit that, if the repository has no
+     `openspec/` folder yet;
+   - make a first commit on `main` if the repository is empty: every change
+     starts from `main` for now.
+3. Register the machine from a checkout of Goalner, naming each project's
+   clone by the project's short name:
 
    ```sh
-   git worktree add --detach ../goalner-fish main
+   bin/goalner-worker register --url http://localhost:3000 --token glnr_runner_... \
+     --clone TEST=~/dev/goalner
    ```
 
-3. Start Claude Code there with the agent's token, test databases of its own,
-   and only the MCP server of `.claude/goalner-worker.mcp.json`, which reads
-   the token from `GOALNER_TOKEN`:
+   The runner is saved in `~/.config/goalner/runners.yml` (or under
+   `$XDG_CONFIG_HOME`), readable by you alone; the worker refuses a file that
+   others can read. One file holds a runner for each Goalner address.
+   Registering again for an address keeps what it saved: add a project later
+   with `--clone MNT=~/dev/mynewthing` and no `--token`. `--workspaces <dir>`
+   moves the workspaces, by default `~/goalner/workspaces`.
 
-   ```sh
-   cd ../goalner-fish
-   GOALNER_TOKEN=glnr_... GOALNER_TEST_DB_SUFFIX=fish \
-     claude --strict-mcp-config --mcp-config .claude/goalner-worker.mcp.json
-   ```
+### Start agents
 
-   `claude mcp add` does not work for this: Claude Code would keep the
-   server for the repository, and every worktree would share it.
-   `GOALNER_MCP_URL` and `GOALNER_URL` point the server and the hook at
-   another Goalner than `http://localhost:3100/mcp` and
-   `http://localhost:3000`.
-4. In that session, run `/loop 1m /goalner-worker TEST`.
+Create agents on a project's **Agents** screen, with a name and, optionally,
+a model (such as `opus`) and instructions that every run gets. Creating an
+agent issues no token. The screen shows the command that starts it:
 
-Run one instance per agent: two instances with one token are one agent to
-Goalner, and would take each other's requests.
+```sh
+bin/goalner-worker 6
+```
 
-Each agent then:
+Run it from a checkout of `main`: the worker's instructions and settings come
+from its own checkout, so switching that checkout's branch changes the next
+run. Run one worker per agent; a second one for the same agent on the machine
+refuses to start. With runners for several Goalners, pick one with `--url`.
+Restart running workers after registering a new project, and register a clone
+again after its project's short name changes.
 
-- learns which agent it is (`showProfile`), and stops if the token is a
-  person's;
-- every minute takes the next request for it (`claimRequest`). Each take is
-  its check-in, so an agent whose loop stops shows as offline after 3
-  minutes, or `AGENT_ONLINE_SECONDS` on the server;
-- works on each change in a branch named after the change, created from a
-  base branch that it asks about in the thread when the idea does not say,
-  and commits there. It never pushes;
-- does the step: explores and asks, writes and imports the OpenSpec change,
-  replies, implements the cards, or archives the OpenSpec change;
-- finishes the request with a comment in the change's thread.
+The worker waits without running Claude Code, taking a request in each
+project with a clone every 10 seconds; each take is the agent's check-in. When
+a request comes, it:
 
-When a change is **blocked**, its agent's context filled up: the skill's
-`PreCompact` hook (`bin/goalner-context-full`) told Goalner, and stopped
-Claude Code from compacting the session into a summary. On the change's
-page, choose **Release Fish**, then ask for the step again, such as
-**Continue implementing**: the next free agent takes it and continues from
-the change's files, cards, commits and thread. Clear or restart the blocked
-instance to make it a free agent again.
+1. settles the change's **workspace**: a git worktree at
+   `<workspaces>/<PROJECT>/<change>` on a branch named after the change, cut
+   from `main`. Goalner records it, and every later request of the change,
+   whichever agent takes it, runs there. It refuses a branch of that name that
+   already exists, so as not to continue someone else's work;
+2. runs the repository's `bin/goalner-attach` in it, when there is one.
+   Goalner's own installs gems and packages and prepares test databases of
+   the change's own (`GOALNER_TEST_DB_SUFFIX=c<change id>`), leaving the
+   development database alone;
+3. runs the request as one headless `claude -p` in the workspace, with
+   `.claude/goalner-worker.mcp.json` and `.claude/goalner-worker.settings.json`
+   (auto mode, the `PreCompact` hook, and a rule against reading the runner
+   file). The first run of an agent's stint on a change creates its Claude
+   Code session; later runs continue it with `--resume`, so the agent keeps
+   the change's questions and answers. The run finishes the request itself;
+4. reports a checkpoint: the commit the branch is at, and whether files are
+   uncommitted. The change page shows it with the workspace.
 
-When an agent's terminal is gone for good, release the agent on its change's
-page: its taken request is cancelled, and the change goes back to any free
-agent.
+The terminal shows each run's text, its tool calls, and its duration and cost.
+The full output goes to `log/agents/<agent id>/<request id>.jsonl`.
 
-The steps of "OpenSpec changes" above remain the manual way to drive an
-agent from its terminal.
+Whatever interrupts a run, the same request continues in the same session:
 
-Goalner never sends to these addresses in any case: every mailer drops them.
+- **Ctrl-C** stops the run and releases the agent; its request stays taken.
+  `bin/goalner-worker 6` later continues it. A worker that was killed can be
+  started again at once, and stops a run it left behind first.
+- A run that ends without finishing its request, such as after a dropped
+  connection, is continued after 1, 5 and 15 minutes. When the run after the
+  15-minute wait leaves it unfinished too, the worker finishes the request as
+  failed, quoting what the run reported.
+- Cancelling the request, releasing the agent or a full context stops the run
+  within 30 seconds. While Goalner cannot be reached, the worker waits and
+  tries again; a lease that lapsed meanwhile, after 5 minutes without a take
+  (`AGENT_LEASE_SECONDS` on the server), is leased again.
+
+When a change is **blocked**, its agent's context filled up: the `PreCompact`
+hook (`bin/goalner-context-full`) told Goalner and stopped the compaction, and
+the worker stopped the run. Release the agent on the change's page and ask for
+the step again: the next agent continues in the same workspace, in a new
+session.
+
+After a change is archived, its worker removes its workspace: it runs the
+repository's `bin/goalner-detach` (Goalner's drops the change's test
+databases) and removes the worktree without forcing. The branch stays. A
+worktree with uncommitted changes is kept, and the change page says so.
+
+Workers use your own `claude` login, so runs count toward your plan's limits.
+Set `ANTHROPIC_API_KEY` in the worker's environment to bill runs to the API
+instead.
+
+Changing your password leaves runners as they are. If a runner's secret may
+have leaked, **Rotate secret** on the Runners screen: the old secret and the
+runner's leases stop at once, and its workspaces stay. Register the machine
+again with the new `--token`, and start its agents again. Revoke a runner
+whose machine is gone for good.
+
+Manual agent tokens still work for interactive sessions, but they get no
+request of a change whose workspace is active: only the worker of that
+workspace's runner does.
+
+### Moving from the `/loop` worker
+
+1. Stop the Claude Code sessions that ran the old skill in a loop. Commit or
+   discard their work, then release their agents or let their changes
+   finish. Remove their worktrees (`git worktree remove ../goalner-fish`), so
+   that the changes' branches are free for workspaces.
+2. Deploy and migrate. Every change gets the base branch `main`.
+3. Create a runner, register the machine, and start each agent with
+   `bin/goalner-worker <id>` from a checkout of `main`.
 
 ## MCP server
 
@@ -541,8 +606,8 @@ creator. `listTasks` with the view `assigned` lists the agent's own work.
 
 Claude Code keeps a server added this way for the repository it was added
 in, git worktrees included, so every working copy of the repository acts as
-that one agent. To run several agents on one machine, give each its own
-session as in "Running agents" below.
+that one agent. To run agents unattended, start them with
+`bin/goalner-worker` as in "Running agents" above.
 
 ### Connected apps
 

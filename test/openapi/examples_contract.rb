@@ -185,6 +185,26 @@ class OpenapiExamplesContract < OpenapiContractTest
     assert_includes response.parsed_body.map { |change| change.values_at("name", "waiting_for_people") }, [ "add-labels", true ]
   end
 
+  # add-runners-and-workspaces: a run token, leased by a runner of two's.
+  test "claimRequest with a run token, and showChange and listChanges, with a workspace and its checkpoint" do
+    laptop = Runner.issue(user: users(:two), name: "laptop").tap(&:save!)
+    run_token = bearer(AgentLease.lease!(agent: fish, runner: laptop).run_token_value)
+    ChangeRequest.ask!(change: @change, kind: "explore", by: users(:one))
+    post claim_api_project_requests_path(@project), headers: run_token, as: :json
+    assert_response :success
+    workspace = Workspace.record!(change: @change, runner: laptop, path: "/home/two/goalner/workspaces/GOAL/add-labels", branch: "add-labels")
+    workspace.checkpoint!(head_commit: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", uncommitted: true)
+
+    post claim_api_project_requests_path(@project), headers: run_token, as: :json
+    assert_response :success
+    assert_equal "laptop", response.parsed_body.dig("request", "change", "workspace", "runner", "name")
+    get api_project_change_path(@project, "add-labels"), headers: token
+    assert_response :success
+    assert_equal "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", response.parsed_body.dig("workspace", "checkpoint", "head_commit")
+    get api_project_changes_path(@project), headers: token
+    assert_response :success
+  end
+
   test "claimRequest with nothing waiting, and showChange and listChanges with a request, an agent and every kind of history" do
     post claim_api_project_requests_path(@project), headers: fish_token
     assert_response :success

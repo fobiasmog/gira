@@ -193,6 +193,8 @@ ru:
           attributes:
             base:
               last_project: Агента нельзя убрать из его единственного проекта. Удалите его.
+            model:
+              invalid: "может содержать только латинские буквы, цифры, точки, дефисы и подчёркивания"
         api_token:
           attributes:
             base:
@@ -224,6 +226,24 @@ ru:
           attributes:
             base:
               task_or_change: Комментарий относится к задаче или к изменению
+        runner:
+          attributes:
+            base:
+              too_many: "Можно иметь не больше %{count} раннеров. Отзовите один, чтобы создать новый."
+        workspace:
+          attributes:
+            base:
+              not_active: Рабочая копия не активна
+              change_open: Изменение открыто; его рабочую копию удаляют или оставляют только после архивации
+            path:
+              fixed: не меняется после записи рабочей копии
+            branch:
+              fixed: не меняется после записи рабочей копии
+            state:
+              inclusion: должно быть removed или kept
+              removed: удалена навсегда
+            head_commit:
+              invalid: должен состоять из 40 шестнадцатеричных символов
         task:
           attributes:
             base:

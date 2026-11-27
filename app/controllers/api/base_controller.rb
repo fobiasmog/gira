@@ -8,8 +8,9 @@
 #   default forgery protection, before authentication (the SPA sends
 #   X-CSRF-Token). Token requests skip it, as they never read the cookie.
 # - Errors: one envelope, { error: { code:, message:, fields: } }, that never
-#   contains exception messages, SQL or class names.
+#   contains exception messages, SQL or class names (ApiErrors).
 class Api::BaseController < ApplicationController
+  include ApiErrors
   include ApiTokenAuthentication
   allow_token_access only: :route_not_found
 
@@ -17,30 +18,9 @@ class Api::BaseController < ApplicationController
   # renaming a project.
   class Forbidden < StandardError; end
 
-  MESSAGES = {
-    unauthorized: "Sign in to continue.",
-    invalid_token: "The API token is missing, invalid or expired.",
-    invalid_service_key: "The service key sent with this request was refused.",
-    forbidden: "You do not have permission to do this.",
-    agents_only: "Only agents can do this. Connect with an agent's token.",
-    token_not_allowed: "This action is not available with an API token.",
-    insufficient_scope: "This API token is read-only.",
-    not_found: "Not found.",
-    invalid_authenticity_token: "Your session has expired. Reload the page and try again.",
-    validation_failed: "Some fields are invalid.",
-    keys_missing: "This change already has tasks, but the text carries none of their Goalner marks. Save the text returned here into tasks.md, edit it, and import again.",
-    rate_limited: "Too many requests. Try again later.",
-    internal_error: "Something went wrong. Please try again."
-  }.freeze
-
-  # Order matters: rescue_from handlers are searched bottom-up.
-  rescue_from StandardError, with: :render_internal_error
-  rescue_from ActiveRecord::RecordNotFound, ActionController::RoutingError, with: :render_not_found
-  rescue_from ActiveRecord::RecordInvalid, Board::Error, with: :render_record_invalid
-  rescue_from ActionController::ParameterMissing, with: :render_parameter_missing
+  # After ApiErrors' handlers: rescue_from handlers are searched bottom-up.
   rescue_from Forbidden, with: :render_forbidden
   rescue_from ActionController::InvalidAuthenticityToken, with: :render_invalid_authenticity_token
-  rescue_from ActionController::TooManyRequests, with: :render_rate_limited
 
   # A Current.user-based key for endpoints limited per user.
   def self.rate_limit_per_user(**options)
@@ -62,42 +42,11 @@ class Api::BaseController < ApplicationController
       render_error status, code
     end
 
-    def render_error(status, code, fields: nil)
-      error = { code: code.to_s, message: MESSAGES.fetch(code) }
-      error[:fields] = fields if fields
-      render json: { error: error }, status: status
-    end
-
-    def render_validation_errors(record)
-      render_error :unprocessable_content, :validation_failed, fields: record.errors.to_hash(true)
-    end
-
-    def render_not_found(_exception = nil)
-      render_error :not_found, :not_found
-    end
-
     def render_forbidden(_exception = nil)
       render_error :forbidden, :forbidden
     end
 
-    def render_record_invalid(exception)
-      render_validation_errors exception.record
-    end
-
-    def render_parameter_missing(exception)
-      render_error :unprocessable_content, :validation_failed, fields: { exception.param => [ "is required" ] }
-    end
-
     def render_invalid_authenticity_token(_exception = nil)
       render_error :unprocessable_content, :invalid_authenticity_token
-    end
-
-    def render_rate_limited(_exception = nil)
-      render_error :too_many_requests, :rate_limited
-    end
-
-    def render_internal_error(exception)
-      Rails.error.report(exception, handled: true, source: "api")
-      render_error :internal_server_error, :internal_error
     end
 end

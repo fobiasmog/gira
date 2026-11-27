@@ -226,4 +226,31 @@ class McpChangeToolsTest < McpIntegrationTest
     assert result["isError"]
     assert_equal "idea", project.project_changes.sole.phase
   end
+
+  # Runners and workspaces (add-runners-and-workspaces, task 4.2)
+
+  test "claimRequest with a run token: the change's base branch, session and workspace" do
+    project = projects(:goal)
+    change = project.project_changes.create!(name: "export-csv")
+    fish = create_agent(project, name: "Fish")
+    laptop = Runner.issue(user: users(:one), name: "laptop").tap(&:save!)
+    lease = AgentLease.lease!(agent: fish, runner: laptop)
+    ChangeRequest.ask!(change:, kind: "explore", by: users(:one))
+    body(call_tool("claimRequest", { project_id: project.id }, token: lease.run_token_value))
+    Workspace.record!(change:, runner: laptop, path: "/home/bob/goalner/workspaces/GOAL/export-csv", branch: "export-csv")
+
+    taken = body(call_tool("claimRequest", { project_id: project.id }, token: lease.run_token_value))["request"]
+
+    assert_equal [ "export-csv", "main", change.reload.agent_session_id ], taken["change"].values_at("name", "base_branch", "session_id")
+    assert_equal [ "laptop", "/home/bob/goalner/workspaces/GOAL/export-csv", "active" ],
+      [ taken.dig("change", "workspace", "runner", "name"), *taken.dig("change", "workspace").values_at("path", "state") ]
+  end
+
+  test "no tool leases agents, handles runners or reports on workspaces, and a runner secret is no MCP token" do
+    names = listed_tools.keys
+
+    assert_empty names.grep(/runner|lease|workspace/i) - %w[releaseChangeAgent]
+    runner = Runner.issue(user: users(:one), name: "laptop").tap(&:save!)
+    assert_equal 401, mcp_request("tools/list", token: runner.secret).status
+  end
 end

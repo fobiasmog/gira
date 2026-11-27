@@ -71,18 +71,26 @@ class ChangeRequest < ApplicationRecord
     # 4. when it is on no open change: the oldest waiting request of a
     #    change with no agent.
     # Every take is the agent's check-in in project, whatever it returns.
-    def take!(project:, agent:)
+    #
+    # runner is that of the run token's lease the take is made with, or nil
+    # for any other token: no step returns a request of a change whose
+    # workspace is active on another runner, or on any runner for nil
+    # (add-runners-and-workspaces design.md, decision 3). The returned
+    # request's change has a session for the agent's stint.
+    def take!(project:, agent:, runner: nil)
       project.with_lock do
         project.memberships.where(user_id: agent.id).update_all(checked_in_at: Time.current)
+        elsewhere = Workspace.held_elsewhere(runner).select(:change_id)
 
-        resumed = in_project(project).taken.where(taken_by: agent, changes: { agent_blocked_at: nil }).order(:taken_at, :id).first
-        next resumed if resumed
+        resumed = in_project(project).taken.where(taken_by: agent, changes: { agent_blocked_at: nil })
+          .where.not(change_id: elsewhere).order(:taken_at, :id).first
+        next resumed.tap { |request| request.change.give_session! } if resumed
 
         on = Change.kept.on_by(agent).first
         request = if on
-          on.requests.waiting.first if on.project_id == project.id && !on.blocked?
+          on.requests.waiting.where.not(change_id: elsewhere).first if on.project_id == project.id && !on.blocked?
         else
-          queued(project, agent_id: agent.id) || queued(project, agent_id: nil)
+          queued(project, agent_id: agent.id, elsewhere:) || queued(project, agent_id: nil, elsewhere:)
         end
         request&.taken_by!(agent)
       end
@@ -90,10 +98,11 @@ class ChangeRequest < ApplicationRecord
 
     private
       # The oldest waiting request of an open change of project whose agent
-      # is picked as agent_id, or of one with no agent when it is nil.
-      def queued(project, agent_id:)
+      # is picked as agent_id, or of one with no agent when it is nil, and
+      # whose workspace is not elsewhere.
+      def queued(project, agent_id:, elsewhere:)
         in_project(project).waiting.oldest_first
-          .where(changes: { archived_at: nil, agent_id:, agent_taken_at: nil }).first
+          .where(changes: { archived_at: nil, agent_id:, agent_taken_at: nil }).where.not(change_id: elsewhere).first
       end
   end
 
@@ -139,12 +148,16 @@ class ChangeRequest < ApplicationRecord
   end
 
   # Marks a waiting request taken by agent; on its change's first request
-  # the agent is on the change from now on. Taking an explore request moves
-  # a change in Idea to Exploring, and an implement request moves its
-  # change to Implementing.
+  # the agent is on the change from now on, with a new session for its
+  # stint. Taking an explore request moves a change in Idea to Exploring,
+  # and an implement request moves its change to Implementing.
   def taken_by!(agent)
     update!(state: "taken", taken_by: agent, taken_at: Time.current)
-    change.update!(agent:, agent_taken_at: Time.current) unless change.agent_on?
+    if change.agent_on?
+      change.update!(agent_session_id: SecureRandom.uuid) if change.agent_session_id.nil?
+    else
+      change.update!(agent:, agent_taken_at: Time.current, agent_session_id: SecureRandom.uuid)
+    end
     if kind == "explore" && change.phase == "idea"
       change.move_to!("exploring", by: agent)
     elsif kind == "implement"

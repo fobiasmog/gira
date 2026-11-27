@@ -142,6 +142,27 @@ export interface Change extends ChangeReference {
   request: ChangeRequest | null
   // Picked, or on the change; null for any free agent.
   agent: ChangeAgent | null
+  // The branch its work starts from: main for every change for now.
+  base_branch: string
+  // Its working copy on a runner's machine; null until a runner records one.
+  workspace: Workspace | null
+}
+
+// The workspace of a change (spec agent-workspaces): a git worktree on one
+// runner's machine. Active while the change is open; once it is archived,
+// removed, or kept because it holds uncommitted changes.
+export type WorkspaceState = "active" | "kept" | "removed"
+
+export interface Workspace {
+  id: Id
+  runner: { name: string }
+  path: string
+  branch: string
+  base_branch: string
+  state: WorkspaceState
+  recorded_at: Timestamp
+  // The latest checkpoint its runner reported.
+  checkpoint: { head_commit: string; uncommitted: boolean; at: Timestamp } | null
 }
 
 // Requests for the steps of a change (spec change-requests). People ask for
@@ -264,6 +285,23 @@ export interface Agent extends UserCard {
   created_by: UserCard
   created_at: Timestamp
   deleted_at: Timestamp | null
+  // Its settings, which its worker passes to every run; null when unset.
+  model: string | null
+  instructions: string | null
+}
+
+// What an agent's settings are edited with; a null clears one.
+export interface AgentSettings {
+  name?: string
+  model?: string | null
+  instructions?: string | null
+}
+
+// Where an agent runs: its live lease of a runner, and since when.
+export interface AgentLease {
+  runner: { name: string }
+  owner: UserCard
+  since: Timestamp
 }
 
 // An agent in a project's list. removable: it belongs to another project
@@ -277,6 +315,8 @@ export interface ProjectAgent extends Agent {
   checked_in_at: Timestamp | null
   online: boolean
   working_on: { id: Id | null; name: string | null; project_id: Id | null } | null
+  // null while it runs nowhere.
+  lease: AgentLease | null
 }
 
 // An agent the user can see, with the projects they share.
@@ -304,9 +344,23 @@ export interface NewAgentToken extends AgentToken {
   mcp_url: string
 }
 
-// The creation response: the agent and its first token.
-export interface NewAgent extends ProjectAgent {
-  first_token: NewAgentToken
+// A runner (spec agent-runners): a machine's credential, which leases agents
+// to run them. Its secret is never listed: only its last four characters.
+export interface Runner {
+  id: Id
+  name: string
+  last_characters: string
+  created_at: Timestamp
+  last_contact_at: Timestamp | null
+  // The agents it runs now.
+  agents: { id: Id; name: string; since: Timestamp }[]
+}
+
+// The response that creates a runner or rotates its secret, the only one
+// that carries the secret, with the address to register it for.
+export interface NewRunner extends Runner {
+  secret: string
+  goalner_url: string
 }
 
 export interface Announcement {

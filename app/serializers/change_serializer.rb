@@ -2,7 +2,9 @@
 # waiting for people, its task counts, its open request and its agent in
 # lists, and with its idea, history, file paths, cards and last OpenSpec
 # import when it is opened (spec change-requests, "Open request and agent of
-# a change"; add-change-requests design.md, decisions 4 and 6).
+# a change"; add-change-requests design.md, decisions 4 and 6). Lists and
+# the detail name its base branch and its workspace (spec agent-workspaces,
+# "Workspace in change responses").
 class ChangeSerializer
   # Task counts, done columns, waiting, open requests and the users these
   # and the agents name, for all of them in a fixed number of queries.
@@ -13,21 +15,24 @@ class ChangeSerializer
     waiting = Change.waiting_for_people(changes)
     requests = ChangeRequest.unfinished.where(change_id: changes.map(&:id)).index_by(&:change_id)
     users = ChangeRequestSerializer.users_for(requests.values, extra_ids: changes.map(&:agent_id))
+    workspaces = WorkspaceSerializer.for_changes(changes)
     changes.map do |change|
       new(change, task_counts: counts.fetch(change.id), done_status_id: done_columns[change.project_id], waiting: waiting.include?(change.id),
-        request: requests[change.id], users:).as_json
+        request: requests[change.id], users:, workspace: workspaces[change.id]).as_json
     end
   end
 
   # request: the open request, or nil for none, where the caller loaded it;
-  # users: the users it and the agent name, by id.
-  def initialize(change, task_counts: nil, done_status_id: nil, waiting: nil, request: :load, users: nil)
+  # users: the users it and the agent name, by id; workspace: the change's
+  # workspace, or nil for none, where the caller loaded it.
+  def initialize(change, task_counts: nil, done_status_id: nil, waiting: nil, request: :load, users: nil, workspace: :load)
     @change = change
     @task_counts = task_counts || change.task_counts
     @done_status_id = done_status_id || change.project.done_status&.id
     @waiting = waiting.nil? ? change.waiting_for_people? : waiting
     @request = request == :load ? change.requests.unfinished.first : request
     @users = users || ChangeRequestSerializer.users_for([ @request ].compact, extra_ids: [ change.agent_id ])
+    @workspace = workspace == :load ? change.workspace : workspace
   end
 
   # phase is the reported one, Done included (add-change-conversation
@@ -35,9 +40,9 @@ class ChangeSerializer
   def as_json(*)
     phase = Change.reported_phase(@change.phase, @task_counts, @done_status_id)
     { id: @change.id, name: @change.name, archived_at: @change.archived_at,
-      phase:, waiting_for_people: @waiting, task_counts: @task_counts,
+      phase:, base_branch: @change.base_branch, waiting_for_people: @waiting, task_counts: @task_counts,
       request: (ChangeRequestSerializer.new(@request, change: @change, phase:, users: @users) if @request),
-      agent: agent }
+      agent: agent, workspace: (WorkspaceSerializer.new(@workspace) if @workspace) }
   end
 
   # Opening a change, and the answer to an update or an import: its idea,

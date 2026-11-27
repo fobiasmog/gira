@@ -5,6 +5,10 @@
 #
 # users: the users it names, by id, with what their cards need, where the
 # caller loaded them for many requests at once.
+#
+# A request an agent takes also names its change's base branch, the session
+# of the agent's stint on it and its workspace (spec change-requests, "Take
+# a request"; add-runners-and-workspaces design.md, decision 4): #taken.
 class ChangeRequestSerializer
   # The users that requests name, with their agents and avatars, by id, in
   # a fixed number of queries.
@@ -26,6 +30,15 @@ class ChangeRequestSerializer
       change: { id: @change.id, name: @change.name, phase: @phase },
       requested_by: card(@request.requested_by_id), taken_by: card(@request.taken_by_id), finished_by: card(@request.finished_by_id),
       created_at: @request.created_at, taken_at: @request.taken_at, finished_at: @request.finished_at }
+  end
+
+  # For the agent that takes it: what its worker needs to continue the work.
+  def taken
+    workspace = @change.workspace
+    as_json.tap do |json|
+      json[:change] = json[:change].merge(base_branch: @change.base_branch, session_id: @change.agent_session_id,
+        workspace: (WorkspaceSerializer.new(workspace) if workspace))
+    end
   end
 
   private

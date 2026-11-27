@@ -16,12 +16,12 @@ See proposal.md, "Why". The parts of today's system this design builds on:
   - SIGINT ends a turn cleanly, and a resumed session keeps an interrupted turn as it was;
   - `--output-format stream-json --verbose` emits an init line with the MCP servers' state, and a final result with `session_id`, `is_error`, `subtype` and `total_cost_usd`, which adds up over resumes;
   - without a permission mode, `-p` refuses everything that needs approval.
-- **Not documented** (spike tasks):
-  - whether a `PreCompact` hook blocks compaction under `-p`;
-  - whether `defaultMode` from `--settings` applies under `-p`;
-  - whether `--session-id` refuses an id that is already in use;
-  - whether `--resume` finds a session started under another working directory;
-  - whether a `Read` deny rule also stops `cat` through Bash outside the sandbox.
+- **Not documented, checked by hand** (spike tasks 1.1 to 1.4, Claude Code 2.1.332, 2026-11-27, each run headless with `--strict-mcp-config` and the model `haiku`, with and without the setting under test):
+  - *A `PreCompact` hook blocks compaction under `-p`.* With `CLAUDE_CODE_AUTO_COMPACT_WINDOW=100000` and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=50`, a hook with matcher `auto`, given through `--settings`, was called with `"trigger":"auto"` twice. Exiting with 2, the stream showed `status: compacting` and then `null`, no `compact_boundary`, and the prompt kept growing past the threshold. Exiting with 0, the same run compacted twice. A blocked run doesn't stop: it goes on uncompacted, and the hook is called again on later turns. Stopping it is the worker's job (decision 5).
+  - *`defaultMode` from `--settings` applies under `-p`.* With `{"permissions":{"defaultMode":"auto"}}`, the init line said `permissionMode: auto`, and a Write and a shell command ran without a denial. Without it, the mode was `default`, and the Write was denied.
+  - *`--session-id` refuses an id that is already in use.* `claude -p --session-id <id>` for an id with a transcript exits with 1 and `Error: Session ID <id> is already in use.` So the worker must choose `--resume` whenever a transcript exists.
+  - *`--resume` finds a session started under another working directory.* A run in another directory resumed the session, remembered its earlier turns, and appended to the original transcript, under the directory it started in.
+  - *A `Read` deny rule stops some reads through Bash, not all.* With `Read(~/.config/goalner/**)` denied in auto mode, the Read tool, `cat`, `head` and `cp` of a file there were denied. `ruby -e 'puts File.read(...)'` read it. Without the rule, all of them ran.
 
 ## Goals / Non-Goals
 
@@ -42,11 +42,11 @@ See proposal.md, "Why". The parts of today's system this design builds on:
 
 ### 1. A runner is a machine's credential, not an API token
 
-There is a new table, `runners`, with columns `user_id` (the owner), `name`, `token_digest`, `last_characters` and `last_contact_at`. The secret is `glnr_runner_` followed by 40 base58 characters, and only its SHA-256 digest is stored, as for API tokens. Runner endpoints live under `/api/runner/` and authenticate only with a runner secret, in a concern of their own. Every other endpoint looks secrets up in `api_tokens` only, so a runner secret is unknown there.
+There is a new table, `runners`, with columns `user_id` (the owner), `name`, `token_digest`, `last_characters`, `last_contact_at` and `revoked_at`. The secret is `glnr_runner_` followed by 40 base58 characters, and only its SHA-256 digest is stored, as for API tokens. Runner endpoints live under `/api/runner/` and authenticate only with a runner secret, in a concern of their own. Every other endpoint looks secrets up in `api_tokens` only, so a runner secret is unknown there.
 
 Why not an `api_tokens` row: every rule about tokens would then apply by accident, such as the endpoints open to tokens, MCP access, the API document and attribution to the owner. A runner must never act as its owner. Keeping it apart makes "a runner can only lease" true by construction.
 
-A runner ends when its owner's password changes, as personal tokens do. Its run tokens are issued on the owner's authority (decision 2), so a password reset after a compromise must stop them too.
+A password change leaves runners as they are. A runner holds workspaces (decision 3), which no other runner can take over, so ending it would strand every change it works on. A secret that may have leaked is rotated instead: the owner re-enters their password, gets a new secret, and the old one stops at once. Rotating ends the runner's leases, so run tokens leased with the old secret stop too. The runner keeps its name and its workspaces, and `register` with the new secret carries on where it was. Revoking stays for a machine that is gone for good. A runner is never deleted, because workspaces and leases name it: revoking sets `revoked_at`.
 
 Alternatives:
 - *A person's API token in the worker.* The worker could then act as the person on every endpoint open to tokens.
@@ -102,7 +102,7 @@ The take filter: `take!` gets the runner of the calling token's lease, or `nil`.
 | Method and path | What it does |
 | --- | --- |
 | `GET /api/runner` | The runner's name and its owner's name. `register` uses it to check the secret. |
-| `POST /api/runner/agents/:agent_id/lease` | Leases the agent and returns the lease, its run token, the agent, its projects and its current change (spec `agent-runners`, "Lease an agent") |
+| `POST /api/runner/agents/:agent_id/lease` | Leases the agent and returns the lease, its run token, the agent, its projects, the MCP address the runs connect to (`MCP_RESOURCE_URL`) and its current change (spec `agent-runners`, "Lease an agent") |
 | `DELETE /api/runner/leases/:id` | Ends the lease and deletes its run token. Ending a lease that has already ended changes nothing. |
 | `PUT /api/runner/changes/:change_id/workspace` | Records the change's workspace (`path`, `branch`). Recording the same values again changes nothing. |
 | `PATCH /api/runner/workspaces/:id` | Reports a checkpoint (`head_commit`, `uncommitted`) or a state (`removed`, `kept`) |
@@ -111,7 +111,7 @@ The take filter: `take!` gets the runner of the calling token's lease, or `nil`.
 Errors use the API's JSON envelope. These endpoints aren't opened to API tokens, so they stay out of the OpenAPI document and the MCP tools by the existing rules. The document's verification needs no exception for them.
 
 Session endpoints for people:
-- `GET /api/me/runners`, `POST /api/me/runners` (with `name` and `password`), and `DELETE /api/me/runners/:id`;
+- `GET /api/me/runners`, `POST /api/me/runners` (with `name` and `current_password`), `POST /api/me/runners/:id/secret_rotation` (with `current_password`), and `DELETE /api/me/runners/:id`;
 - `PATCH /api/agents/:id` takes `model` and `instructions`, as well as `name`;
 - `POST /api/projects/:id/agents` takes `name`, `model` and `instructions`, with no token fields and no password.
 
@@ -141,7 +141,7 @@ claude -p "<prompt>" \
   [--model <model>] [--append-system-prompt <instructions>]
 ```
 
-- The worker looks for `~/.claude/projects/*/<id>.jsonl` to choose between `--resume` and `--session-id`. Session ids are UUIDs, so the glob can't match the wrong file, and it doesn't depend on how Claude Code encodes paths.
+- The worker looks for `~/.claude/projects/*/<id>.jsonl` to choose between `--resume` and `--session-id`. Session ids are UUIDs, so the glob can't match the wrong file, and it doesn't depend on how Claude Code encodes paths. When there is no transcript, the worker reads the change's history: more than one request taken by the agent since its stint began means the stint had earlier runs, and the "context lost" note is added.
 - The worker's instructions for requests (`lib/goalner_worker/instructions.md`) go into the prompt of the first run of a session only. They stay in the session's context after that, so later runs carry just the request and any notes. A project skill would be read from the workspace's branch, which may be older than the worker. The instructions always come from the worker's own checkout.
 - `.claude/goalner-worker.settings.json` is new and committed, beside `goalner-worker.mcp.json`. It sets `permissions.defaultMode` to `auto`, which a headless run needs. It adds a deny rule for reading `~/.config/goalner/**`. It also holds the `PreCompact` hook, matcher `auto`, running `"$GOALNER_WORKER_HOME"/bin/goalner-context-full`. Using a separate file rather than `.claude/settings.json` leaves interactive sessions in the repository as they are.
 - The run's environment is the worker's, with `GOALNER_TOKEN`, `GOALNER_URL`, `GOALNER_MCP_URL`, `GOALNER_WORKER_HOME` and `GOALNER_TEST_DB_SUFFIX` set. The runner secret is read from the file and never put into an environment.
@@ -185,10 +185,10 @@ Manual agent tokens still work for interactive sessions, but `take!` gives them 
 
 ## Risks / Trade-offs
 
-- [A `PreCompact` hook may not block compaction in `-p`] → Spike task 1.1 checks this first. If it doesn't block, the worker watches the context itself: each assistant message in the stream carries the size of the prompt it answered. Past 85% of the window, the worker reports a full context and stops the run.
-- [`defaultMode` from `--settings` may not apply in `-p`] → Spike task 1.2. If it doesn't, the worker reads `defaultMode` from the same file and passes it as `--permission-mode`, so the mode is still set in one versioned file.
-- [`--resume` may not find a session from another working directory] → Workspace paths never change (decision 3), and the worker adds the "context lost" note when no transcript is found.
-- [The agent can read the runner secret] → Claude runs as the same OS user. The deny rule covers Claude's Read tool, and spike task 1.4 checks whether it also stops Bash. The secret can only lease agents the owner can see, the owner can revoke it at once, and it ends with a password change. Only a separate OS user or a VM closes this, which belongs to stage 3.
+- [A `PreCompact` hook may stop blocking compaction in a later `-p`] → Spike task 1.1 found that it blocks in 2.1.332, so the hook is the way. A blocked run keeps going until the worker's next heartbeat finds no request, up to 30 seconds later. If a later version stops honouring the hook, the fallback is for the worker to watch the context itself: each assistant message in the stream carries the size of the prompt it answered, and past 85% of the window the worker reports a full context and stops the run.
+- [`defaultMode` from `--settings` may stop applying in `-p`] → Spike task 1.2 found that it applies in 2.1.332. If it stops, the worker reads `defaultMode` from the same file and passes it as `--permission-mode`, so the mode is still set in one versioned file.
+- [`--resume` may not find a session from another working directory] → Spike task 1.3 found that it does in 2.1.332. Workspace paths never change anyway (decision 3), and the worker adds the "context lost" note when no transcript is found.
+- [The agent can read the runner secret] → Claude runs as the same OS user. Spike task 1.4 found that the deny rule stops the Read tool and the usual shell commands (`cat`, `head`, `cp`), but not a script that opens the file. The secret can only lease agents the owner can see, and the owner can rotate it or revoke it at once. Only a separate OS user or a VM closes this, which belongs to stage 3.
 - [Two machines sharing one runner secret] → The same runner on two machines would take the same agent's lease from each other. The README says to register each machine as its own runner, and a worker that loses its lease twice within 10 minutes stops.
 - [The worker's own checkout changes under it] → When a person switches branches in the checkout that holds `bin/goalner-worker`, the instructions and settings for the next run change too. The README recommends running workers from a checkout of `main`. The workspaces are separate worktrees and aren't affected.
 - [Unattended runs on a subscription login] → Workers use the user's own `claude` login and share the plan's limits. `ANTHROPIC_API_KEY` in the worker's environment switches runs to API billing. The README says so.

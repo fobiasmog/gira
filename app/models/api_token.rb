@@ -15,6 +15,10 @@
 #   belongs to (Current#projects), works on the channels it was issued for
 #   (ApiTokenAuthentication), and in practice does not expire: it is issued
 #   for AGENT_LIFETIME and ends when it is revoked or its agent is deleted.
+# - A run token (spec agent-runners, "Run tokens"; add-runners-and-workspaces
+#   design.md, decision 2) is an agent token issued with a lease of the agent
+#   to a runner, by the runner's owner. Nobody issues, lists or counts it:
+#   it authenticates only while its lease lives, and goes when it ends.
 class ApiToken < ApplicationRecord
   PREFIX = "glnr_"
   MAX_LIFETIME_DAYS = 365
@@ -33,6 +37,7 @@ class ApiToken < ApplicationRecord
   belongs_to :project, optional: true
   belongs_to :oauth_access_token, class_name: "Oauth::AccessToken", optional: true
   belongs_to :issuer, class_name: "User", optional: true
+  belongs_to :agent_lease, optional: true
 
   enum :access, { read: "read", read_write: "read_write" }, validate: true
 
@@ -44,6 +49,8 @@ class ApiToken < ApplicationRecord
   # oauth_access_token_id and issuer_id, so narrow by those after them.
   scope :of_connections, -> { unscope(where: %i[oauth_access_token_id issuer_id]).where.not(oauth_access_token_id: nil) }
   scope :of_agents, -> { unscope(where: %i[oauth_access_token_id issuer_id]).where.not(issuer_id: nil) }
+  # Agent tokens that people issued: every agent token but run tokens.
+  scope :issued_by_people, -> { of_agents.where(agent_lease_id: nil) }
 
   # Days from creation to expiry; required when a personal token is created.
   attribute :expires_in_days, :integer
@@ -52,7 +59,8 @@ class ApiToken < ApplicationRecord
   validates :project, presence: true, if: :personal?
   validates :expires_in_days, numericality: { only_integer: true, in: 1..MAX_LIFETIME_DAYS }, on: :create, if: :personal?
   validates :channels, inclusion: { in: CHANNEL_SETS }, if: :agent?
-  validate :agent_has_room_for_a_token, :agent_is_not_deleted, on: :create, if: :agent?
+  validate :agent_has_room_for_a_token, on: :create, if: -> { agent? && !run_token? }
+  validate :agent_is_not_deleted, on: :create, if: :agent?
 
   before_create :set_expiry, unless: :connection?
 
@@ -87,6 +95,13 @@ class ApiToken < ApplicationRecord
     issue(user_id: agent.user_id, issuer: issuer, **attributes).tap { |api_token| api_token.channel_list = channels }
   end
 
+  # A new, unsaved run token for lease: the leased agent's, issued by the
+  # runner's owner, read-write on both channels.
+  def self.issue_for_lease(lease)
+    issue(user_id: lease.agent_id, issuer: lease.runner.user, agent_lease: lease, name: "Runner #{lease.runner.name}".first(MAX_NAME_LENGTH),
+      access: :read_write, channels: "api_mcp")
+  end
+
   def self.digest(value)
     OpenSSL::Digest::SHA256.hexdigest(value)
   end
@@ -101,6 +116,10 @@ class ApiToken < ApplicationRecord
 
   def agent?
     issuer_id.present? || issuer.present?
+  end
+
+  def run_token?
+    agent_lease_id.present? || agent_lease.present?
   end
 
   def channel_list
@@ -142,9 +161,10 @@ class ApiToken < ApplicationRecord
       self.expires_at = agent? ? AGENT_LIFETIME.from_now : expires_in_days.days.from_now
     end
 
-    # An agent has at most MAX_ACTIVE_PER_USER live tokens, whoever issued them.
+    # An agent has at most MAX_ACTIVE_PER_USER live tokens, whoever issued
+    # them. Run tokens do not count.
     def agent_has_room_for_a_token
-      return if self.class.of_agents.where(user_id: user_id).count < MAX_ACTIVE_PER_USER
+      return if self.class.issued_by_people.where(user_id: user_id).count < MAX_ACTIVE_PER_USER
 
       errors.add(:base, :too_many_for_agent, count: MAX_ACTIVE_PER_USER)
     end

@@ -5,7 +5,6 @@
 class Api::Agents::TokensController < Api::BaseController
   include AgentScoped
   include PasswordReentry
-  # Shared with agent creation, which issues a first token.
   rate_limit_per_user to: 10, within: 1.hour, only: :create, scope: "agent_tokens"
   before_action :require_reentered_password, only: :create
 

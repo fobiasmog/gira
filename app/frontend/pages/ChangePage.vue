@@ -11,6 +11,7 @@ import CommentForm from "../components/task/CommentForm.vue"
 import ArchiveChangeDialog from "../components/changes/ArchiveChangeDialog.vue"
 import { phaseName } from "../components/changes/PhasePill.vue"
 import WaitingMarker from "../components/changes/WaitingMarker.vue"
+import ChangeWorkspace from "../components/changes/ChangeWorkspace.vue"
 import { agentOption, historyText, statusText } from "../components/changes/requestTexts.ts"
 import { changesApi, type ChangeFields } from "../api/changes.ts"
 import { activeAgents, agentsApi } from "../api/agents.ts"
@@ -358,6 +359,7 @@ async function archive() {
         </ol>
         <p class="small muted change-header__meta">
           <span>{{ t("changePage.progress", { done: progress.done, total: progress.total }) }}</span>
+          <span>{{ t("changePage.baseBranch", { branch: change.base_branch }) }}</span>
           <RouterLink v-if="isOpen" :to="boardLocation(projectId, 'kanban', { kind: 'change', name: change.name })">{{ t("changePage.openBoard") }}</RouterLink>
         </p>
       </div>
@@ -399,6 +401,8 @@ async function archive() {
         <button v-if="agentOn" type="button" class="button button--secondary" @click="release">{{ t("changePage.release", { name: agentOn.name }) }}</button>
       </div>
     </section>
+
+    <ChangeWorkspace v-if="change.workspace" :workspace="change.workspace" />
 
     <div class="change-page__main panel">
       <section class="change-section" aria-labelledby="change-idea">

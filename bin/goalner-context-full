@@ -1,7 +1,9 @@
 #!/usr/bin/env ruby
-# The PreCompact hook of the goalner-worker skill (spec change-requests,
-# "Full context"; add-change-requests design.md, decision 13). Claude Code
-# runs it just before it would compact a worker's session. It tells Goalner
+# The PreCompact hook of bin/goalner-worker's runs, set in
+# .claude/goalner-worker.settings.json (spec change-requests, "Full context";
+# spec agent-worker, "Full context during a run"; add-change-requests
+# design.md, decision 13). Claude Code runs it just before it would compact
+# a run's session automatically. It tells Goalner
 # that the agent's context is full, in every project the agent's token
 # reaches; the agent is on at most one open change, so at most one project
 # blocks it. When Goalner answers that the agent is blocked, the hook exits
@@ -9,8 +11,9 @@
 # compaction runs.
 #
 # It reads the agent's token from GOALNER_TOKEN, which must work at the API
-# (an agent token issued for "API and MCP"), and Goalner's address from
-# GOALNER_URL (default http://localhost:3000). When Goalner cannot be asked,
+# (the run token the worker sets, or an agent token issued for "API and
+# MCP"), and Goalner's address from GOALNER_URL (default
+# http://localhost:3000). When Goalner cannot be asked,
 # it blocks the compaction too: a summary would lose the context the agent
 # was kept on its change for, and a person sees why in the session.
 require "json"

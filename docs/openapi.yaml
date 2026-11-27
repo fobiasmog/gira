@@ -1201,6 +1201,16 @@ paths:
         - `archive`: archive the OpenSpec change, sync its specs and commit;
           finishing it as done archives the change in Goalner.
 
+        The request names its change's base branch, the branch the work
+        starts from (`main` for now), the session of your stint on the
+        change, a UUID that stays the same for every request until you are
+        released or the change is archived, and the change's workspace: the
+        working copy on one runner's machine where every agent of the change
+        works, or `null` before one is recorded. A change whose workspace is
+        active is given only to the run tokens of that runner, which
+        `bin/goalner-worker` gets when it leases you; any other token gets
+        nothing from it.
+
         Read the change (`showChange`) and its thread
         (`listChangeComments`) before you work, and finish with
         `finishRequest`. Every call is your check-in in the project: you are
@@ -1220,7 +1230,7 @@ paths:
                 properties:
                   request:
                     oneOf:
-                      - $ref: "#/components/schemas/Request"
+                      - $ref: "#/components/schemas/TakenRequest"
                       - type: "null"
         "401":
           $ref: "#/components/responses/Unauthorized"
@@ -2000,7 +2010,7 @@ components:
 
     ChangeFields:
       type: object
-      required: [id, name, archived_at, phase, waiting_for_people, task_counts, request, agent]
+      required: [id, name, archived_at, phase, base_branch, waiting_for_people, task_counts, request, agent, workspace]
       properties:
         id: { type: integer }
         name:
@@ -2012,6 +2022,8 @@ components:
           description: When the change was archived; `null` while it is open.
         phase:
           $ref: "#/components/schemas/ChangePhase"
+        base_branch:
+          $ref: "#/components/schemas/BaseBranch"
         waiting_for_people:
           type: boolean
           description: |
@@ -2029,6 +2041,11 @@ components:
           description: The change's agent, picked or on the change; `null` for any free agent.
           oneOf:
             - $ref: "#/components/schemas/ChangeAgent"
+            - type: "null"
+        workspace:
+          description: The change's workspace; `null` until a runner records one.
+          oneOf:
+            - $ref: "#/components/schemas/Workspace"
             - type: "null"
 
     Change:
@@ -2133,9 +2150,8 @@ components:
             full (`reportContextFull`); `null` when it is not. A blocked
             change gives its agent no request until a person releases it.
 
-    Request:
+    RequestFields:
       type: object
-      additionalProperties: false
       required: [id, kind, state, change, requested_by, taken_by, finished_by, created_at, taken_at, finished_at]
       properties:
         id: { type: integer }
@@ -2145,15 +2161,6 @@ components:
           type: string
           enum: [waiting, taken, done, failed, cancelled]
           description: Waiting until an agent takes it, then taken, then done, failed or cancelled. A waiting or taken request is open.
-        change:
-          type: object
-          additionalProperties: false
-          required: [id, name, phase]
-          properties:
-            id: { type: integer }
-            name: { type: string }
-            phase:
-              $ref: "#/components/schemas/ChangePhase"
         requested_by:
           $ref: "#/components/schemas/UserCard"
         taken_by:
@@ -2177,6 +2184,117 @@ components:
           type: [string, "null"]
           format: date-time
           description: When it was finished or cancelled.
+
+    Request:
+      description: A request, with its change's id, name and phase.
+      allOf:
+        - $ref: "#/components/schemas/RequestFields"
+        - type: object
+          properties:
+            change:
+              type: object
+              additionalProperties: false
+              required: [id, name, phase]
+              properties:
+                id: { type: integer }
+                name: { type: string }
+                phase:
+                  $ref: "#/components/schemas/ChangePhase"
+      unevaluatedProperties: false
+
+    TakenRequest:
+      description: |
+        A request you took, with what you need to work on its change: its
+        base branch, the session of your stint on it and its workspace.
+      allOf:
+        - $ref: "#/components/schemas/RequestFields"
+        - type: object
+          properties:
+            change:
+              type: object
+              additionalProperties: false
+              required: [id, name, phase, base_branch, session_id, workspace]
+              properties:
+                id: { type: integer }
+                name: { type: string }
+                phase:
+                  $ref: "#/components/schemas/ChangePhase"
+                base_branch:
+                  $ref: "#/components/schemas/BaseBranch"
+                session_id:
+                  type: [string, "null"]
+                  format: uuid
+                  description: |
+                    The session of your stint on the change: the same for every
+                    request you take on it, until you are released or the change
+                    is archived. The next agent on the change gets another.
+                workspace:
+                  description: The change's workspace; `null` until a runner records one.
+                  oneOf:
+                    - $ref: "#/components/schemas/Workspace"
+                    - type: "null"
+      unevaluatedProperties: false
+
+    BaseBranch:
+      type: string
+      description: |
+        The branch the change's work starts from. It is `main` for every
+        change for now, and cannot be chosen or changed.
+
+    Workspace:
+      type: object
+      additionalProperties: false
+      required: [id, runner, path, branch, base_branch, state, recorded_at, checkpoint]
+      description: |
+        The working copy of a change, a git worktree on one runner's machine,
+        where every agent that works on the change continues from the same
+        files. It stays with the change when its agent is released.
+      properties:
+        id: { type: integer }
+        runner:
+          type: object
+          additionalProperties: false
+          required: [name]
+          description: The runner whose machine holds it.
+          properties:
+            name: { type: string }
+        path:
+          type: string
+          description: Where the worktree is on the runner's machine.
+        branch:
+          type: string
+          description: The change's branch, named after the change.
+        base_branch:
+          type: string
+          description: The branch the change's branch was cut from.
+        state:
+          type: string
+          enum: [active, kept, removed]
+          description: |
+            `active` while the change is open. Once it is archived, `removed`
+            when the runner removed the worktree, or `kept` when the worktree
+            holds uncommitted changes and was left in place.
+        recorded_at:
+          type: string
+          format: date-time
+        checkpoint:
+          description: The latest checkpoint its runner reported; `null` before the first.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [head_commit, uncommitted, at]
+              properties:
+                head_commit:
+                  type: string
+                  pattern: "^[0-9a-f]{40}$"
+                  description: The commit the change's branch was at.
+                uncommitted:
+                  type: boolean
+                  description: Whether the worktree held uncommitted changes.
+                at:
+                  type: string
+                  format: date-time
+            - type: "null"
 
     RequestKind:
       type: string

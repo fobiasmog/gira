@@ -422,4 +422,21 @@ class ChangeTest < ActiveSupport::TestCase
     end
     assert_equal 1, queries.size
   end
+
+  # Base branch of a change (spec changes; add-runners-and-workspaces
+  # design.md, decision 8)
+
+  test "created by a member: the base branch is main, and it cannot be changed" do
+    change = projects(:goal).project_changes.create!(name: "export-csv")
+
+    assert_equal "main", change.base_branch
+    assert_raises(ActiveRecord::ActiveRecordError) { change.update!(base_branch: "release/2.0") }
+    assert_equal "main", change.reload.base_branch
+  end
+
+  test "created by an import: the base branch is main" do
+    result = Change::Import.new(project: projects(:goal), user: users(:one), name: "add-tags", artifacts: { "tasks" => "## 1. Tags\n\n- [ ] 1.1 Add tags\n" }).run!
+
+    assert_equal "main", result.change.reload.base_branch
+  end
 end

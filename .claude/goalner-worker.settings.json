@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "defaultMode": "auto",
+    "deny": [
+      "Read(~/.config/goalner/**)"
+    ]
+  },
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$GOALNER_WORKER_HOME\"/bin/goalner-context-full"
+          }
+        ]
+      }
+    ]
+  }
+}

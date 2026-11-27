@@ -2,7 +2,7 @@ require "test_helper"
 require "open3"
 require "socket"
 
-# bin/goalner-context-full, the PreCompact hook of the goalner-worker skill
+# bin/goalner-context-full, the PreCompact hook of bin/goalner-worker's runs
 # (spec change-requests, "Full context"; add-change-requests design.md,
 # decision 13), against a stand-in for Goalner's API: it reports a full
 # context in every project the token reaches, and stops the compaction (exit

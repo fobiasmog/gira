@@ -15,6 +15,9 @@ class User < ApplicationRecord
   # Present for agents only (spec agents): the row that makes this account an
   # agent. Authorization asks agent?, never the address's domain.
   has_one :agent
+  # Runners it owns (spec agent-runners), revoked ones included: a runner
+  # is never deleted, since its leases and workspaces name it.
+  has_many :runners, dependent: nil
   has_one_attached :avatar
 
   # Everyone but deleted agents, who keep their memberships so that they can
