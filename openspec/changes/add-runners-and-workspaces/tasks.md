@@ -7,8 +7,8 @@
 
 ## 2. Data model
 
-- [ ] 2.1 Add migrations for `runners`, `agent_leases` (partial unique index on `agent_id` where `ended_at` is null), `workspaces` (unique `change_id`, state check), `api_tokens.agent_lease_id` with the widened `api_tokens_kind` constraint, `changes.base_branch` (existing rows `main`) and `changes.agent_session_id`, `projects.repository_url` and `projects.default_branch` (default `main`), and `agents.model` and `agents.instructions`; verify that `bin/rails db:migrate` and a rollback succeed, and that the database refuses a second live lease of one agent and a second workspace of one change.
-- [ ] 2.2 Add the branch name validator, `Project` repository settings, and `Change#base_branch` with its default from the project and its freeze once a workspace exists (design decision 8); verify with model tests for every scenario of "Repository of a project" and "Base branch of a change".
+- [ ] 2.1 Add migrations for `runners`, `agent_leases` (partial unique index on `agent_id` where `ended_at` is null), `workspaces` (unique `change_id`, state check), `api_tokens.agent_lease_id` with the widened `api_tokens_kind` constraint, `changes.base_branch` (`main`, existing rows included) and `changes.agent_session_id`, and `agents.model` and `agents.instructions`; verify that `bin/rails db:migrate` and a rollback succeed, and that the database refuses a second live lease of one agent and a second workspace of one change.
+- [ ] 2.2 Add `Change#base_branch`, `main` for every change (design decision 8); verify with model tests for every scenario of "Base branch of a change".
 - [ ] 2.3 Add agent settings (`model`, `instructions`) with their validations; verify with model tests for every scenario of "Agent settings".
 - [ ] 2.4 Add `Runner`: creation with a `glnr_runner_` secret stored as a digest, the limit of 10, revocation that ends its leases, and ending every runner of a user when their password changes or is reset (design decision 1); verify with model tests for the scenarios of "Runners" and "List and revoke runners".
 - [ ] 2.5 Add `AgentLease`: leasing with its run token, one live lease per agent, replacing the same runner's lease, `agent_leased` and `workspace_elsewhere`, lazy lapse after `AGENT_LEASE_SECONDS`, ending that deletes the run token, and ending on agent deletion (design decision 2); verify with model tests for every scenario of "Lease an agent", "One lease per agent" and "Renewing and ending a lease".
@@ -23,14 +23,13 @@
 - [ ] 3.3 Add the workspace endpoints (record, checkpoint and state, list to remove); verify with controller tests for the scenarios of "Workspace of a change", "Workspace on one machine", "Checkpoints" and "Removing workspaces".
 - [ ] 3.4 Add the session-only runner endpoints under `/api/me/runners` (list, create with password and lockout, revoke); verify with controller tests for the scenarios of "Runners" and "List and revoke runners", including 403 for any token.
 - [ ] 3.5 Create agents without a token or password and with settings, edit settings with `PATCH /api/agents/:id`, and add `lease` to the project's agent list; verify with controller tests for the modified "Create an agent in a project" and "Who can see and handle an agent", "Agent settings" and "Leases in the agent list".
-- [ ] 3.6 Accept `base_branch` on change create and update, and add `base_branch` and `workspace` to change lists and the detail, loaded for all listed changes in one query; verify with controller tests for "Base branch of a change" and "Workspace in change responses", and a query-count assertion on the changes list.
-- [ ] 3.7 Accept `repository_url` and `default_branch` on project update for the owner only, and return them when reading the project; verify with controller tests for every scenario of "Repository of a project".
-- [ ] 3.8 Add `base_branch`, `session_id` and `workspace` to the change of a taken request, and renew the lease of a run token on every take; verify with controller tests for "Base branch, session and workspace" and "Lapse" of "Renewing and ending a lease".
-- [ ] 3.9 Filter runner secrets from logs and error reports; verify with a test that a lease request is logged with its `Authorization` header filtered.
+- [ ] 3.6 Add `base_branch` and `workspace` to change lists and the detail, loaded for all listed changes in one query, and ignore a `base_branch` given on create; verify with controller tests for "Base branch of a change" and "Workspace in change responses", and a query-count assertion on the changes list.
+- [ ] 3.7 Add `base_branch`, `session_id` and `workspace` to the change of a taken request, and renew the lease of a run token on every take; verify with controller tests for "Base branch, session and workspace" and "Lapse" of "Renewing and ending a lease".
+- [ ] 3.8 Filter runner secrets from logs and error reports; verify with a test that a lease request is logged with its `Authorization` header filtered.
 
 ## 4. API document and MCP
 
-- [ ] 4.1 Update `docs/openapi.yaml`: agent create without token fields and with settings, `PATCH` agent settings, `lease` on agents, `base_branch` and `workspace` on changes, `base_branch`, `session_id` and `workspace` on taken requests, and `repository_url` and `default_branch` on projects, with no runner endpoints; verify that `bin/openapi-verify` and the examples contract test pass.
+- [ ] 4.1 Update `docs/openapi.yaml`: agent create without token fields and with settings, `PATCH` agent settings, `lease` on agents, `base_branch` and `workspace` on changes, `base_branch`, `session_id` and `workspace` on taken requests, with no runner endpoints; verify that `bin/openapi-verify` and the examples contract test pass.
 - [ ] 4.2 Verify with an MCP test that `claimRequest` with a run token returns the change's base branch, session and workspace, and that the tool list has no runner operation.
 
 ## 5. Worker program
@@ -51,13 +50,11 @@
 
 ## 6. Web client
 
-- [ ] 6.1 Types and API calls for runners, leases, agent settings, base branches, workspaces and the project repository; verify that `npm run typecheck` passes.
+- [ ] 6.1 Types and API calls for runners, leases, agent settings, base branches and workspaces; verify that `npm run typecheck` passes.
 - [ ] 6.2 Add the Runners screen and the warning on the password change form; verify with system tests for every scenario of "Runners screen" and "Runners entry".
 - [ ] 6.3 Change the Agents screen: create without a token with optional settings and the start hint, edit settings, where each agent runs, and issuing tokens with a password; verify with system tests for every scenario of the modified "Agents screen".
-- [ ] 6.4 Add the base branch to the New change dialog; verify with a system test for "Base branch".
-- [ ] 6.5 Add the base branch and the workspace to the change page; verify with system tests for every scenario of "Workspace on the change page".
-- [ ] 6.6 Add the repository to the project settings; verify with a system test for "Set the default branch".
-- [ ] 6.7 English and Russian texts; verify that `npm test`, `npm run typecheck` and `npm run policy` pass, and that `bin/rails test:system` passes after `npx vite build --mode test`.
+- [ ] 6.4 Add the base branch and the workspace to the change page; verify with system tests for every scenario of "Workspace on the change page".
+- [ ] 6.5 English and Russian texts; verify that `npm test`, `npm run typecheck` and `npm run policy` pass, and that `bin/rails test:system` passes after `npx vite build --mode test`.
 
 ## 7. Workflow and docs
 

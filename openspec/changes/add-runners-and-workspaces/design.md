@@ -36,6 +36,7 @@ See proposal.md, "Why". The parts of today's system this design builds on:
 - Moving a workspace between machines, uploading transcripts, or pushing branches.
 - Keeping agents away from the runner secret by OS user, container or VM.
 - Device-code pairing of runners. Copying the secret once per machine is accepted for now.
+- Choosing a change's base branch, and a project's repository address and default branch (decision 8).
 
 ## Decisions
 
@@ -117,8 +118,7 @@ Session endpoints for people:
 New fields in existing responses:
 - the agent list gets `lease`;
 - changes get `base_branch` and `workspace`;
-- taken requests get `base_branch`, `session_id` and `workspace` on their change;
-- projects get `repository_url` and `default_branch`.
+- taken requests get `base_branch`, `session_id` and `workspace` on their change.
 
 ### 5. The worker program
 
@@ -167,9 +167,11 @@ Nothing else is kept locally: the agent's work lives in Goalner and in the works
 
 Both hooks are safe to run more than once. Other repositories bring their own hooks, or none.
 
-### 8. Base branch and repository
+### 8. Base branch, `main` for now
 
-`projects.repository_url` (nullable) and `projects.default_branch` (default `main`) are new, and so is `changes.base_branch`, filled with `main` for existing rows. One validator checks branch names (spec `projects`, "Repository of a project"). `Change` copies the project's default branch when no base branch is given. Once the change has a workspace, its base branch is frozen. The worker cuts a change's worktree from its base branch in the project's clone, so a branch is settled before the first run, without a round of questions in the thread.
+`changes.base_branch` is new, and it is `main` for every change, existing rows included. The API returns it but doesn't accept it. The worker cuts a change's worktree from it, and the workspace records it. When choosing a base branch comes later, only a way to set it has to be added, and the worker stays as it is.
+
+Choosing the base branch is postponed. The planned way: runners report their clones' local and `origin/*` branches to Goalner, and the New change dialog offers them in a combo box that also takes any typed name. A project's repository address and default branch are postponed with it, because nothing would use them yet.
 
 ### 9. Removing the `/loop` worker
 
@@ -195,7 +197,7 @@ Manual agent tokens still work for interactive sessions, but `take!` gives them 
 ## Migration Plan
 
 1. Stop the `/loop` sessions of Fish and Heron. Commit or discard their work. Release them from their changes, or let those changes finish. Then remove their worktrees (`git worktree remove ../goalner-fish`, and the same for Heron), so that the change branches are free to be checked out in workspaces.
-2. Merge and migrate. Existing changes get the base branch `main`, and existing projects get the default branch `main`.
+2. Merge and migrate. Existing changes get the base branch `main`.
 3. In Goalner: Settings, Runners, create "laptop". Copy the register command and run it with `--clone TEST=~/dev/goalner`.
 4. Start each agent with `bin/goalner-worker <id>`, from a checkout of `main`.
 

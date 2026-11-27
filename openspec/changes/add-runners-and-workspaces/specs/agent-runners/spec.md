@@ -57,14 +57,14 @@ The runner endpoints SHALL be those of this spec and of spec `agent-workspaces` 
 A runner SHALL be able to lease an agent that its owner can see (spec `agents`, "Who can see and handle an agent") and that is not deleted. Any other agent SHALL receive HTTP 404, as for an agent that does not exist. The response SHALL be HTTP 201 and SHALL contain:
 - the lease's id and the value of its run token (requirement "Run tokens"), which SHALL NOT be retrievable afterwards;
 - the agent's id, name, model and instructions (spec `agents`, "Agent settings");
-- the projects the run token reaches, each with its id, short name, repository and default branch (spec `projects`, "Repository of a project");
+- the projects the run token reaches, each with its id and short name;
 - the open change the agent is on, if any, with its project, id, name, phase and base branch (spec `changes`, "Base branch of a change"), the session of the agent's stint on it (spec `agent-workspaces`, "Session of a stint"), its workspace or `null`, and the request the agent took on it and has not finished, or `null`; or `null` when the agent is on no open change.
 
 Leasing SHALL NOT change the agent, its change or its requests, and SHALL NOT count as a check-in.
 
 #### Scenario: Free agent
 - **WHEN** Bob's runner leases agent Fish, which belongs to TEST and is on no change
-- **THEN** the response is HTTP 201 with a lease, a run token, Fish's name and settings, TEST with its short name and default branch, and no change
+- **THEN** the response is HTTP 201 with a lease, a run token, Fish's name and settings, TEST with its short name, and no change
 
 #### Scenario: Agent in the middle of a step
 - **WHEN** Fish is on `export-csv`, whose workspace is on Bob's runner, and has taken its implement request, and Bob's runner leases Fish

@@ -35,33 +35,6 @@ The client SHALL provide screens for:
 - **WHEN** a signed-in user opens their settings
 - **THEN** the settings include Runners
 
-### Requirement: New change dialog
-The "New change" action, on the board and on the changes screen, SHALL open a dialog that asks for the change's name, optionally its idea in a Markdown text field, its agent (spec `change-requests`, "Agent of a change"), and its base branch (spec `changes`, "Base branch of a change"), filled in with the project's default branch. The agent field SHALL offer "Any free agent", which is the default, and each of the project's agents with its state: free, on which change, or offline. As the member types the name, the dialog SHALL turn capital letters into lowercase and spaces into hyphens, and it SHALL show the allowed format. A validation error from the server SHALL be shown next to its field. After a change is created from the board, the board SHALL show that change.
-
-#### Scenario: Typing a name
-- **WHEN** a member types "Export CSV" into the name field
-- **THEN** the field holds `export-csv`
-
-#### Scenario: With an idea
-- **WHEN** a member creates `export-csv` with the idea "People want a project's tasks as CSV."
-- **THEN** the change's page shows that idea
-
-#### Scenario: Pick an agent
-- **WHEN** a member opens the dialog while Fish is on `export-csv`, Heron is free and Owl is offline, and creates `add-tags` with Fish
-- **THEN** the agent field listed Fish as on `export-csv`, Heron as free and Owl as offline, and the page of `add-tags` says that Fish will take it
-
-#### Scenario: Name taken
-- **WHEN** a member submits the name `add-labels` while an open change has that name
-- **THEN** the dialog stays open and shows the server's error next to the name field
-
-#### Scenario: From the board
-- **WHEN** a member creates the change `fix-login` from the board's "New change" action
-- **THEN** the dialog closes and the board shows the tab `fix-login`
-
-#### Scenario: Base branch
-- **WHEN** a member opens the dialog in TEST, whose default branch is `main`, changes the base branch to `release/2.0` and creates `add-tags`
-- **THEN** the base branch field showed `main` at first, and the page of `add-tags` shows the base branch `release/2.0`
-
 ### Requirement: Agents screen
 Each project SHALL have an Agents screen. It SHALL list the project's agents with their name, address, creator, number of live tokens, whether they are online or offline with their last check-in, and the change each one is on (spec `change-requests`, "Check-ins"), and where each one runs: the runner, its owner and since when, or that it is not running (spec `agent-runners`, "Leases in the agent list"), and its deleted agents in a collapsed group. From it, a member SHALL be able to:
 - create an agent from a name and, optionally, a model and instructions (spec `agents`, "Agent settings"), without a token or a password;
@@ -122,7 +95,7 @@ The settings SHALL include a Runners screen that lists the user's runners (spec 
 - **THEN** the confirmation says that Fish will stop, and after confirming "laptop" disappears from the list
 
 ### Requirement: Workspace on the change page
-The change page (requirement "Change page") SHALL show the change's base branch (spec `changes`, "Base branch of a change"), with an edit action while the change is open and has no workspace. When the change has a workspace (spec `agent-workspaces`), the page SHALL show its runner, its path with a copy control, its branch, its state, and its latest checkpoint: the commit's first seven characters, whether changes are uncommitted, and when it was reported. A kept workspace SHALL be marked as kept because of uncommitted changes.
+The change page (requirement "Change page") SHALL show the change's base branch (spec `changes`, "Base branch of a change"). When the change has a workspace (spec `agent-workspaces`), the page SHALL show its runner, its path with a copy control, its branch, its state, and its latest checkpoint: the commit's first seven characters, whether changes are uncommitted, and when it was reported. A kept workspace SHALL be marked as kept because of uncommitted changes.
 
 #### Scenario: Workspace shown
 - **WHEN** a member opens the page of `export-csv`, whose workspace is active on "laptop" at commit `a1b2c3d…` with uncommitted changes
@@ -130,11 +103,4 @@ The change page (requirement "Change page") SHALL show the change's base branch 
 
 #### Scenario: Base branch before work starts
 - **WHEN** a member opens the page of `add-tags`, which is in Idea and has no workspace
-- **THEN** the page shows its base branch with an edit action, and no workspace
-
-### Requirement: Repository in project settings
-The project settings screen SHALL show the project's repository address and default branch (spec `projects`, "Repository of a project") and SHALL let the owner change them. A validation error from the server SHALL be shown next to its field.
-
-#### Scenario: Set the default branch
-- **WHEN** the owner of TEST sets the default branch to `trunk` in the project settings
-- **THEN** the settings show `trunk`, and the New change dialog of TEST fills in `trunk` as the base branch
+- **THEN** the page shows the base branch `main` without an edit action, and no workspace
