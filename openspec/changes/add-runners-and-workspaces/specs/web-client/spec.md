@@ -47,11 +47,11 @@ Each project SHALL have an Agents screen. It SHALL list the project's agents wit
 - issue a token from a name, read-only or read-write access, its channels (API, MCP or both) and the current password;
 - revoke a token, after confirming.
 
-A new token's value SHALL be shown once, with a copy control and a warning that it will not be shown again. When the token includes MCP, the screen SHALL also show a ready-to-copy MCP client configuration with the MCP endpoint and the value, a note that a client configured with it in a working copy acts as that agent there, and a link to the MCP guide. When it includes the API, the screen SHALL link to the API documentation. After an agent is created, the screen SHALL show how to start it with `bin/goalner-worker` and the agent's id.
+A new token's value SHALL be shown once, with a copy control and a warning that it will not be shown again. When the token includes MCP, the screen SHALL also show a ready-to-copy MCP client configuration with the MCP endpoint and the value, a note that a client configured with it in a working copy acts as that agent there, and a link to the MCP guide. When it includes the API, the screen SHALL link to the API documentation. After an agent is created, and on request for any active agent, the screen SHALL show the command that starts it, with a copy control: `bin/goalner-worker` and the agent's name, or its id when another agent of the project has the same name. A name that needs quoting in a shell SHALL be quoted.
 
 #### Scenario: Create
 - **WHEN** a member creates agent "Fish" with the model `opus`
-- **THEN** Fish appears in the list as not running, no token is shown, and the screen shows how to start Fish with `bin/goalner-worker` and Fish's id
+- **THEN** Fish appears in the list as not running, no token is shown, and the screen shows how to start Fish with `bin/goalner-worker Fish`
 
 #### Scenario: Create with MCP
 - **WHEN** a member creates agent "Fish", then issues it an MCP-only token with their correct password
@@ -60,6 +60,10 @@ A new token's value SHALL be shown once, with a copy control and a warning that 
 #### Scenario: Agent states
 - **WHEN** Fish checked in a minute ago and is on `export-csv`, and Owl last checked in two hours ago
 - **THEN** the list shows Fish as online and on `export-csv`, and Owl as offline with its last check-in
+
+#### Scenario: Start command
+- **WHEN** a member chooses the start command of agent "Code Reviewer"
+- **THEN** the screen shows `bin/goalner-worker 'Code Reviewer'` with a copy control
 
 #### Scenario: Where an agent runs
 - **WHEN** Fish has a live lease of Bob's runner "laptop", started at 14:05

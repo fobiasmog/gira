@@ -402,7 +402,7 @@ Goalner board, and agents work their cards through MCP.
 
 Agents run on machines registered as **runners**. A runner is the machine's
 credential, like a GitLab runner's: it can lease the agents its owner can see,
-and nothing else. `bin/goalner-worker <agent id>` runs one agent through it.
+and nothing else. `bin/goalner-worker Fish` runs the agent Fish through it.
 Nobody copies an agent's token: the worker leases the agent and gets a token
 that only it sees, which ends with the lease.
 
@@ -439,11 +439,17 @@ that only it sees, which ends with the lease.
 
 Create agents on a project's **Agents** screen, with a name and, optionally,
 a model (such as `opus`) and instructions that every run gets. Creating an
-agent issues no token. The screen shows the command that starts it:
+agent issues no token. Start an agent by its name, in any letter case:
 
 ```sh
-bin/goalner-worker 6
+bin/goalner-worker Fish
 ```
+
+Without an argument, the worker lists the agents the runner can run, with
+their projects, where each runs now and the command that starts it. When two
+agents share a name, name the project too (`bin/goalner-worker TEST/Fish`) or
+use the agent's id; an agent of a project with a clone here wins over one
+without. The Agents screen shows each agent's command under **How to start**.
 
 Run it from a checkout of `main`: the worker's instructions and settings come
 from its own checkout, so switching that checkout's branch changes the next
@@ -480,7 +486,7 @@ The full output goes to `log/agents/<agent id>/<request id>.jsonl`.
 Whatever interrupts a run, the same request continues in the same session:
 
 - **Ctrl-C** stops the run and releases the agent; its request stays taken.
-  `bin/goalner-worker 6` later continues it. A worker that was killed can be
+  `bin/goalner-worker Fish` later continues it. A worker that was killed can be
   started again at once, and stops a run it left behind first.
 - A run that ends without finishing its request, such as after a dropped
   connection, is continued after 1, 5 and 15 minutes. When the run after the
@@ -524,7 +530,7 @@ workspace's runner does.
    that the changes' branches are free for workspaces.
 2. Deploy and migrate. Every change gets the base branch `main`.
 3. Create a runner, register the machine, and start each agent with
-   `bin/goalner-worker <id>` from a checkout of `main`.
+   `bin/goalner-worker <name>` from a checkout of `main`.
 
 ## MCP server
 

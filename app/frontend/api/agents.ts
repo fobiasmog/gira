@@ -63,9 +63,18 @@ export function withAgent<T extends Agent>(agents: T[], agent: T): T[] {
   return [...agents.filter((other) => other.id !== agent.id), agent].sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id)
 }
 
-// How to run an agent on a machine registered as a runner.
-export function startCommand(agentId: Id): string {
-  return `bin/goalner-worker ${agentId}`
+// A word as a shell reads it: as it is when it holds nothing the shell
+// treats specially, otherwise in single quotes.
+export function shellWord(word: string): string {
+  return /^[A-Za-z0-9_.\/:@%+=-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`
+}
+
+// How to run an agent on a machine registered as a runner: by its name, or
+// by its id when another of the project's agents has the same name.
+export function startCommand(agent: Pick<Agent, "id" | "name">, agents: Pick<Agent, "id" | "name">[]): string {
+  const name = agent.name.trim().toLocaleLowerCase()
+  const shared = agents.some((other) => other.id !== agent.id && other.name.trim().toLocaleLowerCase() === name)
+  return `bin/goalner-worker ${shared || /^\d+$/.test(agent.name.trim()) ? agent.id : shellWord(agent.name)}`
 }
 
 // An optional setting as the server takes it: empty is unset.

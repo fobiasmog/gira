@@ -49,8 +49,10 @@ module GoalnerWorker
     # Raised to leave whatever the worker is doing when it is told to stop.
     class Stopping < StandardError; end
 
-    def initialize(agent_id:, runner:, env: ENV, console: Console.new, home: HOME)
+    # name: the agent's, when it is known before leasing, for messages.
+    def initialize(agent_id:, runner:, name: nil, env: ENV, console: Console.new, home: HOME)
       @agent_id = agent_id
+      @label = name || "Agent #{agent_id}"
       @runner = runner
       @env = env
       @console = console
@@ -129,9 +131,9 @@ module GoalnerWorker
         in [ 401, _ ] then "Goalner rejected the secret of runner #{@runner.name.inspect}: it was rotated or revoked. " \
           "Register again with its current secret: bin/goalner-worker register --url #{@runner.url} --token <secret>"
         in [ 404, _ ] then "Goalner has no agent #{@agent_id} that this runner's owner can see. " \
-          "Agents are created in Goalner first, on a project's Agents screen; start one with: bin/goalner-worker <agent id>"
-        in [ 409, "agent_leased" ] then "Agent #{@agent_id} is running on runner #{error['runner'].inspect} since #{error['leased_at']}. Stop that worker first."
-        in [ 409, "workspace_elsewhere" ] then "Agent #{@agent_id}'s change has its workspace on runner #{error['runner'].inspect}: start the agent there."
+          "Run bin/goalner-worker without an argument to list the agents it can run."
+        in [ 409, "agent_leased" ] then "#{@label} is running on runner #{error['runner'].inspect} since #{error['leased_at']}. Stop that worker first."
+        in [ 409, "workspace_elsewhere" ] then "#{@label}'s change has its workspace on runner #{error['runner'].inspect}: start the agent there."
         in [ 429, _ ] then "Goalner refused the lease: this runner leased too often. Try again later."
         else "Goalner refused the lease with HTTP #{response.status}."
         end

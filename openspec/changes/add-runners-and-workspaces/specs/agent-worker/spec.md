@@ -1,6 +1,6 @@
 ## Purpose
 
-Defines `bin/goalner-worker`, the program that runs any agent by its id on a machine registered as a runner: it leases the agent, attaches to the workspace of the agent's change, runs each request as one headless Claude Code run, and continues the same request in the same session after any interruption.
+Defines `bin/goalner-worker`, the program that runs any agent by its name or id on a machine registered as a runner: it leases the agent, attaches to the workspace of the agent's change, runs each request as one headless Claude Code run, and continues the same request in the same session after any interruption.
 
 ## ADDED Requirements
 
@@ -38,20 +38,43 @@ The worker SHALL refuse to run when its configuration file can be read or writte
 - **WHEN** `runners.yml` has permissions 644, and the user starts the worker
 - **THEN** the worker ends with exit status 1, naming the file and `chmod 600`
 
-### Requirement: Start an agent by its id
-`bin/goalner-worker <agent id>` SHALL run the agent with that id through the runner of the configuration file, or through the runner for `--url <Goalner address>` when several are configured. It SHALL lease the agent (spec `agent-runners`, "Lease an agent") before doing anything else. The worker SHALL end with exit status 1 and a message, without leasing, when no agent id is given, saying that agents are created in Goalner first and how to start one; when no runner is configured; when several runners are configured and `--url` names none of them. It SHALL end with exit status 1 and a message when the lease is refused:
+### Requirement: Start an agent
+`bin/goalner-worker <agent>` SHALL run the agent that `<agent>` names, through the runner of the configuration file, or through the runner for `--url <Goalner address>` when several are configured. `<agent>` SHALL be one of the agents the runner can run (spec `agent-runners`, "Agents a runner can run"), named by:
+- its id, when the argument is made of digits only;
+- its name, in any letter case;
+- `<project short name>/<name>`, for an agent of that project.
+
+When a name fits several of those agents and exactly one of them belongs to a project with a clone in the configuration, the worker SHALL run that one. Otherwise, a name that fits several agents SHALL end the worker with exit status 1, listing each with the argument that names it alone, and a name that fits none SHALL end it with exit status 1, naming it and listing the agents the runner can run. Without an argument, the worker SHALL list the agents the runner can run, each with the short names of its projects, where it runs now and the command that starts it, and end with exit status 0. When the runner can run no agent, it SHALL say instead that agents are created in Goalner first, on a project's Agents screen, and end with exit status 1. Neither listing nor finding an agent by name SHALL lease it.
+
+The worker SHALL lease the agent (spec `agent-runners`, "Lease an agent") before doing anything else with it. It SHALL end with exit status 1 and a message, without leasing, when no runner is configured, or when several runners are configured and `--url` names none of them. It SHALL end with exit status 1 and a message when the lease is refused:
 - for an agent that does not exist or that the runner's owner cannot see;
 - for an agent leased to another runner, naming that runner and since when;
 - for an agent whose change has its workspace on another runner, naming that runner.
 
 It SHALL also end with exit status 1 when none of the projects the lease names has a clone in the configuration, naming those projects. It SHALL refuse to start, with exit status 1 and before leasing, while another worker on the same machine runs the same agent through the same runner.
 
-#### Scenario: No agent id
-- **WHEN** a user runs `bin/goalner-worker` without an agent id
-- **THEN** the worker ends with exit status 1 and says to create the agent in Goalner first and to start it with `bin/goalner-worker <agent id>`
+#### Scenario: No argument
+- **WHEN** the runner "laptop" can run Fish, which is not running, and Heron, which runs on "laptop", and a user runs `bin/goalner-worker`
+- **THEN** the worker lists Fish and Heron with TEST, where each runs and `bin/goalner-worker Fish` and `bin/goalner-worker Heron`, ends with exit status 0, and leases nothing
+
+#### Scenario: No agents yet
+- **WHEN** the runner's owner can see no agent, and a user runs `bin/goalner-worker`
+- **THEN** the worker ends with exit status 1 and says to create agents in Goalner first, on a project's Agents screen
+
+#### Scenario: By name
+- **WHEN** a user runs `bin/goalner-worker fish`
+- **THEN** the worker leases Fish and runs it
+
+#### Scenario: Shared name
+- **WHEN** TEST and OPS each have an agent named Fish, both projects have clones, and a user runs `bin/goalner-worker Fish`
+- **THEN** the worker ends with exit status 1, lists `bin/goalner-worker TEST/Fish` and `bin/goalner-worker OPS/Fish`, and leases nothing
+
+#### Scenario: Unknown name
+- **WHEN** a user runs `bin/goalner-worker Owl`, and the runner can run no agent of that name
+- **THEN** the worker ends with exit status 1, naming Owl and listing the agents the runner can run
 
 #### Scenario: Leased elsewhere
-- **WHEN** Fish has a live lease of the runner "desktop", and the user starts `bin/goalner-worker 6` on "laptop"
+- **WHEN** Fish has a live lease of the runner "desktop", and the user starts `bin/goalner-worker Fish` on "laptop"
 - **THEN** the worker ends with exit status 1 and says that Fish is running on "desktop" and since when
 
 #### Scenario: No clone
@@ -59,7 +82,7 @@ It SHALL also end with exit status 1 when none of the projects the lease names h
 - **THEN** the worker ends with exit status 1, names OPS, and releases the lease
 
 #### Scenario: Started twice on one machine
-- **WHEN** `bin/goalner-worker 6` is running, and the user starts `bin/goalner-worker 6` again on the same machine
+- **WHEN** `bin/goalner-worker Fish` is running, and the user starts `bin/goalner-worker Fish` again on the same machine
 - **THEN** the second worker ends with exit status 1, saying that Fish already runs here, and the first worker keeps its lease
 
 ### Requirement: Waiting for a request
@@ -178,15 +201,15 @@ The settings of every run SHALL hold a `PreCompact` hook for automatic compactio
 On an interrupt from the terminal or a termination signal, the worker SHALL stop the run as in requirement "Heartbeat and stopping a run", release the lease, and exit with status 0. The request SHALL stay taken. When the worker starts again for the same agent, the lease SHALL name that request, and the worker SHALL continue it in the same session with the "interrupted" note. A worker that was killed without releasing its lease SHALL be able to start again at once on the same runner (spec `agent-runners`, "One lease per agent"). When a run started by a killed worker is still running, the new worker SHALL stop it before it runs anything, so that two runs never continue one session at once.
 
 #### Scenario: Ctrl-C and start again
-- **WHEN** a user presses Ctrl-C while Fish's run works on the implement request of `export-csv`, and later runs `bin/goalner-worker 6` again
+- **WHEN** a user presses Ctrl-C while Fish's run works on the implement request of `export-csv`, and later runs `bin/goalner-worker Fish` again
 - **THEN** the first worker released its lease and exited with status 0, and the new worker resumes the same session on the implement request with the "interrupted" note
 
 #### Scenario: Killed
-- **WHEN** Fish's worker is killed, and the user starts `bin/goalner-worker 6` again a minute later on the same runner
+- **WHEN** Fish's worker is killed, and the user starts `bin/goalner-worker Fish` again a minute later on the same runner
 - **THEN** the new worker leases Fish and continues the taken request
 
 #### Scenario: Orphaned run
-- **WHEN** Fish's worker was killed while its run kept going, and the user starts `bin/goalner-worker 6` again
+- **WHEN** Fish's worker was killed while its run kept going, and the user starts `bin/goalner-worker Fish` again
 - **THEN** the new worker stops the old run before resuming the session
 
 ### Requirement: Remove finished workspaces

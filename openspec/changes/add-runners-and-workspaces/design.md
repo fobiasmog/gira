@@ -102,6 +102,7 @@ The take filter: `take!` gets the runner of the calling token's lease, or `nil`.
 | Method and path | What it does |
 | --- | --- |
 | `GET /api/runner` | The runner's name and its owner's name. `register` uses it to check the secret. |
+| `GET /api/runner/agents` | The agents the runner can lease, with their projects and live leases. The worker lists them when started without an argument, and finds an agent by its name in them |
 | `POST /api/runner/agents/:agent_id/lease` | Leases the agent and returns the lease, its run token, the agent, its projects, the MCP address the runs connect to (`MCP_RESOURCE_URL`) and its current change (spec `agent-runners`, "Lease an agent") |
 | `DELETE /api/runner/leases/:id` | Ends the lease and deletes its run token. Ending a lease that has already ended changes nothing. |
 | `PUT /api/runner/changes/:change_id/workspace` | Records the change's workspace (`path`, `branch`). Recording the same values again changes nothing. |
@@ -121,6 +122,8 @@ New fields in existing responses:
 - taken requests get `base_branch`, `session_id` and `workspace` on their change.
 
 ### 5. The worker program
+
+An agent is started by its name, such as `bin/goalner-worker Fish`, in any letter case, or by `TEST/Fish` when two agents share a name, or by its id. The worker resolves a name in the runner's list of agents (decision 4), preferring the one agent of a project with a clone here when the name fits several. Without an argument it prints that list with each agent's start command. Names are not unique, so the id stays the one name that never fits two agents. The Agents screen shows each agent's command.
 
 `bin/goalner-worker` is Ruby with the standard library only (`net/http`, `json`, `yaml`, `open3`, `fileutils`), like `bin/goalner-context-full`. It must run on any machine with Ruby, without the app's bundle. Its code lives in `lib/goalner_worker/`, which is added to the `autoload_lib` ignore list.
 
@@ -179,7 +182,7 @@ Choosing the base branch is postponed. The planned way: runners report their clo
 1. creating a runner;
 2. `bin/goalner-worker register`;
 3. creating agents;
-4. `bin/goalner-worker <id>`.
+4. `bin/goalner-worker <name>`, or with no argument to list the agents.
 
 Manual agent tokens still work for interactive sessions, but `take!` gives them nothing from a change with an active workspace (decision 3).
 
@@ -199,7 +202,7 @@ Manual agent tokens still work for interactive sessions, but `take!` gives them 
 1. Stop the `/loop` sessions of Fish and Heron. Commit or discard their work. Release them from their changes, or let those changes finish. Then remove their worktrees (`git worktree remove ../goalner-fish`, and the same for Heron), so that the change branches are free to be checked out in workspaces.
 2. Merge and migrate. Existing changes get the base branch `main`.
 3. In Goalner: Settings, Runners, create "laptop". Copy the register command and run it with `--clone TEST=~/dev/goalner`.
-4. Start each agent with `bin/goalner-worker <id>`, from a checkout of `main`.
+4. Start each agent with `bin/goalner-worker <name>`, from a checkout of `main`.
 
 Rollback: revert the merge and roll back the migrations. The `/loop` skill and agent tokens issued by people work as before. Workspaces on disk remain as ordinary worktrees.
 

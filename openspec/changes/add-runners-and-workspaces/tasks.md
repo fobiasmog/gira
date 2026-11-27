@@ -92,3 +92,11 @@
 - [ ] 8.3 Run the whole test suite, `bin/rubocop`, `bin/brakeman` and `bin/openapi-verify`; verify that all pass.
 
   On 2026-11-27, after the 8.2 fix: the suite (1,272 tests, worker tests included) passes, the system tests passed (206, `TZ=UTC`, after `npx vite build --mode test`), and `bin/rubocop` and `bin/openapi-verify` pass. `bin/brakeman` has one warning, which predates this change: Ruby 4.0.7 in `.ruby-version` (CVE-2026-132825, fixed in 4.0.10). Left open until Ruby is upgraded or the warning is accepted.
+
+## 9. Starting agents by name
+
+- [x] 9.1 Add `GET /api/runner/agents`, listing the agents the runner can run with their projects and live leases; verify with controller tests for "Agents a runner can run".
+- [x] 9.2 Let `bin/goalner-worker` take an agent's name, any letter case, or `PROJECT/Name`, preferring the one agent with a cloned project, and list the agents with their start commands when given no argument; verify with worker tests for every scenario of "Start an agent".
+- [x] 9.3 Show each agent's start command on the Agents screen, after creating it and from its menu, by name or by id when the name is shared in the project, quoted for the shell; verify with unit tests for the command and system tests for "Create" and "Start command" of the "Agents screen".
+- [x] 9.4 Update the README's "Running agents" and the worker's messages to start agents by name; verify that `bin/goalner-worker <agent id>` appears nowhere as the way to start an agent.
+

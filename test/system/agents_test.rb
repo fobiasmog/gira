@@ -56,12 +56,12 @@ class AgentsTest < ApplicationSystemTestCase
     assert_selector "dialog[open]", text: "Agent “Fish” created"
     agent = Agent.joins(:user).find_by!(users: { name: "Fish" })
     within("dialog[open]") do
-      assert_field "Start command", with: "bin/goalner-worker #{agent.user_id}"
+      assert_field "Start command", with: "bin/goalner-worker Fish"
       assert_link "Settings, Runners"
       assert_no_field "Token", exact: true
       execute_script("navigator.clipboard.writeText = async (text) => { window.__copied = text }")
       click_button "Copy command"
-      assert_equal "bin/goalner-worker #{agent.user_id}", evaluate_script("window.__copied")
+      assert_equal "bin/goalner-worker Fish", evaluate_script("window.__copied")
       click_button "Done"
     end
 
@@ -137,6 +137,25 @@ class AgentsTest < ApplicationSystemTestCase
     within(".agent", text: "Fish") { assert_selector ".agent__runs--running", text: /\ARuns on laptop of User One since .+\z/ }
     within(".agent", text: "Owl") { assert_selector ".agent__runs", text: "Not running" }
     assert lease.live?
+  end
+
+  test "start command: by name, quoted for the shell, from the agent's menu; by id when another agent shares the name" do
+    create_agent(@project, name: "Code Reviewer")
+    fish = create_agent(@project, name: "Fish")
+    create_agent(projects(:side), name: "fish").tap { |other| @project.memberships.create!(user: other.user) }
+    visit_agents
+
+    open_actions "Code Reviewer"
+    click_button "How to start"
+    within("dialog[open]") do
+      assert_selector "h2", text: "Start Code Reviewer"
+      assert_field "Start command", with: "bin/goalner-worker 'Code Reviewer'"
+      click_button "Done"
+    end
+
+    find("button[aria-label='Actions for Fish']").click
+    click_button "How to start"
+    within("dialog[open]") { assert_field "Start command", with: "bin/goalner-worker #{fish.user_id}" }
   end
 
   test "a token that works at the API links to the API documentation" do
@@ -328,7 +347,7 @@ class AgentsTest < ApplicationSystemTestCase
     find("dialog[open]").send_keys(:escape)
 
     # An agent's menu and the dialogs it opens.
-    { "Tokens" => "Tokens of Owl", "Edit" => "Edit Owl", "Delete" => "Delete Owl" }.each do |item, title|
+    { "How to start" => "Start Owl", "Tokens" => "Tokens of Owl", "Edit" => "Edit Owl", "Delete" => "Delete Owl" }.each do |item, title|
       find_button("Actions for Owl").send_keys(:enter)
       click_button item
       assert_selector "dialog[open]", text: title

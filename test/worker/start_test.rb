@@ -1,24 +1,86 @@
 require "test_helper"
 require "support/goalner_worker_harness"
 
-# Starting bin/goalner-worker <agent id> and waiting for requests (spec
-# agent-worker, "Start an agent by its id", "Waiting for a request" and
-# "Configuration file safety"; add-runners-and-workspaces design.md,
-# decisions 5 and 6).
+# Starting bin/goalner-worker by an agent's name or id, listing the agents,
+# and waiting for requests (spec agent-worker, "Start an agent", "Waiting
+# for a request" and "Configuration file safety"; add-runners-and-workspaces
+# design.md, decisions 5 and 6).
 class GoalnerWorkerStartTest < ActiveSupport::TestCase
   include GoalnerWorkerHarness
 
   # Start an agent by its id
 
-  test "no agent id: exit status 1, saying to create the agent in Goalner first and how to start it" do
+  def listed(id, name, projects, lease: nil) = { "id" => id, "name" => name, "projects" => projects, "lease" => lease }
+
+  test "no argument: the agents the runner can run, with their projects, where each runs and its start command, and nothing leased" do
     configure
+    @api.agent_list = [ listed(agent_id, "Fish", %w[TEST]),
+      listed(agent_id + 1, "Heron", %w[TEST], lease: { "runner" => { "name" => "laptop" }, "this_runner" => true, "since" => "2026-11-27T14:05:00Z" }),
+      listed(agent_id + 2, "Code Reviewer", %w[OPS], lease: { "runner" => { "name" => "desktop" }, "this_runner" => false, "since" => "2026-11-27T14:05:00Z" }) ]
+
+    status, output = run_worker
+
+    assert_equal 0, status, output
+    assert_match(/Agents that runner "laptop" can run \(#{Regexp.escape(@api.url)}\):/, output)
+    assert_match(/^  Fish +TEST +not running +bin\/goalner-worker Fish$/, output)
+    assert_match(/^  Heron +TEST +runs here since 2026-11-27 \d\d:\d\d +bin\/goalner-worker Heron$/, output)
+    assert_match(/^  Code Reviewer +OPS \(no clone here\) +runs on desktop since .+ +bin\/goalner-worker Code\\ Reviewer$/, output)
+    assert_empty @api.calls("POST", /lease/)
+  end
+
+  test "no agents yet: exit status 1, saying to create agents in Goalner first" do
+    configure
+    @api.agent_list = []
 
     status, output = run_worker
 
     assert_equal 1, status
-    assert_match(/Agents are created in Goalner first/, output)
-    assert_match(/bin\/goalner-worker <agent id>/, output)
-    assert_empty @api.requests
+    assert_match(/Agents are created in Goalner first, on a project's Agents screen/, output)
+  end
+
+  test "by name, in any letter case, or by PROJECT/Name: the worker leases that agent" do
+    configure
+    [ "fish", "FISH", "test/Fish" ].each do |argument|
+      pid = start_worker(argument)
+      wait_until("the lease for #{argument}") { output_of(pid).include?("Leased Fish (agent #{agent_id})") }
+      assert_equal 0, stop_worker(pid)
+    end
+    assert_equal [ "/api/runner/agents/#{agent_id}/lease" ], @api.calls("POST", /lease/).map { |call| call[:path] }.uniq
+  end
+
+  test "shared name: exit status 1, listing the argument that names each, and nothing leased" do
+    configure(clones: { "TEST" => create_clone, "OPS" => create_clone("ops") })
+    @api.agent_list = [ listed(agent_id, "Fish", %w[TEST]), listed(agent_id + 1, "Fish", %w[OPS]) ]
+
+    status, output = run_worker("Fish")
+
+    assert_equal 1, status
+    assert_match(/Several agents are named "Fish"/, output)
+    assert_includes output, "bin/goalner-worker TEST/Fish"
+    assert_includes output, "bin/goalner-worker OPS/Fish"
+    assert_empty @api.calls("POST", /lease/)
+  end
+
+  test "a shared name picks the one agent of a project with a clone here" do
+    configure
+    @api.agent_list = [ listed(agent_id, "Fish", %w[TEST]), listed(agent_id + 1, "Fish", %w[OPS]) ]
+
+    pid = start_worker("Fish")
+    wait_until("a lease") { @api.live_lease }
+
+    assert_equal 0, stop_worker(pid)
+    assert_equal [ "/api/runner/agents/#{agent_id}/lease" ], @api.calls("POST", /lease/).map { |call| call[:path] }
+  end
+
+  test "unknown name: exit status 1, naming it and listing the agents the runner can run" do
+    configure
+
+    status, output = run_worker("Owl")
+
+    assert_equal 1, status
+    assert_match(/can run no agent named "Owl"/, output)
+    assert_match(/^  Fish +TEST +not running +bin\/goalner-worker Fish$/, output)
+    assert_empty @api.calls("POST", /lease/)
   end
 
   test "no runner configured, or several without --url naming one: exit status 1, without leasing" do
@@ -54,7 +116,7 @@ class GoalnerWorkerStartTest < ActiveSupport::TestCase
     status, output = run_worker(agent_id.to_s)
 
     assert_equal 1, status
-    assert_match(/running on runner "desktop" since 2026-11-27T14:05:00Z/, output)
+    assert_match(/Fish is running on runner "desktop" since 2026-11-27T14:05:00Z/, output)
   end
 
   test "workspace elsewhere, unknown agent and rejected secret: exit status 1 with the reason" do

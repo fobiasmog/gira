@@ -6,6 +6,8 @@ import ConfirmDialog from "../components/ui/ConfirmDialog.vue"
 import AgentAddDialog from "../components/agents/AgentAddDialog.vue"
 import AgentCreateDialog from "../components/agents/AgentCreateDialog.vue"
 import AgentEditDialog from "../components/agents/AgentEditDialog.vue"
+import AgentStartHint from "../components/agents/AgentStartHint.vue"
+import AppDialog from "../components/ui/AppDialog.vue"
 import AgentTokensDialog from "../components/agents/AgentTokensDialog.vue"
 import UserAvatar from "../components/UserAvatar.vue"
 import { activeAgents, agentsApi, deletedAgents } from "../api/agents.ts"
@@ -48,14 +50,16 @@ watch(() => props.projectId, () => {
 const creating = ref(false)
 const adding = ref(false)
 
-// One agent at a time is edited, shown its tokens, removed or deleted.
-type Action = "edit" | "tokens" | "remove" | "delete"
+// One agent at a time is shown its start command, edited, shown its
+// tokens, removed or deleted.
+type Action = "start" | "edit" | "tokens" | "remove" | "delete"
 const acting = ref<{ action: Action; agent: ProjectAgent } | null>(null)
 const subject = computed(() => acting.value?.agent ?? null)
 const dialog = (action: Action) => computed({
   get: () => acting.value?.action === action,
   set: (open) => { if (!open && acting.value?.action === action) acting.value = null },
 })
+const startOpen = dialog("start")
 const editOpen = dialog("edit")
 const tokensOpen = dialog("tokens")
 const removeOpen = dialog("remove")
@@ -151,6 +155,7 @@ async function restore(agent: ProjectAgent) {
             </button>
           </template>
           <template #default="{ close }">
+            <button type="button" class="menu__item" @click="close(); start('start', agent)"><AppIcon name="robot" :size="20" />{{ t("agents.howToStart") }}</button>
             <button type="button" class="menu__item" @click="close(); start('tokens', agent)"><AppIcon name="code" :size="20" />{{ t("agents.tokens") }}</button>
             <button type="button" class="menu__item" @click="close(); start('edit', agent)"><AppIcon name="edit" :size="20" />{{ t("agents.edit") }}</button>
             <!-- Not from its only project, where nobody could see it afterwards: it is deleted instead. -->
@@ -181,11 +186,17 @@ async function restore(agent: ProjectAgent) {
       </ul>
     </details>
 
-    <AgentCreateDialog v-model:open="creating" :project-id="projectId" @created="reload" />
+    <AgentCreateDialog v-model:open="creating" :project-id="projectId" :agents="active" @created="reload" />
     <AgentAddDialog v-model:open="adding" :project-id="projectId" @added="reload" />
     <AgentTokensDialog v-model:open="tokensOpen" :agent="subject" @changed="reload" />
 
     <AgentEditDialog v-model:open="editOpen" :agent="subject" @saved="saved" />
+    <AppDialog v-model:open="startOpen" :title="t('agents.startTitle', { name: subject?.name ?? '' })" wide>
+      <AgentStartHint v-if="subject" :agent="subject" :agents="active" />
+      <template #actions>
+        <button type="button" class="button" @click="startOpen = false">{{ t("agents.done") }}</button>
+      </template>
+    </AppDialog>
 
     <ConfirmDialog
       v-model:open="removeOpen"

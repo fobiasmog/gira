@@ -61,6 +61,13 @@ The runner endpoints SHALL be those of this spec and of spec `agent-workspaces` 
 - **WHEN** Bob's runner "laptop" reads itself
 - **THEN** the response names the runner "laptop" and its owner Bob
 
+### Requirement: Agents a runner can run
+A runner SHALL be able to list the agents its owner can see (spec `agents`, "Who can see and handle an agent") that are not deleted, by name. Each SHALL come with its id, its name, the short names of the non-archived projects that both it and the runner's owner belong to, and its live lease: the name of the lease's runner, whether that runner is the one listing, and when the lease started, or `null`. Listing SHALL change no agent and no lease, and SHALL NOT count as a check-in.
+
+#### Scenario: List
+- **WHEN** Bob belongs to TEST, Fish belongs to TEST and OPS and has a live lease of "laptop", Owl belongs to OPS only, Newt in TEST is deleted, and Bob's runner "desktop" lists its agents
+- **THEN** the list holds Fish, with TEST alone and its lease of "laptop", which is not the runner listing, and holds neither Owl nor Newt
+
 ### Requirement: Lease an agent
 A runner SHALL be able to lease an agent that its owner can see (spec `agents`, "Who can see and handle an agent") and that is not deleted. Any other agent SHALL receive HTTP 404, as for an agent that does not exist. The response SHALL be HTTP 201 and SHALL contain:
 - the lease's id and the value of its run token (requirement "Run tokens"), which SHALL NOT be retrievable afterwards;

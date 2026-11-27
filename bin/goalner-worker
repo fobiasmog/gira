@@ -1,10 +1,12 @@
 #!/usr/bin/env ruby
 # Runs a Goalner agent on this machine (spec agent-worker;
 # add-runners-and-workspaces design.md, decision 5). Register the machine
-# once as a runner, then start any agent by its id:
+# once as a runner, then start any agent by its name or id, or list the
+# agents it can run with no argument:
 #
 #   bin/goalner-worker register --url http://localhost:3000 --token glnr_runner_… --clone TEST=~/dev/goalner
-#   bin/goalner-worker 6
+#   bin/goalner-worker Fish
+#   bin/goalner-worker
 #
 # Ruby's standard library only, so that it runs without the app's bundle.
 require_relative "../lib/goalner_worker/cli"

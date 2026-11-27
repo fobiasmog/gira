@@ -64,7 +64,15 @@ test("edits an agent's settings, and an empty setting is sent as null", async ()
   assert.equal(calls[0]!.init.method, "PATCH")
   assert.deepEqual(body(calls[0]!), { name: "Fish", model: null, instructions: "Keep commits small." })
   assert.equal(settingValue("  "), null)
-  assert.equal(startCommand(7), "bin/goalner-worker 7")
+})
+
+test("the start command names the agent, quoted for the shell, or gives its id when the name is shared or made of digits", () => {
+  const reviewer = agent(9, "Code Reviewer")
+  assert.equal(startCommand(fish, [fish, reviewer]), "bin/goalner-worker Fish")
+  assert.equal(startCommand(reviewer, [fish, reviewer]), "bin/goalner-worker 'Code Reviewer'")
+  assert.equal(startCommand(agent(10, "Bob's bot"), []), `bin/goalner-worker 'Bob'\\''s bot'`)
+  assert.equal(startCommand(fish, [fish, agent(11, "fish")]), "bin/goalner-worker 7")
+  assert.equal(startCommand(agent(12, "42"), []), "bin/goalner-worker 12")
 })
 
 test("issues and revokes a token", async () => {

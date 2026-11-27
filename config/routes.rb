@@ -58,6 +58,7 @@ Rails.application.routes.draw do
     # "Runner authentication"). Not in the API document.
     scope "runner", module: :runners, as: :runner do
       get "/", to: "profiles#show", as: :profile
+      get "agents", to: "agents#index", as: :agents
       post "agents/:agent_id/lease", to: "leases#create", as: :agent_lease
       delete "leases/:id", to: "leases#destroy", as: :lease
       put "changes/:change_id/workspace", to: "workspaces#record", as: :change_workspace

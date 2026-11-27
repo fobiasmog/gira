@@ -7,11 +7,11 @@ require "support/goalner_worker_harness"
 class GoalnerWorkerHarnessTest < ActiveSupport::TestCase
   include GoalnerWorkerHarness
 
-  test "the worker runs on Ruby's standard library alone, and answers without an agent id" do
+  test "the worker runs on Ruby's standard library alone, and answers with nothing registered" do
     status, output = run_worker
 
     assert_equal 1, status
-    assert_match(/bin\/goalner-worker <agent id>/, output)
+    assert_match(/No runner is registered/, output)
     assert_no_match(/bundler|LoadError/i, output)
   end
 end

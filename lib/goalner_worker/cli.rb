@@ -1,4 +1,5 @@
 require "optparse"
+require_relative "agents"
 require_relative "worker"
 
 module GoalnerWorker
@@ -6,12 +7,12 @@ module GoalnerWorker
   #
   #   bin/goalner-worker register --url <Goalner> [--token <runner secret>]
   #     [--workspaces <directory>] [--clone <PROJECT>=<path>]...
-  #   bin/goalner-worker <agent id> [--url <Goalner>]
+  #   bin/goalner-worker [<agent name or id>] [--url <Goalner>]
   class Cli
     PROJECT_FORMAT = /\A[A-Z][A-Z0-9]{1,9}\z/
     USAGE = <<~TEXT.freeze
       Usage:
-        bin/goalner-worker <agent id> [--url <Goalner address>]
+        bin/goalner-worker [<agent name or id>] [--url <Goalner address>]
         bin/goalner-worker register --url <Goalner address> [--token <runner secret>]
           [--workspaces <directory>] [--clone <PROJECT>=<path>]...
     TEXT
@@ -32,17 +33,29 @@ module GoalnerWorker
     end
 
     private
+      # Runs the agent the argument names, by id, by name or by
+      # PROJECT/Name; without an argument, lists the agents the runner can
+      # run (spec agent-worker, "Start an agent").
       def start(argv)
         url = nil
         OptionParser.new { |parser| parser.on("--url URL") { |value| url = value } }.parse!(argv)
-        agent_id = argv.first
-        unless agent_id&.match?(/\A\d+\z/)
-          raise Error, "Give the id of the agent to run. Agents are created in Goalner first, on a project's Agents screen, " \
-            "which shows each agent's id; start one with: bin/goalner-worker <agent id>\n\n#{USAGE}"
+        runner = Config.load(Config.default_path(@env)).choose(url)
+        argument = argv.first
+        return list(runner) if argument.nil? || argument.strip.empty?
+
+        agents = Agents.fetch(runner)
+        agent_id = agents.find(argument)
+        Worker.new(agent_id:, name: agents.name_of(agent_id), runner:, env: @env, console: Console.new(@out)).run
+      end
+
+      def list(runner)
+        agents = Agents.fetch(runner)
+        if agents.empty?
+          raise Error, "Runner #{runner.name.inspect} can run no agent yet. Agents are created in Goalner first, on a project's Agents screen; " \
+            "then start one with: bin/goalner-worker <agent name>"
         end
 
-        runner = Config.load(Config.default_path(@env)).choose(url)
-        Worker.new(agent_id: Integer(agent_id, 10), runner:, env: @env, console: Console.new(@out)).run
+        @out.puts agents.listing
       end
 
       # Checks the runner's secret with Goalner and saves the runner, merged

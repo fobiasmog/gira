@@ -15,6 +15,8 @@ class StandInGoalner
 
   attr_reader :requests, :finished, :workspaces, :leases, :checkpoints
   attr_accessor :agent, :projects, :waiting, :taken, :lease_refusal, :claim_status, :down, :blocked, :session_id, :earlier_takes
+  # The agents the runner can run, when a test lists others than the one agent.
+  attr_accessor :agent_list
 
   def initialize
     @mutex = Mutex.new
@@ -86,6 +88,7 @@ class StandInGoalner
 
       case [ method, path ]
       in [ "GET", "/api/runner" ] then [ 200, { "id" => 1, "name" => "laptop", "owner" => { "name" => "Bob" } } ]
+      in [ "GET", "/api/runner/agents" ] then [ 200, @agent_list || [ listed_agent ] ]
       in [ "POST", %r{\A/api/runner/agents/(\d+)/lease\z} ] then lease(Integer($1))
       in [ "DELETE", %r{\A/api/runner/leases/(\d+)\z} ] then release(Integer($1))
       in [ "PUT", %r{\A/api/runner/changes/(\d+)/workspace\z} ] then record(Integer($1), params)
@@ -115,6 +118,12 @@ class StandInGoalner
         "request" => @taken.merge("state" => "taken"))
       [ 201, { "lease" => { "id" => lease["id"], "run_token" => lease["token"], "started_at" => "2026-11-27T14:05:00Z" }, "agent" => @agent,
         "projects" => @projects, "mcp_url" => "http://127.0.0.1:1/mcp", "change" => change } ]
+    end
+
+    def listed_agent
+      lease = @leases.reverse.find { |each| !each["ended"] }
+      { "id" => @agent["id"], "name" => @agent["name"], "projects" => @projects.map { |project| project["short_name"] },
+        "lease" => lease && { "runner" => { "name" => "laptop" }, "this_runner" => true, "since" => "2026-11-27T14:05:00Z" } }
     end
 
     def release(id)

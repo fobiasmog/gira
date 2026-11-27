@@ -184,6 +184,8 @@ export const ru: Messages = {
     modelLine: "Модель {model}",
     startHint: "Запустите агента {name} на машине, зарегистрированной как раннер, из копии основной ветки репозитория:",
     startCommand: "Команда запуска",
+    howToStart: "Как запустить",
+    startTitle: "Запуск агента {name}",
     startNoRunner: "На вашей машине ещё нет раннера? Создайте его в разделе",
     notRunning: "Не запущен",
     runsOn: "Работает на раннере {runner} ({owner}) с {date}",

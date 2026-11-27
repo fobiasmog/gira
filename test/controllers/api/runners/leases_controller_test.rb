@@ -245,4 +245,27 @@ class Api::Runners::LeasesControllerTest < ActionDispatch::IntegrationTest
   ensure
     loggers.each { |owner, logger| owner.logger = logger }
   end
+
+  # Agents a runner can run
+
+  test "list: the agents the owner can see, by name, with the projects they share and their live leases, and nothing changes" do
+    projects(:side).memberships.create!(user: @fish.user)
+    create_agent(projects(:side), name: "Owl", created_by: users(:two))
+    create_agent(@goal, name: "Newt").delete!
+    heron = create_agent(@goal, name: "Heron")
+    started = Time.utc(2026, 11, 27, 14, 5)
+    travel_to(started) { AgentLease.lease!(agent: @fish, runner: @laptop) }
+    desktop = Runner.issue(user: @bob, name: "desktop").tap(&:save!)
+
+    travel_to(started + 1.minute) { get api_runner_agents_path, headers: runner_headers(desktop) }
+
+    assert_response :success
+    assert_equal [
+      { "id" => @fish.user_id, "name" => "Fish", "projects" => [ "GOAL" ],
+        "lease" => { "runner" => { "name" => "laptop" }, "this_runner" => false, "since" => started.as_json } },
+      { "id" => heron.user_id, "name" => "Heron", "projects" => [ "GOAL" ], "lease" => nil }
+    ], response.parsed_body
+    assert_equal 1, AgentLease.count
+    assert_nil @goal.memberships.find_by!(user: @fish.user).checked_in_at
+  end
 end

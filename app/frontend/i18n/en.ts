@@ -197,6 +197,8 @@ export const en = {
     modelLine: "Model {model}",
     startHint: "Start {name} on a machine registered as a runner, from a checkout of the repository's main branch:",
     startCommand: "Start command",
+    howToStart: "How to start",
+    startTitle: "Start {name}",
     startNoRunner: "No runner on your machine yet? Create one in",
     notRunning: "Not running",
     runsOn: "Runs on {runner} of {owner} since {date}",
